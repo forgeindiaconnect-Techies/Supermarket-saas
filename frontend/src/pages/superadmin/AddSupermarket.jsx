@@ -669,55 +669,405 @@ export default function AddSupermarket() {
     }
   };
 
-  // Helper: Download printable / text credentials slip
+  // Helper: Download printable / colorful credentials pass (HTML with rich colors & print-to-PDF support)
   const handleDownloadCredentialsSlip = () => {
     if (!createdData) return;
     const creds = createdData.credentials || {};
-    const slipContent = `
-=====================================================
-GROCEREASE MULTI-TENANT SAAS PLATFORM
-SUPERMARKET ONBOARDING & TENANT CREDENTIALS PASS
-=====================================================
 
-Supermarket Name   : ${createdData.name || supermarketName}
-Unique Tenant ID   : ${creds.supermarketId || createdData.code || supermarketId}
-Owner Name         : ${createdData.ownerName || ownerName}
-Contact Mobile     : +91 ${createdData.phone || mobileNumber}
-Official Email     : ${createdData.email || email}
+    const rawPhone = String(createdData.phone || mobileNumber || "").trim();
+    const phoneDigits10 = rawPhone.replace(/\D/g, "").slice(-10);
+    const cleanMobileNumber = phoneDigits10 ? `+91 ${phoneDigits10}` : "+91 N/A";
 
------------------------------------------------------
-ADMINISTRATOR LOGIN CREDENTIALS
------------------------------------------------------
-Admin Username     : ${creds.adminUsername || adminUsername}
-Temporary Password : ${creds.adminPassword || adminPassword}
-Login URL          : ${window.location.origin}/login
-Force Password Chg : ${forcePasswordChange ? "Yes (Required on first login)" : "No"}
+    const storeName = createdData.name || supermarketName;
+    const tenantId = creds.supermarketId || createdData.code || supermarketId;
+    const owner = createdData.ownerName || ownerName || "N/A";
+    const storeEmail = createdData.email || email || "N/A";
+    const username = creds.adminUsername || adminUsername;
+    const password = creds.adminPassword || adminPassword;
+    const planName = createdData.plan || selectedPlanId;
+    const feeFormatted = Number(customAmount).toLocaleString("en-IN");
+    const loginLink = `${window.location.origin}/login`;
+    const generatedTime = new Date().toLocaleString("en-IN", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    });
+    const storeLocation =
+      [createdData.address || address, createdData.city || city, createdData.state || state, createdData.pincode || pincode]
+        .filter(Boolean)
+        .join(", ") || "Bangalore, Karnataka";
 
------------------------------------------------------
-TENANT SUBSCRIPTION & DATA ISOLATION
------------------------------------------------------
-Subscription Plan  : ${createdData.plan || selectedPlanId} (${billingCycle})
-Billing Amount     : ₹${Number(customAmount).toLocaleString("en-IN")}
-Subscription Start : ${startDate}
-Subscription Expiry: ${expiryDate}
-Data Isolation     : Strictly Isolated Multi-Tenant Container
-Timestamp Generated: ${new Date().toLocaleString()}
+    const htmlContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GrocerEase Onboarding Pass - ${tenantId}</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@600;700&display=swap');
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f1f5f9;
+      color: #0f172a;
+      padding: 32px 16px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+    .print-bar {
+      max-width: 760px;
+      margin: 0 auto 16px auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #ffffff;
+      padding: 12px 20px;
+      border-radius: 12px;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
+    }
+    .print-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #16a34a;
+      color: #ffffff;
+      border: none;
+      padding: 9px 20px;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 13.5px;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(22, 163, 74, 0.25);
+      transition: all 0.2s;
+    }
+    .print-btn:hover { background: #15803d; transform: translateY(-1px); }
+    .pass-container {
+      max-width: 760px;
+      margin: 0 auto;
+      background: #ffffff;
+      border-radius: 20px;
+      overflow: hidden;
+      border: 1.5px solid #cbd5e1;
+      box-shadow: 0 20px 40px -15px rgba(6, 61, 46, 0.18);
+    }
+    .pass-header {
+      background: linear-gradient(135deg, #063d2e 0%, #0d523e 50%, #16a34a 100%);
+      color: #ffffff;
+      padding: 28px 32px;
+      position: relative;
+    }
+    .pass-header-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .brand-title {
+      font-size: 24px;
+      font-weight: 900;
+      letter-spacing: -0.02em;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .brand-title span.eco { color: #4ade80; }
+    .badge-pill {
+      background: rgba(255, 255, 255, 0.16);
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      padding: 5px 14px;
+      border-radius: 9999px;
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #dcfce7;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .pass-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #a7f3d0;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-top: 4px;
+    }
+    .pass-body {
+      padding: 28px 32px;
+    }
+    .section-card {
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 18px;
+      position: relative;
+    }
+    .section-card.identity {
+      background: #f0fdf4;
+      border: 1.5px solid #86efac;
+    }
+    .section-card.credentials {
+      background: #f5f3ff;
+      border: 1.5px solid #c4b5fd;
+    }
+    .section-card.subscription {
+      background: #fffbeb;
+      border: 1.5px solid #fde68a;
+    }
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      padding-bottom: 8px;
+      border-bottom: 1px dashed rgba(0,0,0,0.1);
+    }
+    .section-title {
+      font-size: 12.5px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .identity .section-title { color: #166534; }
+    .credentials .section-title { color: #5b21b6; }
+    .subscription .section-title { color: #92400e; }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px 24px;
+    }
+    .grid-full { grid-column: span 2; }
+    .field-item {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .field-label {
+      font-size: 11px;
+      color: #64748b;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .field-value {
+      font-size: 14px;
+      font-weight: 700;
+      color: #0f172a;
+    }
+    .field-value.highlight-green {
+      color: #15803d;
+      font-size: 16px;
+      font-weight: 800;
+    }
+    .mono-pill {
+      font-family: 'JetBrains Mono', monospace;
+      background: #ffffff;
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 13.5px;
+      font-weight: 700;
+      border: 1px solid #cbd5e1;
+      display: inline-block;
+      width: fit-content;
+      color: #1e1b4b;
+      letter-spacing: 0.02em;
+    }
+    .mono-pill.pwd {
+      background: #fdf2f8;
+      border-color: #f472b6;
+      color: #9d174d;
+    }
+    .security-notice {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 12px;
+      padding: 16px 20px;
+      font-size: 12.5px;
+      color: #1e40af;
+      line-height: 1.55;
+      margin-top: 22px;
+    }
+    .security-notice strong { color: #1e3a8a; }
+    .pass-footer {
+      border-top: 1px solid #e2e8f0;
+      padding: 18px 32px;
+      background: #f8fafc;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      color: #64748b;
+    }
+    @media print {
+      body { background: #ffffff; padding: 0; }
+      .print-bar { display: none !important; }
+      .pass-container {
+        border: 1px solid #cbd5e1;
+        box-shadow: none;
+        border-radius: 0;
+        max-width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="print-bar">
+    <div style="font-size: 13px; font-weight: 600; color: #475569;">
+      GrocerEase Supermarket Security Credentials Pass
+    </div>
+    <button type="button" class="print-btn" onclick="window.print()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+      <span>Print / Save as PDF</span>
+    </button>
+  </div>
 
-IMPORTANT NOTICE:
-Please store these credentials securely and deliver them safely to the 
-supermarket manager. On first login, admin must update their password.
-=====================================================
-`;
+  <div class="pass-container">
+    <div class="pass-header">
+      <div class="pass-header-top">
+        <div class="brand-title">
+          <span>Grocer<span class="eco">Ease</span></span>
+        </div>
+        <div class="badge-pill">
+          <span>Verified Multi-Tenant Pass</span>
+        </div>
+      </div>
+      <div class="pass-title">Supermarket Onboarding & Tenant Credentials Pass</div>
+    </div>
 
-    const blob = new Blob([slipContent], { type: "text/plain;charset=utf-8" });
+    <div class="pass-body">
+      <!-- 1. Supermarket Identity -->
+      <div class="section-card identity">
+        <div class="section-header">
+          <div class="section-title">1. Supermarket Identity & Contact</div>
+          <span style="font-size: 11px; font-weight: 800; color: #166534; background: #dcfce7; padding: 3px 10px; border-radius: 9999px;">Active Store</span>
+        </div>
+        <div class="grid-2">
+          <div class="field-item">
+            <span class="field-label">Supermarket Name</span>
+            <span class="field-value highlight-green">${storeName}</span>
+          </div>
+          <div class="field-item">
+            <span class="field-label">Unique Tenant ID</span>
+            <div class="mono-pill" style="color: #065f46; border-color: #86efac; background: #ecfdf5;">${tenantId}</div>
+          </div>
+          <div class="field-item">
+            <span class="field-label">Owner / Legal Entity</span>
+            <span class="field-value">${owner}</span>
+          </div>
+          <div class="field-item">
+            <span class="field-label">Contact Mobile</span>
+            <span class="field-value" style="color: #0f172a; font-family: 'JetBrains Mono', monospace;">${cleanMobileNumber}</span>
+          </div>
+          <div class="field-item">
+            <span class="field-label">Official Email</span>
+            <span class="field-value">${storeEmail}</span>
+          </div>
+          <div class="field-item">
+            <span class="field-label">Store Location</span>
+            <span class="field-value">${storeLocation}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. Administrator Credentials -->
+      <div class="section-card credentials">
+        <div class="section-header">
+          <div class="section-title">2. Administrator Login Credentials</div>
+          <span style="font-size: 11px; font-weight: 800; color: #5b21b6; background: #ede9fe; padding: 3px 10px; border-radius: 9999px;">Confidential</span>
+        </div>
+        <div class="grid-2">
+          <div class="field-item">
+            <span class="field-label">Admin Username</span>
+            <div class="mono-pill">${username}</div>
+          </div>
+          <div class="field-item">
+            <span class="field-label">Temporary Password</span>
+            <div class="mono-pill pwd">${password}</div>
+          </div>
+          <div class="field-item grid-full">
+            <span class="field-label">Portal Login URL</span>
+            <a href="${loginLink}" target="_blank" style="font-size: 13.5px; font-weight: 700; color: #4338ca; text-decoration: underline;">${loginLink}</a>
+          </div>
+          <div class="field-item">
+            <span class="field-label">Force Password Reset</span>
+            <span class="field-value" style="color: #7c2d12;">${forcePasswordChange ? "Yes (Required on first login)" : "No"}</span>
+          </div>
+          <div class="field-item">
+            <span class="field-label">Role & Privileges</span>
+            <span class="field-value">Store Admin (Full POS, Turnstile & Inventory Access)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. Tenant Subscription -->
+      <div class="section-card subscription">
+        <div class="section-header">
+          <div class="section-title">3. Tenant Subscription & Entitlements</div>
+          <span style="font-size: 11px; font-weight: 800; color: #92400e; background: #fef3c7; padding: 3px 10px; border-radius: 9999px;">${planName} Plan</span>
+        </div>
+        <div class="grid-2">
+          <div class="field-item">
+            <span class="field-label">Subscription Tier</span>
+            <span class="field-value">${planName} (${billingCycle})</span>
+          </div>
+          <div class="field-item">
+            <span class="field-label">Billing Amount</span>
+            <span class="field-value" style="color: #15803d; font-size: 15px;">₹${feeFormatted}</span>
+          </div>
+          <div class="field-item">
+            <span class="field-label">Subscription Start</span>
+            <span class="field-value">${startDate}</span>
+          </div>
+          <div class="field-item">
+            <span class="field-label">Subscription Expiry</span>
+            <span class="field-value">${expiryDate}</span>
+          </div>
+          <div class="field-item grid-full">
+            <span class="field-label">Multi-Tenant Data Isolation</span>
+            <span class="field-value" style="color: #0369a1;">Strictly Isolated Multi-Tenant Container (Dedicated Tenant ID & POS Room)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Security Notice -->
+      <div class="security-notice">
+        <strong>IMPORTANT SECURITY NOTICE:</strong> Please deliver these credentials securely to the supermarket store manager. For security compliance, the administrator will be prompted to change their temporary password upon their first login.
+      </div>
+    </div>
+
+    <div class="pass-footer">
+      <span>Generated on ${generatedTime}</span>
+      <span>GrocerEase SaaS Platform &bull; All Rights Reserved</span>
+    </div>
+  </div>
+</body>
+</html>`;
+
+    // 1. Download as colored HTML document
+    const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `GrocerEase-Credentials-${createdData.code || supermarketId}.txt`;
+    link.download = `GrocerEase-Onboarding-Pass-${tenantId}.html`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+
+    // 2. Also open in new browser tab so user can immediately view/print in color
+    try {
+      window.open(url, "_blank");
+    } catch (_) {}
+
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
   };
 
   // Helper: Switch context and launch newly created store admin portal
@@ -2025,7 +2375,9 @@ supermarket manager. On first login, admin must update their password.
                 </div>
                 <div className="asm-review-row">
                   <span className="asm-review-key">Mobile:</span>
-                  <span className="asm-review-val">+91 {mobileNumber}</span>
+                  <span className="asm-review-val">
+                    {mobileNumber ? `+91 ${mobileNumber.replace(/\D/g, "").slice(-10)}` : "N/A"}
+                  </span>
                 </div>
                 <div className="asm-review-row">
                   <span className="asm-review-key">City / State:</span>

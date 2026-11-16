@@ -198,6 +198,9 @@ exports.checkout = async (req, res) => {
       resolvedSupermarketName = req.supermarketName;
     }
 
+    const rawCustomerPhone = (customer?.phone || "").replace(/\D/g, "").slice(-10);
+    const cleanCustomerPhone = rawCustomerPhone ? `+91 ${rawCustomerPhone}` : "";
+
     const order = await Order.create({
       orderNumber,
       items: verifiedItems,
@@ -211,7 +214,7 @@ exports.checkout = async (req, res) => {
       paymentId,
       customer: {
         name: customer?.name || "Mobile Shopper",
-        phone: customer?.phone || "",
+        phone: cleanCustomerPhone,
         email: customer?.email || "",
         address: customer?.address || "",
       },

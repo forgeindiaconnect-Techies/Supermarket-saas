@@ -32,18 +32,43 @@ export default function CustomerDetailsScreen() {
   const [phoneError, setPhoneError] = useState("");
   const [touched, setTouched] = useState(false);
 
-  // Clean numeric phone input (only digits, max 10)
+  // Clean numeric phone input (Indian mobile: starts strictly with 6, 7, 8, or 9; max 10 digits)
   const handlePhoneChange = (text: string) => {
-    const cleaned = text.replace(/\D/g, "").slice(0, 10);
-    setPhone(cleaned);
-    if (touched) {
-      if (!cleaned) {
+    let cleaned = text.replace(/\D/g, "");
+
+    // If pasted with country code e.g. 919876543210 (12 digits), strip leading 91
+    if (cleaned.length === 12 && cleaned.startsWith("91")) {
+      cleaned = cleaned.slice(2);
+    }
+
+    // Limit to 10 digits
+    cleaned = cleaned.slice(0, 10);
+
+    if (!cleaned) {
+      setPhone("");
+      if (touched) {
         setPhoneError("Mobile number is mandatory");
-      } else if (cleaned.length < 10) {
-        setPhoneError("Please enter a valid 10-digit mobile number");
       } else {
         setPhoneError("");
       }
+      return;
+    }
+
+    const firstDigit = cleaned[0];
+    if (!["6", "7", "8", "9"].includes(firstDigit)) {
+      setPhoneError("Mobile number must start with 6, 7, 8, or 9. Numbers starting with 0-5 are not valid.");
+      setPhone("");
+      return;
+    }
+
+    setPhone(cleaned);
+
+    if (cleaned.length === 10) {
+      setPhoneError("");
+    } else if (touched) {
+      setPhoneError(`Must be exactly 10 digits (${cleaned.length}/10 entered)`);
+    } else {
+      setPhoneError("");
     }
   };
 
@@ -79,6 +104,9 @@ export default function CustomerDetailsScreen() {
     const cleanPhone = phone.replace(/\D/g, "");
     if (!cleanPhone) {
       setPhoneError("Mobile number is mandatory");
+      isValid = false;
+    } else if (!["6", "7", "8", "9"].includes(cleanPhone[0])) {
+      setPhoneError("Mobile number must start with 6, 7, 8, or 9");
       isValid = false;
     } else if (cleanPhone.length !== 10) {
       setPhoneError("Please enter a valid 10-digit mobile number");
@@ -272,22 +300,26 @@ export default function CustomerDetailsScreen() {
                   </View>
                   <TextInput
                     style={[styles.textInput, { marginLeft: 8 }]}
-                    placeholder="10-digit mobile number"
+                    placeholder="10-digit mobile (starts with 6-9)"
                     placeholderTextColor="#94A3B8"
                     value={phone}
                     onChangeText={handlePhoneChange}
                     keyboardType="phone-pad"
                     maxLength={10}
                   />
-                  {phone.length === 10 && (
+                  {phone.length === 10 && ["6", "7", "8", "9"].includes(phone[0]) && (
                     <Text style={styles.checkIcon}>✓</Text>
                   )}
                 </View>
                 {phoneError ? (
                   <Text style={styles.errorText}>{phoneError}</Text>
+                ) : phone.length === 10 && ["6", "7", "8", "9"].includes(phone[0]) ? (
+                  <Text style={[styles.helperText, { color: "#16A34A", fontWeight: "700" }]}>
+                    ✓ Valid 10-digit mobile • Digital invoice will be linked to this number
+                  </Text>
                 ) : (
                   <Text style={styles.helperText}>
-                    {phone.length}/10 digits • Digital invoice will be linked to this number
+                    {phone.length > 0 ? `${phone.length}/10 digits • ` : ""}Starts with 6, 7, 8, or 9
                   </Text>
                 )}
               </View>
