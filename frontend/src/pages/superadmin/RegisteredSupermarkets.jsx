@@ -397,9 +397,12 @@ export default function RegisteredSupermarkets() {
               {/* Right Visual Side: Storefront Photo + Action Buttons */}
               <div className="sa-hero-banner-visual-side">
                 <img
-                  src="/supermarket-storefront-banner.png"
+                  src={store.bannerUrl || "/supermarket-login-bg.jpg"}
                   alt="Supermarket Storefront"
                   className="sa-hero-storefront-img"
+                  onError={(e) => {
+                    e.currentTarget.src = "/supermarket-login-bg.jpg";
+                  }}
                 />
                 <div className="sa-hero-storefront-mask" />
 
@@ -1013,20 +1016,20 @@ export default function RegisteredSupermarkets() {
                 </div>
 
                 {/* Products Table matching Image 1 */}
-                <div className="sa-table-responsive">
-                  <table className="sa-data-table">
+                <div className="sa-table-responsive" style={{ width: "100%", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+                  <table className="sa-data-table" style={{ width: "100%", minWidth: "1060px", tableLayout: "fixed", borderCollapse: "collapse" }}>
                     <thead>
                       <tr>
-                        <th style={{ width: "35px" }}>#</th>
-                        <th>Product Name</th>
-                        <th>Category</th>
-                        <th>Barcode</th>
-                        <th>Unit Price</th>
-                        <th>Sold Quantity</th>
-                        <th>Available Stock</th>
-                        <th>Remaining Stock</th>
-                        <th>Stock Status</th>
-                        <th style={{ textAlign: "right" }}>Total Revenue</th>
+                        <th style={{ width: "40px", textAlign: "center" }}>#</th>
+                        <th style={{ width: "240px" }}>Product Name</th>
+                        <th style={{ width: "140px" }}>Category</th>
+                        <th style={{ width: "125px" }}>Barcode</th>
+                        <th style={{ width: "90px", textAlign: "right" }}>Unit Price</th>
+                        <th style={{ width: "100px", textAlign: "center" }}>Sold Quantity</th>
+                        <th style={{ width: "105px", textAlign: "center" }}>Available Stock</th>
+                        <th style={{ width: "110px", textAlign: "center" }}>Remaining Stock</th>
+                        <th style={{ width: "100px", textAlign: "center" }}>Stock Status</th>
+                        <th style={{ width: "110px", textAlign: "right" }}>Total Revenue</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1039,72 +1042,166 @@ export default function RegisteredSupermarkets() {
                       ) : (
                         filteredProducts.map((p, idx) => (
                           <tr key={p._id || idx}>
-                            <td style={{ color: "#64748b", fontWeight: 600 }}>{idx + 1}</td>
+                            <td style={{ color: "#64748b", fontWeight: 700, textAlign: "center" }}>{idx + 1}</td>
 
                             <td>
-                              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
                                 {p.imageUrl && p.imageUrl.trim() ? (
                                   <img
                                     src={p.imageUrl.trim()}
                                     alt={p.name}
                                     referrerPolicy="no-referrer"
                                     style={{
-                                      width: "32px",
-                                      height: "32px",
-                                      borderRadius: "6px",
+                                      width: "36px",
+                                      height: "36px",
+                                      borderRadius: "8px",
                                       objectFit: "cover",
                                       border: "1px solid #e2e8f0",
                                       flexShrink: 0,
+                                      background: "#ffffff",
                                     }}
                                     onError={(e) => {
                                       e.currentTarget.style.display = "none";
                                     }}
                                   />
-                                ) : null}
-                                <div>
-                                  <strong style={{ color: "#0F172A", display: "block", fontSize: "13px" }}>
+                                ) : (
+                                  <div
+                                    style={{
+                                      width: "36px",
+                                      height: "36px",
+                                      borderRadius: "8px",
+                                      background: "#f1f5f9",
+                                      border: "1px solid #e2e8f0",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      fontSize: "15px",
+                                      flexShrink: 0,
+                                    }}
+                                  >
+                                    📦
+                                  </div>
+                                )}
+                                <div style={{ minWidth: 0, flex: 1 }}>
+                                  <strong
+                                    title={p.name}
+                                    style={{
+                                      color: "#0F172A",
+                                      display: "block",
+                                      fontSize: "13px",
+                                      fontWeight: 750,
+                                      whiteSpace: "nowrap",
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                    }}
+                                  >
                                     {p.name}
                                   </strong>
                                   {p.brand && (
-                                    <small style={{ color: "#64748B" }}>{p.brand}</small>
+                                    <small
+                                      title={p.brand}
+                                      style={{
+                                        color: "#64748B",
+                                        fontSize: "11.5px",
+                                        display: "block",
+                                        whiteSpace: "nowrap",
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                      }}
+                                    >
+                                      {p.brand}
+                                    </small>
                                   )}
                                 </div>
                               </div>
                             </td>
 
                             <td>
-                              <span style={{ fontSize: "12px", color: "#334155" }}>
-                                {p.category}
+                              <span
+                                title={p.category}
+                                style={{
+                                  display: "inline-block",
+                                  maxWidth: "130px",
+                                  whiteSpace: "nowrap",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  fontSize: "11.5px",
+                                  fontWeight: 650,
+                                  color: "#166534",
+                                  background: "#f0fdf4",
+                                  border: "1px solid #bbf7d0",
+                                  padding: "2.5px 8px",
+                                  borderRadius: "6px",
+                                }}
+                              >
+                                {p.category ? p.category.split(">").pop().trim() : "Groceries"}
                               </span>
                             </td>
 
                             <td>
-                              <span className="sa-code-badge" style={{ fontFamily: "monospace" }}>
+                              <span
+                                className="sa-code-badge"
+                                title={p.barcode}
+                                style={{
+                                  fontFamily: "ui-monospace, monospace",
+                                  fontSize: "11.5px",
+                                  fontWeight: 700,
+                                  color: "#334155",
+                                  background: "#f8fafc",
+                                  border: "1px solid #e2e8f0",
+                                  padding: "3px 8px",
+                                  borderRadius: "6px",
+                                  display: "inline-block",
+                                  maxWidth: "120px",
+                                  whiteSpace: "nowrap",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                }}
+                              >
                                 {p.barcode || "N/A"}
                               </span>
                             </td>
 
-                            <td>
-                              <strong style={{ color: "#1e293b" }}>₹{p.price}</strong>
+                            <td style={{ textAlign: "right" }}>
+                              <strong style={{ color: "#1e293b", fontSize: "13px" }}>₹{Number(p.price || 0).toLocaleString("en-IN")}</strong>
                             </td>
 
-                            <td>
-                              <strong style={{ color: "#166534" }}>{p.soldQuantity || 0}</strong>
-                            </td>
-
-                            <td>
-                              <span style={{ fontWeight: 600, color: "#334155" }}>
-                                {p.availableStock} units
+                            <td style={{ textAlign: "center" }}>
+                              <span
+                                style={{
+                                  display: "inline-block",
+                                  padding: "2px 8px",
+                                  borderRadius: "9999px",
+                                  background: "#f0fdf4",
+                                  color: "#166534",
+                                  fontWeight: 800,
+                                  fontSize: "12px",
+                                  border: "1px solid #bbf7d0",
+                                }}
+                              >
+                                {p.soldQuantity || 0}
                               </span>
                             </td>
 
-                            <td>
-                              <span style={{ fontWeight: 700, color: p.remainingStock <= p.lowStockThreshold ? "#c2410c" : "#15803d" }}>
-                                {p.remainingStock} units
+                            <td style={{ textAlign: "center" }}>
+                              <span style={{ fontWeight: 650, color: "#334155", fontSize: "12.5px" }}>
+                                {p.availableStock ?? 0}
                               </span>
                             </td>
 
-                            <td>
+                            <td style={{ textAlign: "center" }}>
+                              <span
+                                style={{
+                                  fontWeight: 800,
+                                  fontSize: "12.5px",
+                                  color: (p.remainingStock ?? 0) <= (p.lowStockThreshold || 5) ? "#c2410c" : "#15803d",
+                                }}
+                              >
+                                {p.remainingStock ?? 0}
+                              </span>
+                            </td>
+
+                            <td style={{ textAlign: "center" }}>
                               <span
                                 className={`sa-stock-status-tag ${
                                   p.stockStatus === "In Stock"
@@ -1119,7 +1216,7 @@ export default function RegisteredSupermarkets() {
                             </td>
 
                             <td style={{ textAlign: "right" }}>
-                              <strong style={{ color: "#166534" }}>
+                              <strong style={{ color: "#166534", fontSize: "13px", fontWeight: 800 }}>
                                 ₹{(p.totalRevenue || 0).toLocaleString("en-IN")}
                               </strong>
                             </td>

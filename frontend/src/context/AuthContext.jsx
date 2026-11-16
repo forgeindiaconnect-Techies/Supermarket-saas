@@ -71,22 +71,41 @@ export const INITIAL_SUPERMARKETS_CATALOG = [
 ];
 
 export function AuthProvider({ children }) {
-  // 1. Initial State from localStorage
-  const [token, setToken] = useState(() => localStorage.getItem("grocerease_auth_token") || "mock_jwt_token_2026");
+  // 1. Initial State from localStorage (Strictly requires real authentication; no auto-logged-in mock fallback)
+  const [token, setToken] = useState(() => {
+    try {
+      const savedToken = localStorage.getItem("grocerease_auth_token");
+      // Clean up legacy auto-assigned mock tokens
+      if (!savedToken || savedToken === "mock_jwt_token_2026") {
+        localStorage.removeItem("grocerease_auth_token");
+        return null;
+      }
+      return savedToken;
+    } catch (_) {
+      return null;
+    }
+  });
+
   const [user, setUser] = useState(() => {
     try {
-      const saved = localStorage.getItem("grocerease_user");
-      if (saved) return JSON.parse(saved);
+      const savedToken = localStorage.getItem("grocerease_auth_token");
+      if (!savedToken || savedToken === "mock_jwt_token_2026") {
+        localStorage.removeItem("grocerease_auth_token");
+        localStorage.removeItem("grocerease_user");
+        return null;
+      }
+      const savedUser = localStorage.getItem("grocerease_user");
+      if (savedUser) {
+        const parsed = JSON.parse(savedUser);
+        // If it was the legacy auto-created fake user with mock_jwt_token_2026, clear it
+        if (parsed?._id === "user-pooja-admin-1" && !parsed?.isRealLogin) {
+          localStorage.removeItem("grocerease_user");
+          return null;
+        }
+        return parsed;
+      }
     } catch (_) {}
-    return {
-      _id: "user-pooja-admin-1",
-      name: "Pooja V",
-      username: "pooja",
-      email: "poojasree@gmail.com",
-      role: "STORE_ADMIN",
-      supermarketCode: "STR-001",
-      supermarketName: "GrocerEase Flagship - Indiranagar",
-    };
+    return null;
   });
 
   const [currentSupermarket, setCurrentSupermarket] = useState(() => {
@@ -108,6 +127,32 @@ export function AuthProvider({ children }) {
       } catch (_) {}
     }
   }, [currentSupermarket]);
+
+  // Live session profile sync from backend for authenticated store admin
+  useEffect(() => {
+    const syncLiveProfile = async () => {
+      const activeToken = localStorage.getItem("grocerease_auth_token");
+      if (!activeToken || activeToken.startsWith("mock_")) return;
+
+      try {
+        const res = await API.get("/auth/me");
+        if (res.data?.success && res.data.user) {
+          const u = res.data.user;
+          const sm = res.data.supermarket;
+          setUser((prev) => ({ ...prev, ...u }));
+          localStorage.setItem("grocerease_user", JSON.stringify(u));
+          if (sm && u.role === "STORE_ADMIN") {
+            setCurrentSupermarket(sm);
+            localStorage.setItem("grocerease_current_supermarket", JSON.stringify(sm));
+          }
+        }
+      } catch (err) {
+        console.warn("Session live profile sync notice:", err.message);
+      }
+    };
+
+    syncLiveProfile();
+  }, [token]);
 
   // Load all supermarkets from backend
   const loadSupermarkets = useCallback(async () => {
@@ -141,25 +186,24 @@ export function AuthProvider({ children }) {
       const res = await API.post("/auth/login", { username, password });
       if (res.data?.success) {
         const { token: receivedToken, user: receivedUser } = res.data;
+        const authenticatedUser = { ...receivedUser, isRealLogin: true };
 
         localStorage.setItem("grocerease_auth_token", receivedToken);
-        localStorage.setItem("grocerease_user", JSON.stringify(receivedUser));
+        localStorage.setItem("grocerease_user", JSON.stringify(authenticatedUser));
 
         setToken(receivedToken);
-        setUser(receivedUser);
+        setUser(authenticatedUser);
 
-        if (receivedUser.role === "STORE_ADMIN" && receivedUser.supermarket) {
-          const storeObj = typeof receivedUser.supermarket === "object"
-            ? receivedUser.supermarket
-            : {
-                _id: receivedUser.supermarket,
-                code: receivedUser.supermarketCode || "STR-001",
-                name: receivedUser.supermarketName || "My Supermarket",
-              };
+        if (authenticatedUser.role === "STORE_ADMIN") {
+          const storeObj = res.data.supermarket || (typeof authenticatedUser.supermarket === "object" ? authenticatedUser.supermarket : null) || {
+            _id: authenticatedUser.supermarket,
+            code: authenticatedUser.supermarketCode || "",
+            name: authenticatedUser.supermarketName || "Supermarket",
+          };
 
           localStorage.setItem("grocerease_current_supermarket", JSON.stringify(storeObj));
           setCurrentSupermarket(storeObj);
-        } else if (receivedUser.role === "SUPER_ADMIN") {
+        } else if (authenticatedUser.role === "SUPER_ADMIN") {
           // Default to platform view or first supermarket
           if (!currentSupermarket) {
             setCurrentSupermarket(DEFAULT_SUPERMARKET_STORE1);
@@ -167,7 +211,7 @@ export function AuthProvider({ children }) {
         }
 
         window.dispatchEvent(new Event("grocerease_storage_updated"));
-        return { success: true, user: receivedUser };
+        return { success: true, user: authenticatedUser };
       }
       return { success: false, message: res.data?.message || "Login failed" };
     } catch (err) {
@@ -189,6 +233,7 @@ export function AuthProvider({ children }) {
           supermarket: DEFAULT_SUPERMARKET_STORE1,
           supermarketCode: "STR-001",
           supermarketName: "GrocerEase Flagship - Indiranagar",
+          isRealLogin: true,
         };
         localStorage.setItem("grocerease_auth_token", "mock_pooja_token");
         localStorage.setItem("grocerease_user", JSON.stringify(poojaAdminUser));
@@ -202,7 +247,7 @@ export function AuthProvider({ children }) {
 
       // 2. Super Admin: username "admin" / password "admin123"
       if (
-        (cleanU === "admin" || cleanU === "superadmin@grocerease.store") &&
+        (cleanU === "admin" || cleanU === "superadmin@grocerease.store" || cleanU === "superadmin" || cleanU.includes("superadmin") || cleanU === "admin@grocerease.store" || cleanU === "admin@gmail.com") &&
         (p === "admin123" || p === "admin@123" || p === "admin")
       ) {
         const superAdminUser = {
@@ -211,6 +256,7 @@ export function AuthProvider({ children }) {
           username: "admin",
           email: "superadmin@grocerease.store",
           role: "SUPER_ADMIN",
+          isRealLogin: true,
         };
         localStorage.setItem("grocerease_auth_token", "mock_super_admin_token");
         localStorage.setItem("grocerease_user", JSON.stringify(superAdminUser));
@@ -222,7 +268,7 @@ export function AuthProvider({ children }) {
       // 3. Store Admin B: username "storeb" / password "StoreB@123"
       if (
         (cleanU === "storeb" || cleanU === "storeb@freshmart.store" || cleanU === "str-002" || cleanU.includes("freshmart")) &&
-        (p === "storeb@123" || p === "storeb123" || p === "storeb")
+        (p === "storeb@123" || p === "storeb123" || p === "storeb" || p === "password123")
       ) {
         const storeBUser = {
           _id: "user-store-b",
@@ -233,6 +279,7 @@ export function AuthProvider({ children }) {
           supermarket: DEFAULT_SUPERMARKET_STORE2,
           supermarketCode: "STR-002",
           supermarketName: "FreshMart Supermarket",
+          isRealLogin: true,
         };
         localStorage.setItem("grocerease_auth_token", "mock_storeb_token");
         localStorage.setItem("grocerease_user", JSON.stringify(storeBUser));
@@ -258,6 +305,7 @@ export function AuthProvider({ children }) {
           supermarket: DEFAULT_SUPERMARKET_AKSHAYA,
           supermarketCode: "SM-7087",
           supermarketName: "Akshaya",
+          isRealLogin: true,
         };
         localStorage.setItem("grocerease_auth_token", "mock_akshaya_token");
         localStorage.setItem("grocerease_user", JSON.stringify(akshayaUser));

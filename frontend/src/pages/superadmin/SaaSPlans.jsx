@@ -151,6 +151,8 @@ export default function SaaSPlans({ defaultTab = "manage" }) {
   const [emailSubject, setEmailSubject] = useState("");
   const [emailBody, setEmailBody] = useState("");
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [sendingEmailStoreId, setSendingEmailStoreId] = useState(null);
+  const [templateMenuStoreId, setTemplateMenuStoreId] = useState(null);
 
   const [chatModalStore, setChatModalStore] = useState(null);
   const [chatMessage, setChatMessage] = useState("");
@@ -229,6 +231,13 @@ export default function SaaSPlans({ defaultTab = "manage" }) {
     fetchPlans();
     fetchSupermarkets();
   }, [authSupermarkets]);
+
+  // Close floating template menu when clicking outside
+  useEffect(() => {
+    const handleOutsideClick = () => setTemplateMenuStoreId(null);
+    window.addEventListener("click", handleOutsideClick);
+    return () => window.removeEventListener("click", handleOutsideClick);
+  }, []);
 
   // Helper: Calculate Expiry Information with strict Expiry Alert detection
   const getSubscriptionInfo = (store) => {
@@ -425,6 +434,36 @@ GrocerEase Platform Super Admin Operations`
       setEmailModalStore(null);
     } finally {
       setSendingEmail(false);
+    }
+  };
+
+  // 1b. Dedicated Automated Email Button (1-Click Intelligent Plan Notice Dispatcher)
+  // Automatically identifies store email, checks plan & status, and sends appropriate template immediately
+  const handleAutomatedEmailSend = async (store, forcedTemplate = null) => {
+    const storeKey = store._id || store.code;
+    if (sendingEmailStoreId) return; // Prevent duplicate clicks
+    try {
+      setSendingEmailStoreId(storeKey);
+      setTemplateMenuStoreId(null);
+      const targetEmail = (store.email || `${store.adminUsername || "store"}@grocerease.store`).toLowerCase();
+      showToast(`Dispatching automated subscription notice to ${store.name} (${targetEmail})...`);
+
+      const res = await API.post(`/super-admin/supermarkets/${store._id}/send-plan-email`, {
+        templateType: forcedTemplate || undefined,
+      });
+
+      if (res.data?.success) {
+        showToast(
+          res.data?.message ||
+            `✓ Subscription email (${res.data?.templateType || "automated"}) dispatched to ${store.name} via Brevo SMTP!`
+        );
+      } else {
+        showToast(`⚠️ ${res.data?.message || "Failed to dispatch subscription notice."}`);
+      }
+    } catch (err) {
+      showToast(`⚠️ Email notice error: ${err.response?.data?.message || err.message}`);
+    } finally {
+      setSendingEmailStoreId(null);
     }
   };
 
@@ -1026,16 +1065,243 @@ GrocerEase Platform Super Admin Operations`
                               className="sa-action-btn-group"
                               style={{ justifyContent: "flex-end" }}
                             >
-                              {/* Email Button */}
-                              <button
-                                type="button"
-                                className="sa-btn-email"
-                                onClick={() => handleOpenEmailModal(store)}
-                                title={`Send official subscription renewal email notice to ${store.name}`}
-                              >
-                                <Mail size={13} />
-                                <span>Email</span>
-                              </button>
+                              {/* Dedicated Automated Email Button with Template Selector */}
+                              <div style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+                                <button
+                                  type="button"
+                                  className="sa-btn-email"
+                                  onClick={() => handleAutomatedEmailSend(store)}
+                                  disabled={sendingEmailStoreId === (store._id || store.code)}
+                                  title={`Automatically identify plan & send professional email to ${store.name}`}
+                                  style={{
+                                    borderTopRightRadius: "0",
+                                    borderBottomRightRadius: "0",
+                                    opacity: sendingEmailStoreId === (store._id || store.code) ? 0.75 : 1,
+                                    cursor: sendingEmailStoreId === (store._id || store.code) ? "wait" : "pointer",
+                                  }}
+                                >
+                                  {sendingEmailStoreId === (store._id || store.code) ? (
+                                    <>
+                                      <RefreshCw size={13} className="spin-icon" />
+                                      <span>Sending...</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Mail size={13} />
+                                      <span>Email</span>
+                                    </>
+                                  )}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="sa-btn-email"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setTemplateMenuStoreId(
+                                      templateMenuStoreId === (store._id || store.code)
+                                        ? null
+                                        : (store._id || store.code)
+                                    );
+                                  }}
+                                  title="Choose specific subscription email template"
+                                  style={{
+                                    borderTopLeftRadius: "0",
+                                    borderBottomLeftRadius: "0",
+                                    borderLeft: "1px solid rgba(255,255,255,0.3)",
+                                    padding: "6px 6px",
+                                  }}
+                                >
+                                  <ChevronRight
+                                    size={12}
+                                    style={{
+                                      transform:
+                                        templateMenuStoreId === (store._id || store.code)
+                                          ? "rotate(270deg)"
+                                          : "rotate(90deg)",
+                                      transition: "transform 0.15s ease",
+                                    }}
+                                  />
+                                </button>
+
+                                {/* Floating Template Selection Menu */}
+                                {templateMenuStoreId === (store._id || store.code) && (
+                                  <div
+                                    style={{
+                                      position: "absolute",
+                                      top: "100%",
+                                      right: 0,
+                                      marginTop: "6px",
+                                      background: "#ffffff",
+                                      border: "1px solid #cbd5e1",
+                                      borderRadius: "10px",
+                                      boxShadow: "0 10px 25px rgba(0,0,0,0.15)",
+                                      zIndex: 100,
+                                      minWidth: "250px",
+                                      padding: "6px",
+                                      display: "flex",
+                                      flexDirection: "column",
+                                      gap: "3px",
+                                      textAlign: "left",
+                                    }}
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <div
+                                      style={{
+                                        fontSize: "11px",
+                                        fontWeight: 800,
+                                        color: "#64748b",
+                                        padding: "6px 10px",
+                                        borderBottom: "1px solid #f1f5f9",
+                                        textTransform: "uppercase",
+                                        letterSpacing: "0.04em",
+                                      }}
+                                    >
+                                      Select Email Template
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAutomatedEmailSend(store)}
+                                      style={{
+                                        border: "none",
+                                        background: "transparent",
+                                        padding: "8px 10px",
+                                        textAlign: "left",
+                                        fontSize: "12.5px",
+                                        fontWeight: 700,
+                                        color: "#059669",
+                                        borderRadius: "6px",
+                                        cursor: "pointer",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: "8px",
+                                      }}
+                                      onMouseEnter={(e) => (e.currentTarget.style.background = "#ecfdf5")}
+                                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                                    >
+                                      <Sparkles size={13} color="#059669" />
+                                      <span>⚡ Auto-Detect by Status</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAutomatedEmailSend(store, "TRIAL_EXPIRY")}
+                                      style={{
+                                        border: "none",
+                                        background: "transparent",
+                                        padding: "8px 10px",
+                                        textAlign: "left",
+                                        fontSize: "12.5px",
+                                        fontWeight: 600,
+                                        color: "#1e293b",
+                                        borderRadius: "6px",
+                                        cursor: "pointer",
+                                      }}
+                                      onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fafc")}
+                                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                                    >
+                                      ⏳ Trial Expiry Reminder
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAutomatedEmailSend(store, "EXPIRING_SOON")}
+                                      style={{
+                                        border: "none",
+                                        background: "transparent",
+                                        padding: "8px 10px",
+                                        textAlign: "left",
+                                        fontSize: "12.5px",
+                                        fontWeight: 600,
+                                        color: "#1e293b",
+                                        borderRadius: "6px",
+                                        cursor: "pointer",
+                                      }}
+                                      onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fafc")}
+                                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                                    >
+                                      ⚠️ Subscription Expiring Soon
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAutomatedEmailSend(store, "EXPIRED")}
+                                      style={{
+                                        border: "none",
+                                        background: "transparent",
+                                        padding: "8px 10px",
+                                        textAlign: "left",
+                                        fontSize: "12.5px",
+                                        fontWeight: 600,
+                                        color: "#dc2626",
+                                        borderRadius: "6px",
+                                        cursor: "pointer",
+                                      }}
+                                      onMouseEnter={(e) => (e.currentTarget.style.background = "#fef2f2")}
+                                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                                    >
+                                      🚨 Subscription Expired Notice
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAutomatedEmailSend(store, "RENEWAL_REMINDER")}
+                                      style={{
+                                        border: "none",
+                                        background: "transparent",
+                                        padding: "8px 10px",
+                                        textAlign: "left",
+                                        fontSize: "12.5px",
+                                        fontWeight: 600,
+                                        color: "#1e293b",
+                                        borderRadius: "6px",
+                                        cursor: "pointer",
+                                      }}
+                                      onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fafc")}
+                                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                                    >
+                                      📅 Subscription Renewal Reminder
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAutomatedEmailSend(store, "RENEWAL_CONFIRMATION")}
+                                      style={{
+                                        border: "none",
+                                        background: "transparent",
+                                        padding: "8px 10px",
+                                        textAlign: "left",
+                                        fontSize: "12.5px",
+                                        fontWeight: 600,
+                                        color: "#059669",
+                                        borderRadius: "6px",
+                                        cursor: "pointer",
+                                      }}
+                                      onMouseEnter={(e) => (e.currentTarget.style.background = "#f0fdf4")}
+                                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                                    >
+                                      ✅ Renewal Confirmation
+                                    </button>
+                                    <div style={{ height: "1px", background: "#f1f5f9", margin: "3px 0" }} />
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setTemplateMenuStoreId(null);
+                                        handleOpenEmailModal(store);
+                                      }}
+                                      style={{
+                                        border: "none",
+                                        background: "transparent",
+                                        padding: "8px 10px",
+                                        textAlign: "left",
+                                        fontSize: "12px",
+                                        fontWeight: 600,
+                                        color: "#64748b",
+                                        borderRadius: "6px",
+                                        cursor: "pointer",
+                                      }}
+                                      onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fafc")}
+                                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                                    >
+                                      ✏️ Custom Compose Modal...
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
 
                               {/* Chat Button */}
                               <button

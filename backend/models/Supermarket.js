@@ -54,6 +54,8 @@ const supermarketSchema = new mongoose.Schema(
       default: "store@grocerease.store",
       trim: true,
       lowercase: true,
+      set: (v) => (v ? String(v).trim().toLowerCase() : ""),
+      match: [/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/, "Please enter a valid lowercase email address."],
     },
     adminUsername: {
       type: String,
@@ -144,6 +146,11 @@ const supermarketSchema = new mongoose.Schema(
       enum: ["Active", "Inactive", "Suspended", "Trial"],
       default: "Active",
     },
+    chatStatus: {
+      type: String,
+      enum: ["New", "Unread", "Replied", "Resolved"],
+      default: "New",
+    },
     plan: {
       type: String,
       default: "Premium",
@@ -173,6 +180,16 @@ const supermarketSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+supermarketSchema.pre("save", function (next) {
+  if (this.email) {
+    this.email = String(this.email).trim().toLowerCase();
+  }
+  if (this.adminUsername) {
+    this.adminUsername = String(this.adminUsername).trim().toLowerCase();
+  }
+  if (typeof next === "function") next();
+});
 
 supermarketSchema.index({ code: 1 }, { unique: true });
 supermarketSchema.index({ status: 1 });

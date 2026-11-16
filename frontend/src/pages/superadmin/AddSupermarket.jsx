@@ -427,11 +427,13 @@ export default function AddSupermarket() {
       newErr.contactPerson = "Contact person name is required.";
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const emailRegex = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/;
     if (!email.trim()) {
       newErr.email = "Email address is required.";
-    } else if (!emailRegex.test(email.trim())) {
-      newErr.email = "Please enter a valid email address.";
+    } else if (/[A-Z]/.test(email)) {
+      newErr.email = "Uppercase letters are not allowed in email addresses. Use lowercase characters only.";
+    } else if (!emailRegex.test(email.trim().toLowerCase())) {
+      newErr.email = "Please enter a valid lowercase email address (e.g. store@example.com).";
     }
 
     const cleanMobile = mobileNumber.replace(/\D/g, "");
@@ -466,12 +468,14 @@ export default function AddSupermarket() {
       newErr.adminUsername = "Admin username must be at least 3 characters.";
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const targetEmail = adminEmail.trim() || email.trim();
+    const emailRegex = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/;
+    const targetEmail = (adminEmail.trim() || email.trim()).toLowerCase();
     if (!targetEmail) {
       newErr.adminEmail = "Admin email address is required.";
+    } else if (/[A-Z]/.test(adminEmail)) {
+      newErr.adminEmail = "Uppercase letters are not allowed in email addresses. Use lowercase only.";
     } else if (!emailRegex.test(targetEmail)) {
-      newErr.adminEmail = "Please enter a valid admin email address.";
+      newErr.adminEmail = "Please enter a valid lowercase admin email address.";
     }
 
     if (!adminPassword || adminPassword.length < 6) {
@@ -642,9 +646,13 @@ export default function AddSupermarket() {
         setGeneralError(res.data?.message || "Failed to register supermarket.");
       }
     } catch (err) {
-      setGeneralError(
-        err.response?.data?.message || "Server error while registering supermarket. Please check connection."
-      );
+      const serverMsg =
+        err.response?.data?.message ||
+        err.response?.data?.error ||
+        (typeof err.response?.data === "string" ? err.response.data : "") ||
+        err.message ||
+        "Server error while registering supermarket. Please check connection.";
+      setGeneralError(serverMsg);
     } finally {
       setSubmitting(false);
     }
@@ -1182,10 +1190,18 @@ supermarket manager. On first login, admin must update their password.
                   <input
                     type="email"
                     className="asm-input"
-                    placeholder=""
+                    placeholder="e.g. store@grocerease.store (lowercase only)"
                     value={email}
                     onChange={(e) => {
-                      setEmail(e.target.value);
+                      const val = e.target.value.toLowerCase().replace(/[^a-z0-9@._+-]/g, "");
+                      setEmail(val);
+                      setErrors((p) => ({ ...p, email: "" }));
+                    }}
+                    onPaste={(e) => {
+                      e.preventDefault();
+                      const pasted = (e.clipboardData || window.clipboardData).getData("text") || "";
+                      const val = pasted.toLowerCase().replace(/[^a-z0-9@._+-]/g, "");
+                      setEmail(val);
                       setErrors((p) => ({ ...p, email: "" }));
                     }}
                   />
@@ -1446,10 +1462,18 @@ supermarket manager. On first login, admin must update their password.
                   <input
                     type="email"
                     className="asm-input"
-                    placeholder=""
+                    placeholder="e.g. admin@grocerease.store (lowercase only)"
                     value={adminEmail || email}
                     onChange={(e) => {
-                      setAdminEmail(e.target.value);
+                      const val = e.target.value.toLowerCase().replace(/[^a-z0-9@._+-]/g, "");
+                      setAdminEmail(val);
+                      setErrors((p) => ({ ...p, adminEmail: "" }));
+                    }}
+                    onPaste={(e) => {
+                      e.preventDefault();
+                      const pasted = (e.clipboardData || window.clipboardData).getData("text") || "";
+                      const val = pasted.toLowerCase().replace(/[^a-z0-9@._+-]/g, "");
+                      setAdminEmail(val);
                       setErrors((p) => ({ ...p, adminEmail: "" }));
                     }}
                   />
@@ -2206,6 +2230,47 @@ supermarket manager. On first login, admin must update their password.
             <strong>{createdData.name}</strong> has been onboarded to your multi-tenant network.
             A dedicated tenant container has been initialized with clean zero-state statistics.
           </p>
+
+          {/* Automatic Registration Welcome Email Delivery Status Banner */}
+          <div
+            style={{
+              background: "#ecfdf5",
+              border: "1.5px solid #86efac",
+              borderRadius: "12px",
+              padding: "16px 20px",
+              margin: "18px 0 24px 0",
+              display: "flex",
+              alignItems: "flex-start",
+              gap: "14px",
+              textAlign: "left",
+            }}
+          >
+            <div
+              style={{
+                width: "36px",
+                height: "36px",
+                borderRadius: "10px",
+                background: "#dcfce7",
+                color: "#15803d",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <Mail size={18} />
+            </div>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: "14.5px", color: "#166534" }}>
+                Automatic Welcome Email Dispatched via Brevo SMTP!
+              </div>
+              <p style={{ margin: "4px 0 0 0", fontSize: "13px", color: "#15803d", lineHeight: 1.5 }}>
+                An official onboarding email has been sent to{" "}
+                <strong>{createdData.email || email}</strong> with secure login instructions, assigned{" "}
+                <strong>{createdData.plan || selectedPlanId}</strong> subscription dates, and store access links.
+              </p>
+            </div>
+          </div>
 
           {/* Credentials Delivery & Display Box */}
           <div className="asm-credentials-box">

@@ -22,6 +22,13 @@ import {
   Barcode,
   Building2,
   LogOut,
+  MessageSquare,
+  Home,
+  PlusCircle,
+  Camera,
+  BarChart2,
+  Settings,
+  Compass,
 } from "lucide-react";
 import { io } from "socket.io-client";
 import API from "../services/api";
@@ -57,6 +64,120 @@ const formatNotifTime = (timestamp) => {
   return `${day} ${month} ${year}, ${hoursStr}:${minutes} ${ampm}`;
 };
 
+// Sidebar navigation pages for global search matching
+const ADMIN_NAV_PAGES = [
+  {
+    path: "/admin",
+    label: "Dashboard",
+    description: "Store overview, sales velocity, revenue metrics & fast actions",
+    keywords: ["dashboard", "home", "overview", "analytics", "main", "store overview", "dash"],
+    icon: Home,
+    color: "#2563eb",
+    bgColor: "#eff6ff",
+    borderColor: "#bfdbfe",
+  },
+  {
+    path: "/admin/barcodes",
+    label: "Barcodes",
+    description: "Scan barcodes, bulk generator, printable labels & thermal sticker export",
+    keywords: ["barcodes", "barcode", "barcode generator", "generate barcode", "labels", "print barcode", "ean", "ean13", "upc", "stickers", "print labels", "qr"],
+    icon: Barcode,
+    color: "#059669",
+    bgColor: "#ecfdf5",
+    borderColor: "#a7f3d0",
+  },
+  {
+    path: "/admin/products",
+    label: "Products",
+    description: "Manage supermarket catalog, pricing, categories & shelf status",
+    keywords: ["products", "product", "items", "catalog", "grocery", "item list", "goods"],
+    icon: Package,
+    color: "#2563eb",
+    bgColor: "#eff6ff",
+    borderColor: "#bfdbfe",
+  },
+  {
+    path: "/admin/add-product",
+    label: "Add Product",
+    description: "Create new product record with barcode, image, price & stock",
+    keywords: ["add product", "new product", "create product", "add item", "new item", "insert product"],
+    icon: PlusCircle,
+    color: "#7c3aed",
+    bgColor: "#f5f3ff",
+    borderColor: "#ddd6fe",
+  },
+  {
+    path: "/admin/scan-enter",
+    label: "Scan & Enter",
+    description: "AI barcode camera scanner, quick product check-in & stock lookup",
+    keywords: ["scan", "scan enter", "scan & enter", "camera", "barcode scanner", "quick scan", "scanner", "camera scan"],
+    icon: Camera,
+    color: "#d97706",
+    bgColor: "#fffbeb",
+    borderColor: "#fde68a",
+  },
+  {
+    path: "/admin/inventory",
+    label: "Inventory",
+    description: "Stock levels, low-stock warnings, reorder alerts & shelf auditing",
+    keywords: ["inventory", "stock", "stocks", "units", "quantity", "low stock", "warehouse", "reorder"],
+    icon: Boxes,
+    color: "#0891b2",
+    bgColor: "#ecfeff",
+    borderColor: "#a5f3fc",
+  },
+  {
+    path: "/admin/orders",
+    label: "Orders",
+    description: "Live customer orders, instant gate clearance, payment status & receipts",
+    keywords: ["orders", "order", "sales", "transactions", "billing", "receipts", "invoices", "gate clearance", "checkout"],
+    icon: ShoppingCart,
+    color: "#ea580c",
+    bgColor: "#fff7ed",
+    borderColor: "#fed7aa",
+  },
+  {
+    path: "/admin/customers",
+    label: "Customers",
+    description: "Shopper directory, contact details, total spend & transaction history",
+    keywords: ["customers", "customer", "shoppers", "users", "clients", "buyers", "directory", "contacts"],
+    icon: Users,
+    color: "#059669",
+    bgColor: "#ecfdf5",
+    borderColor: "#a7f3d0",
+  },
+  {
+    path: "/admin/reports",
+    label: "Reports",
+    description: "Fiscal analytics, daily revenue breakdowns, top products & tax summary",
+    keywords: ["reports", "report", "analytics", "metrics", "financials", "revenue", "profit", "sales report"],
+    icon: BarChart2,
+    color: "#4f46e5",
+    bgColor: "#eef2ff",
+    borderColor: "#c7d2fe",
+  },
+  {
+    path: "/admin/chat",
+    label: "Super Admin Chat",
+    description: "Real-time direct chat channel with GrocerEase Super Admin platform support",
+    keywords: ["chat", "super admin chat", "support", "help", "message", "messages", "inbox", "contact super admin"],
+    icon: MessageSquare,
+    color: "#0284c7",
+    bgColor: "#f0f9ff",
+    borderColor: "#bae6fd",
+  },
+  {
+    path: "/admin/settings",
+    label: "Settings / My Profile",
+    description: "Store profile information, branch unique code, password & security credentials",
+    keywords: ["settings", "profile", "my profile", "account", "store settings", "admin credentials", "password"],
+    icon: Settings,
+    color: "#475569",
+    bgColor: "#f8fafc",
+    borderColor: "#e2e8f0",
+  },
+];
+
 export default function Header({ onMenuClick }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -64,22 +185,7 @@ export default function Header({ onMenuClick }) {
 
   const headerAdminName = useMemo(() => {
     if (isSuperAdmin) return "Super Admin";
-    if (currentSupermarket?.code === "SM-7087") {
-      return (user?.role === "STORE_ADMIN" && user?.supermarketCode === "SM-7087" && user?.name)
-        ? user.name
-        : (currentSupermarket?.adminName || "Akshaya Admin");
-    }
-    if (currentSupermarket?.code === "STR-002") {
-      return (user?.role === "STORE_ADMIN" && user?.supermarketCode === "STR-002" && user?.name)
-        ? user.name
-        : (currentSupermarket?.adminName || "Rohan Gupta");
-    }
-    if (currentSupermarket?.code === "STR-001") {
-      return (user?.role === "STORE_ADMIN" && user?.supermarketCode === "STR-001" && user?.name)
-        ? user.name
-        : (currentSupermarket?.adminName || "Pooja V");
-    }
-    return currentSupermarket?.adminName || currentSupermarket?.ownerName || (user?.role === "STORE_ADMIN" ? user?.name : "Store Admin");
+    return user?.name || currentSupermarket?.adminName || currentSupermarket?.ownerName || "Store Admin";
   }, [isSuperAdmin, user, currentSupermarket]);
   const [backendOnline, setBackendOnline] = useState(true);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
@@ -168,6 +274,21 @@ export default function Header({ onMenuClick }) {
   // Filtered Results for Search Dropdown
   const cleanQuery = searchQuery.toLowerCase().trim();
 
+  // 1. Sidebar Navigation Pages (e.g. Barcodes, Products, Orders, Reports, Settings)
+  const matchingNavPages = useMemo(() => {
+    if (!cleanQuery) return [];
+    return ADMIN_NAV_PAGES.filter((page) => {
+      const q = cleanQuery.toLowerCase();
+      const labelMatch = page.label.toLowerCase().includes(q);
+      const pathMatch = page.path.toLowerCase().includes(q);
+      const descMatch = page.description.toLowerCase().includes(q);
+      const keywordMatch = page.keywords.some((k) =>
+        k.toLowerCase().includes(q) || q.includes(k.toLowerCase())
+      );
+      return labelMatch || pathMatch || descMatch || keywordMatch;
+    }).slice(0, 4);
+  }, [cleanQuery]);
+
   const matchingProducts = useMemo(() => {
     if (!cleanQuery) return [];
     return catalogProducts
@@ -204,16 +325,49 @@ export default function Header({ onMenuClick }) {
       .slice(0, 3);
   }, [catalogCustomers, cleanQuery]);
 
-  const totalResultsCount = matchingProducts.length + matchingOrders.length + matchingCustomers.length;
+  const totalResultsCount =
+    matchingNavPages.length +
+    matchingProducts.length +
+    matchingOrders.length +
+    matchingCustomers.length;
+
+  const handleSelectNavPage = (nav) => {
+    setSearchDropdownOpen(false);
+    setSearchQuery("");
+    navigate(nav.path);
+  };
 
   const handleSearchSubmit = (e) => {
     if (e) e.preventDefault();
     if (!searchQuery.trim()) return;
 
     const trimmed = searchQuery.trim();
+    const clean = trimmed.toLowerCase();
     setSearchDropdownOpen(false);
 
-    // If query looks like an order (e.g. starts with ORD, or orders matched but no products matched)
+    // 1. Navigation Pages Match (Highest priority when user types a page name like "barcodes", "inventory", etc.)
+    if (matchingNavPages.length > 0) {
+      const exactMatch = matchingNavPages.find(
+        (p) =>
+          p.label.toLowerCase() === clean ||
+          p.keywords.some((k) => k.toLowerCase() === clean) ||
+          clean === p.path.toLowerCase().replace("/admin/", "") ||
+          clean.startsWith(p.label.toLowerCase()) ||
+          p.label.toLowerCase().startsWith(clean)
+      );
+      if (exactMatch) {
+        setSearchQuery("");
+        navigate(exactMatch.path);
+        return;
+      }
+      if (matchingProducts.length === 0 && matchingOrders.length === 0) {
+        setSearchQuery("");
+        navigate(matchingNavPages[0].path);
+        return;
+      }
+    }
+
+    // 2. Orders Match
     if (
       trimmed.toLowerCase().startsWith("ord") ||
       (matchingOrders.length > 0 && matchingProducts.length === 0)
@@ -380,7 +534,9 @@ export default function Header({ onMenuClick }) {
     loadRealNotifications();
 
     const socket = io("http://localhost:5001", {
-      transports: ["websocket", "polling"],
+      transports: ["polling", "websocket"],
+      reconnectionAttempts: 5,
+      timeout: 10000,
       query: {
         supermarketId: activeStoreId || "",
         supermarketCode: activeStoreCode || "",
@@ -633,7 +789,7 @@ export default function Header({ onMenuClick }) {
             <input
               ref={mobileSearchInputRef}
               type="text"
-              placeholder="Search products, orders, customers..."
+              placeholder="Search pages (e.g. Barcodes), products, orders..."
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
@@ -681,7 +837,7 @@ export default function Header({ onMenuClick }) {
             <input
               id="admin-global-search"
               type="text"
-              placeholder="Search products, orders, customers..."
+              placeholder="Search pages (e.g. Barcodes), products, orders..."
               value={searchQuery}
               onFocus={() => {
                 if (!catalogLoaded) loadSearchCatalog();
@@ -734,6 +890,90 @@ export default function Header({ onMenuClick }) {
               </div>
 
               <div className="search-dropdown-body">
+                {/* 0. Sidebar Navigation Pages (e.g. Barcodes, Products, Orders, Reports) */}
+                {matchingNavPages.length > 0 && (
+                  <div className="search-section">
+                    <div className="search-section-label">
+                      <Compass size={13} color="#1455D9" />
+                      <span>Sidebar Navigation Pages ({matchingNavPages.length})</span>
+                    </div>
+                    {matchingNavPages.map((nav) => {
+                      const NavIcon = nav.icon;
+                      return (
+                        <div
+                          key={nav.path}
+                          className="search-result-row nav-page"
+                          onClick={() => handleSelectNavPage(nav)}
+                          style={{
+                            background: "#f8faff",
+                            borderLeft: "3px solid #2563eb",
+                            marginBottom: "2px",
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: "32px",
+                              height: "32px",
+                              borderRadius: "8px",
+                              background: nav.bgColor || "#eff6ff",
+                              border: `1px solid ${nav.borderColor || "#bfdbfe"}`,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              color: nav.color || "#1455d9",
+                              flexShrink: 0,
+                            }}
+                          >
+                            <NavIcon size={17} strokeWidth={2.4} />
+                          </div>
+                          <div className="search-info">
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                              <strong className="search-name" style={{ color: "#0f172a" }}>
+                                {nav.label}
+                              </strong>
+                              <span
+                                style={{
+                                  fontSize: "9.5px",
+                                  fontWeight: 800,
+                                  color: "#1d4ed8",
+                                  background: "#dbeafe",
+                                  padding: "1px 6px",
+                                  borderRadius: "4px",
+                                  textTransform: "uppercase",
+                                  letterSpacing: "0.3px",
+                                }}
+                              >
+                                Sidebar Page
+                              </span>
+                            </div>
+                            <span className="search-meta">
+                              {nav.description}
+                            </span>
+                          </div>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "4px",
+                              fontSize: "11px",
+                              fontWeight: 700,
+                              color: "#1455d9",
+                              background: "#eff6ff",
+                              padding: "4px 8px",
+                              borderRadius: "6px",
+                              border: "1px solid #bfdbfe",
+                              flexShrink: 0,
+                            }}
+                          >
+                            <span>Open</span>
+                            <ArrowRight size={12} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
                 {/* 1. Products Section */}
                 {matchingProducts.length > 0 && (
                   <div className="search-section">
@@ -845,8 +1085,18 @@ export default function Header({ onMenuClick }) {
                 {totalResultsCount === 0 && (
                   <div className="search-empty-state">
                     <Search size={22} color="#94A3B8" />
-                    <p>No products, orders, or customers found matching "<strong>{searchQuery}</strong>".</p>
+                    <p>No navigation pages, products, orders, or customers found matching "<strong>{searchQuery}</strong>".</p>
                     <div className="search-quick-links">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSearchDropdownOpen(false);
+                          setSearchQuery("");
+                          navigate("/admin/barcodes");
+                        }}
+                      >
+                        Barcodes Page &rarr;
+                      </button>
                       <button
                         type="button"
                         onClick={() => {
@@ -865,15 +1115,6 @@ export default function Header({ onMenuClick }) {
                       >
                         All Orders &rarr;
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSearchDropdownOpen(false);
-                          navigate(`/admin/barcodes?search=${encodeURIComponent(searchQuery)}`);
-                        }}
-                      >
-                        All Barcodes &rarr;
-                      </button>
                     </div>
                   </div>
                 )}
@@ -881,7 +1122,7 @@ export default function Header({ onMenuClick }) {
 
               {/* Dropdown Footer */}
               <div className="search-dropdown-footer">
-                <span>Press <strong>Enter</strong> to search in {matchingOrders.length > 0 && matchingProducts.length === 0 ? "Orders" : "Products"} &bull; <strong>ESC</strong> to dismiss</span>
+                <span>Press <strong>Enter</strong> to open &bull; <strong>ESC</strong> to dismiss</span>
                 <button
                   type="button"
                   className="search-view-all-btn"
@@ -949,17 +1190,6 @@ export default function Header({ onMenuClick }) {
             </span>
           </div>
         )}
-
-        {/* System Online Status Pill */}
-        <div
-          className={`backend-status-pill ${backendOnline ? "online" : "offline"}`}
-          title={backendOnline ? "Backend Database & POS Connected" : "Connecting..."}
-        >
-          <span className="status-dot" />
-          <span className="status-label">
-            {backendOnline ? "System Online" : "Connecting..."}
-          </span>
-        </div>
 
         {/* Real-time Order & Cart Notifications Dropdown */}
         <div ref={notifDropdownRef} style={{ position: "relative" }}>
@@ -1102,8 +1332,16 @@ export default function Header({ onMenuClick }) {
                 className="profile-dropdown-item"
                 onClick={() => setProfileDropdownOpen(false)}
               >
-                <Store size={14} />
-                <span>{currentSupermarket?.code || "Branch #001"} Settings</span>
+                <User size={14} color="#16a34a" />
+                <span>My Profile</span>
+              </Link>
+              <Link
+                to="/admin/chat"
+                className="profile-dropdown-item"
+                onClick={() => setProfileDropdownOpen(false)}
+              >
+                <MessageSquare size={14} color="#059669" />
+                <span>Super Admin Chat</span>
               </Link>
               <Link
                 to="/customer"

@@ -11,6 +11,7 @@ import {
   Users,
   BarChart2,
   Settings,
+  MessageSquare,
   LogOut,
   X,
 } from "lucide-react";
@@ -34,6 +35,7 @@ const navItems = [
   { path: "/admin/orders", label: "Orders", icon: ShoppingCart },
   { path: "/admin/customers", label: "Customers", icon: Users },
   { path: "/admin/reports", label: "Reports", icon: BarChart2 },
+  { path: "/admin/chat", label: "Super Admin Chat", icon: MessageSquare },
   { path: "/admin/settings", label: "Settings", icon: Settings },
 ];
 

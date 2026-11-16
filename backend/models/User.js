@@ -46,6 +46,7 @@ const userSchema = new mongoose.Schema(
       trim: true,
       lowercase: true,
       default: "",
+      set: (v) => (v ? String(v).trim().toLowerCase() : ""),
     },
     forcePasswordChange: {
       type: Boolean,
@@ -67,6 +68,12 @@ const userSchema = new mongoose.Schema(
 );
 
 userSchema.pre("save", async function () {
+  if (this.email) {
+    this.email = String(this.email).trim().toLowerCase();
+  }
+  if (this.username) {
+    this.username = String(this.username).trim().toLowerCase();
+  }
   if (!this.isModified("password")) return;
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);

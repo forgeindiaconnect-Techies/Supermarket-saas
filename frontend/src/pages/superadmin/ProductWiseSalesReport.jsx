@@ -164,8 +164,11 @@ export default function ProductWiseSalesReport() {
       if (search.trim()) params.search = search.trim();
 
       const res = await API.get("/super-admin/product-sales", { params });
-      if (res.data?.success && Array.isArray(res.data.productSales)) {
-        setSalesData(res.data.productSales);
+      const list = res.data?.productSales || res.data?.sales || [];
+      if (Array.isArray(list) && list.length > 0) {
+        setSalesData(list);
+      } else {
+        setSalesData(DEMO_PRODUCT_SALES);
       }
     } catch (err) {
       console.warn("Using offline product sales matrix:", err.message);
@@ -196,14 +199,14 @@ export default function ProductWiseSalesReport() {
   const totalUnits = filteredSales.reduce((acc, curr) => acc + (curr.unitsSold || 0), 0);
   const totalRevenue = filteredSales.reduce((acc, curr) => acc + (curr.totalRevenue || 0), 0);
 
-  // Apple Sales Comparison (directly illustrating the user's example!)
-  const store1Apples = salesData.find(
-    (s) => s.supermarketCode === "STR-001" && s.productName.includes("Apples")
-  )?.unitsSold || 50;
-
-  const store2Apples = salesData.find(
-    (s) => s.supermarketCode === "STR-002" && s.productName.includes("Apples")
-  )?.unitsSold || 24;
+  // Top product across stores dynamically
+  const topProduct = salesData.length > 0
+    ? [...salesData].sort((a, b) => (b.unitsSold || 0) - (a.unitsSold || 0))[0]
+    : null;
+  const topProductName = topProduct?.productName || "Top Grocery Item";
+  const storesForTopProduct = topProduct
+    ? salesData.filter((s) => s.productName === topProduct.productName)
+    : [];
 
   // Export CSV handler
   const handleExportCSV = () => {
@@ -293,13 +296,14 @@ export default function ProductWiseSalesReport() {
               justifyContent: "center",
               fontSize: "24px",
               boxShadow: "0 2px 8px rgba(37,99,235,0.15)",
+              flexShrink: 0,
             }}
           >
-            🍎
+            🔥
           </div>
-          <div>
-            <h3 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 800, color: "#0f172a" }}>
-              Store-Wise Spotlight: Washington Red Apples
+          <div style={{ minWidth: 0 }}>
+            <h3 style={{ margin: 0, fontSize: "1.05rem", fontWeight: 800, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "420px" }} title={topProductName}>
+              Store-Wise Spotlight: {topProductName}
             </h3>
             <span style={{ fontSize: "12.5px", color: "#475569" }}>
               Individually tracked units sold per supermarket tenant
@@ -307,28 +311,51 @@ export default function ProductWiseSalesReport() {
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "1.5rem", flexWrap: "wrap" }}>
-          {/* Store 1 */}
-          <div style={{ background: "#ffffff", padding: "8px 16px", borderRadius: "10px", border: "1px solid #cbd5e1" }}>
-            <span style={{ fontSize: "11px", fontWeight: 700, color: "#2563eb", display: "block" }}>
-              GrocerEase Indiranagar (STR-001)
-            </span>
-            <div style={{ display: "flex", alignItems: "baseline", gap: "6px", marginTop: "2px" }}>
-              <strong style={{ fontSize: "1.35rem", color: "#0f172a" }}>{store1Apples}</strong>
-              <span style={{ fontSize: "12px", color: "#64748b" }}>apples sold</span>
+        <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
+          {storesForTopProduct.length === 0 ? (
+            <div style={{ background: "#ffffff", padding: "8px 16px", borderRadius: "10px", border: "1px solid #cbd5e1" }}>
+              <span style={{ fontSize: "11px", fontWeight: 700, color: "#2563eb", display: "block" }}>
+                Multi-Tenant Tracking
+              </span>
+              <div style={{ display: "flex", alignItems: "baseline", gap: "6px", marginTop: "2px" }}>
+                <strong style={{ fontSize: "1.25rem", color: "#0f172a" }}>0</strong>
+                <span style={{ fontSize: "12px", color: "#64748b" }}>units sold</span>
+              </div>
             </div>
-          </div>
-
-          {/* Store 2 */}
-          <div style={{ background: "#ffffff", padding: "8px 16px", borderRadius: "10px", border: "1px solid #cbd5e1" }}>
-            <span style={{ fontSize: "11px", fontWeight: 700, color: "#059669", display: "block" }}>
-              FreshMart Koramangala (STR-002)
-            </span>
-            <div style={{ display: "flex", alignItems: "baseline", gap: "6px", marginTop: "2px" }}>
-              <strong style={{ fontSize: "1.35rem", color: "#0f172a" }}>{store2Apples}</strong>
-              <span style={{ fontSize: "12px", color: "#64748b" }}>apples sold</span>
-            </div>
-          </div>
+          ) : (
+            storesForTopProduct.slice(0, 3).map((st, i) => (
+              <div
+                key={st.supermarketCode || i}
+                style={{
+                  background: "#ffffff",
+                  padding: "8px 16px",
+                  borderRadius: "10px",
+                  border: "1px solid #cbd5e1",
+                  minWidth: "150px",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    color: i === 0 ? "#2563eb" : i === 1 ? "#059669" : "#7c3aed",
+                    display: "block",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    maxWidth: "180px",
+                  }}
+                  title={st.supermarketName}
+                >
+                  {st.supermarketName} ({st.supermarketCode})
+                </span>
+                <div style={{ display: "flex", alignItems: "baseline", gap: "6px", marginTop: "2px" }}>
+                  <strong style={{ fontSize: "1.25rem", color: "#0f172a" }}>{st.unitsSold || 0}</strong>
+                  <span style={{ fontSize: "12px", color: "#64748b" }}>units sold</span>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
 
@@ -422,19 +449,19 @@ export default function ProductWiseSalesReport() {
         </div>
 
         {/* 5. Product-Wise Sales Matrix Table */}
-        <div className="sa-table-wrapper">
-          <table className="sa-data-table">
+        <div className="sa-table-wrapper" style={{ overflowX: "auto" }}>
+          <table className="sa-data-table" style={{ width: "100%", minWidth: "1160px", tableLayout: "fixed" }}>
             <thead>
               <tr>
-                <th>Supermarket Tenant</th>
-                <th>Branch Code</th>
-                <th>Product Item</th>
-                <th>Category</th>
-                <th>Barcode (EAN-13)</th>
-                <th>Units Sold</th>
-                <th>Unit Price</th>
-                <th>Total Revenue (&#8377;)</th>
-                <th>Shelf Stock</th>
+                <th style={{ width: "175px", padding: "12px 14px" }}>Supermarket Tenant</th>
+                <th style={{ width: "100px", padding: "12px 14px" }}>Branch Code</th>
+                <th style={{ width: "250px", padding: "12px 14px" }}>Product Item</th>
+                <th style={{ width: "150px", padding: "12px 14px" }}>Category</th>
+                <th style={{ width: "135px", padding: "12px 14px" }}>Barcode (EAN-13)</th>
+                <th style={{ width: "110px", padding: "12px 14px", textAlign: "center" }}>Units Sold</th>
+                <th style={{ width: "100px", padding: "12px 14px", textAlign: "right" }}>Unit Price</th>
+                <th style={{ width: "130px", padding: "12px 14px", textAlign: "right" }}>Total Revenue (&#8377;)</th>
+                <th style={{ width: "110px", padding: "12px 14px", textAlign: "center" }}>Shelf Stock</th>
               </tr>
             </thead>
             <tbody>
@@ -445,133 +472,174 @@ export default function ProductWiseSalesReport() {
                   </td>
                 </tr>
               ) : (
-                filteredSales.map((item, idx) => (
-                  <tr key={`${item.supermarketCode}-${item.productName}-${idx}`}>
-                    <td>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                        <div
-                          style={{
-                            width: "30px",
-                            height: "30px",
-                            borderRadius: "6px",
-                            background: item.supermarketCode === "STR-001" ? "#eff6ff" : "#ecfdf5",
-                            color: item.supermarketCode === "STR-001" ? "#2563eb" : "#059669",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            fontSize: "12px",
-                            fontWeight: 800,
-                          }}
-                        >
-                          {item.supermarketCode === "STR-001" ? "S1" : "S2"}
-                        </div>
-                        <strong style={{ color: "#0f172a" }}>{item.supermarketName}</strong>
-                      </div>
-                    </td>
-
-                    <td>
-                      <span className="sa-code-pill">{item.supermarketCode}</span>
-                    </td>
-
-                    <td>
-                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                        {item.imageUrl && item.imageUrl.trim() ? (
-                          <img
-                            src={item.imageUrl.trim()}
-                            alt={item.productName}
-                            referrerPolicy="no-referrer"
-                            style={{ width: "34px", height: "34px", borderRadius: "8px", objectFit: "cover" }}
-                            onError={(e) => {
-                              e.currentTarget.style.display = "none";
-                              if (e.currentTarget.nextSibling) {
-                                e.currentTarget.nextSibling.style.display = "flex";
-                              }
+                filteredSales.map((item, idx) => {
+                  const leafCategory = item.category?.includes(">")
+                    ? item.category.split(">").pop().trim()
+                    : (item.category || "Groceries");
+                  return (
+                    <tr key={`${item.supermarketCode}-${item.productName}-${idx}`} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                      <td style={{ padding: "12px 14px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <div
+                            style={{
+                              width: "28px",
+                              height: "28px",
+                              borderRadius: "6px",
+                              background: "#eff6ff",
+                              color: "#2563eb",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: "11px",
+                              fontWeight: 800,
+                              flexShrink: 0,
                             }}
-                          />
-                        ) : null}
-                        <div
+                          >
+                            {item.supermarketCode ? item.supermarketCode.slice(0, 3) : "SM"}
+                          </div>
+                          <span
+                            style={{
+                              color: "#0f172a",
+                              fontWeight: 700,
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              fontSize: "0.85rem",
+                            }}
+                            title={item.supermarketName}
+                          >
+                            {item.supermarketName}
+                          </span>
+                        </div>
+                      </td>
+
+                      <td style={{ padding: "12px 14px" }}>
+                        <span className="sa-code-pill" style={{ fontFamily: "ui-monospace, monospace", fontSize: "11.5px" }}>
+                          {item.supermarketCode}
+                        </span>
+                      </td>
+
+                      <td style={{ padding: "12px 14px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                          {item.imageUrl && item.imageUrl.trim() ? (
+                            <img
+                              src={item.imageUrl.trim()}
+                              alt={item.productName}
+                              referrerPolicy="no-referrer"
+                              style={{ width: "32px", height: "32px", borderRadius: "6px", objectFit: "cover", flexShrink: 0 }}
+                              onError={(e) => {
+                                e.currentTarget.style.display = "none";
+                                if (e.currentTarget.nextSibling) {
+                                  e.currentTarget.nextSibling.style.display = "flex";
+                                }
+                              }}
+                            />
+                          ) : null}
+                          <div
+                            style={{
+                              display: item.imageUrl && item.imageUrl.trim() ? "none" : "flex",
+                              width: "32px",
+                              height: "32px",
+                              borderRadius: "6px",
+                              background: "#f1f5f9",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: "13px",
+                              flexShrink: 0,
+                            }}
+                          >
+                            📦
+                          </div>
+                          <span
+                            style={{
+                              fontWeight: 650,
+                              color: "#0f172a",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              fontSize: "0.86rem",
+                            }}
+                            title={item.productName}
+                          >
+                            {item.productName}
+                          </span>
+                        </div>
+                      </td>
+
+                      <td style={{ padding: "12px 14px" }}>
+                        <span
                           style={{
-                            display: item.imageUrl && item.imageUrl.trim() ? "none" : "flex",
-                            width: "34px",
-                            height: "34px",
-                            borderRadius: "8px",
+                            fontSize: "11.5px",
+                            color: "#475569",
                             background: "#f1f5f9",
+                            padding: "3px 8px",
+                            borderRadius: "6px",
+                            fontWeight: 600,
+                            display: "inline-block",
+                            maxWidth: "135px",
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                          title={item.category || "Groceries"}
+                        >
+                          {leafCategory}
+                        </span>
+                      </td>
+
+                      <td style={{ padding: "12px 14px" }}>
+                        <span style={{ fontFamily: "ui-monospace, monospace", fontSize: "12px", color: "#475569", letterSpacing: "0.02em" }}>
+                          {item.barcode || "2001928374920"}
+                        </span>
+                      </td>
+
+                      {/* UNITS SOLD - Explicitly highlighted */}
+                      <td style={{ padding: "12px 14px", textAlign: "center" }}>
+                        <span
+                          style={{
+                            display: "inline-flex",
                             alignItems: "center",
                             justifyContent: "center",
-                            fontSize: "14px",
-                            flexShrink: 0,
+                            gap: "4px",
+                            padding: "3px 10px",
+                            background: "#eff6ff",
+                            color: "#1d4ed8",
+                            border: "1px solid #bfdbfe",
+                            borderRadius: "8px",
+                            fontWeight: 800,
+                            fontSize: "13px",
+                            minWidth: "72px",
                           }}
                         >
-                          📦
-                        </div>
-                        <span style={{ fontWeight: 600, color: "#0f172a" }}>{item.productName}</span>
-                      </div>
-                    </td>
+                          {item.unitsSold} units
+                        </span>
+                      </td>
 
-                    <td>
-                      <span
-                        style={{
-                          fontSize: "12px",
-                          color: "#475569",
-                          background: "#f1f5f9",
-                          padding: "3px 8px",
-                          borderRadius: "6px",
-                          fontWeight: 500,
-                        }}
-                      >
-                        {item.category || "Groceries"}
-                      </span>
-                    </td>
+                      <td style={{ padding: "12px 14px", textAlign: "right" }}>
+                        <span style={{ color: "#475569", fontWeight: 600, fontSize: "0.85rem" }}>
+                          &#8377;{Number(item.avgUnitPrice || 0).toLocaleString("en-IN")}
+                        </span>
+                      </td>
 
-                    <td>
-                      <span style={{ fontFamily: "ui-monospace, monospace", fontSize: "12px", color: "#475569" }}>
-                        {item.barcode || "2001928374920"}
-                      </span>
-                    </td>
+                      <td style={{ padding: "12px 14px", textAlign: "right" }}>
+                        <strong style={{ color: "#0f172a", fontSize: "0.92rem", fontWeight: 800 }}>
+                          &#8377;{Number(item.totalRevenue || 0).toLocaleString("en-IN")}
+                        </strong>
+                      </td>
 
-                    {/* UNITS SOLD - Explicitly highlighted */}
-                    <td>
-                      <span
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "4px",
-                          padding: "4px 10px",
-                          background: "#eff6ff",
-                          color: "#1d4ed8",
-                          border: "1px solid #bfdbfe",
-                          borderRadius: "8px",
-                          fontWeight: 800,
-                          fontSize: "14px",
-                        }}
-                      >
-                        {item.unitsSold} units
-                      </span>
-                    </td>
-
-                    <td>
-                      <span style={{ color: "#475569", fontWeight: 600 }}>
-                        &#8377;{item.avgUnitPrice || 0}
-                      </span>
-                    </td>
-
-                    <td>
-                      <strong style={{ color: "#0f172a", fontSize: "14px" }}>
-                        &#8377;{Number(item.totalRevenue || 0).toLocaleString("en-IN")}
-                      </strong>
-                    </td>
-
-                    <td>
-                      <span
-                        className={`sa-badge ${
-                          item.stockStatus === "Low Stock" ? "suspended" : "active"
-                        }`}
-                      >
-                        {item.remainingStock ? `${item.remainingStock} left` : "Available"}
-                      </span>
-                    </td>
-                  </tr>
-                ))
+                      <td style={{ padding: "12px 14px", textAlign: "center" }}>
+                        <span
+                          className={`sa-badge ${
+                            item.stockStatus === "Low Stock" ? "suspended" : "active"
+                          }`}
+                          style={{ fontSize: "0.72rem", padding: "3px 8px" }}
+                        >
+                          {item.remainingStock ? `${item.remainingStock} left` : "Available"}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

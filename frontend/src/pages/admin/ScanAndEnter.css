@@ -653,6 +653,70 @@
   font-weight: 900;
 }
 
+/* Uploaded Barcode Preview inside reticle canvas */
+.se-uploaded-barcode-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.se-uploaded-barcode-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0 4px;
+}
+
+.se-uploaded-barcode-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #166534;
+}
+
+.se-uploaded-barcode-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.se-uploaded-barcode-clear:hover {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #dc2626;
+}
+
+.se-uploaded-barcode-img-box {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 6px 14px;
+  max-width: 100%;
+}
+
+.se-uploaded-barcode-img {
+  max-width: 280px;
+  max-height: 85px;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
 /* ===================================================================
    RIGHT CARD STYLES
    =================================================================== */
@@ -699,7 +763,8 @@
 
 .se-img-preview-wrap {
   width: 100%;
-  height: 240px;
+  height: 175px;
+  max-height: 175px;
   background: #ffffff;
   border: 1.5px solid #e2e8f0;
   border-radius: 14px;
@@ -865,6 +930,99 @@
   background: #fdf2f8;
   color: #9d174d;
   border: 1px solid #fbcfe8;
+}
+
+/* ===================================================================
+   Product Form Fields Grid & High-End Input Boxes
+   =================================================================== */
+.se-form-fields-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.se-form-row {
+  display: grid;
+  gap: 12px;
+  align-items: start;
+}
+
+.se-row-2col {
+  grid-template-columns: 1.4fr 1fr;
+}
+
+.se-row-category-url {
+  grid-template-columns: 1fr 1.4fr;
+}
+
+.se-row-3col {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.se-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+}
+
+.se-field-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 750;
+  color: #334155;
+  letter-spacing: 0.1px;
+}
+
+.se-field-label .required-star {
+  color: #ef4444;
+  font-weight: 800;
+}
+
+.se-field-input-box {
+  display: flex;
+  align-items: center;
+  background: #ffffff;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 0 12px;
+  height: 38px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  transition: all 0.15s ease;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.se-field-input-box:focus-within {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+  background: #ffffff;
+}
+
+.se-field-input-box input,
+.se-field-input-box select {
+  width: 100%;
+  height: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.se-field-input-box select {
+  cursor: pointer;
+}
+
+.se-field-input-box input::placeholder {
+  color: #94a3b8;
+  font-weight: 400;
 }
 
 /* ===================================================================
@@ -1076,8 +1234,10 @@
     padding: 4px 10px !important;
   }
 
-  /* 2-Column form inside card */
+  /* Form inside card on mobile */
   .se-row-2col,
+  .se-row-category-url,
+  .se-row-3col,
   .se-form-2col {
     grid-template-columns: 1fr !important;
     gap: 10px !important;

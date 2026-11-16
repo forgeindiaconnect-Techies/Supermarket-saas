@@ -13,7 +13,7 @@
   --deep-navy: #082b70;
   --deep-navy-dark: #061f54;
   --light-blue: #eaf3ff;
-  --page-bg: #f4f7fd;
+  --page-bg: #c4daf5;
   --card-bg: #ffffff;
   --success-green: #10b981;
   --warning-amber: #f59e0b;
@@ -45,10 +45,11 @@ body {
 
 .admin-app-container {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
+  max-height: 100vh;
   width: 100%;
   background-color: var(--page-bg);
-  overflow-x: hidden;
+  overflow: hidden;
   position: relative;
 }
 
@@ -360,25 +361,28 @@ body {
 .admin-main-wrapper {
   flex: 1;
   min-width: 0;
+  height: 100vh;
+  max-height: 100vh;
   display: flex;
   flex-direction: column;
-  overflow-x: hidden;
+  overflow: hidden;
 }
 
-/* Top Navigation Header Bar (~50px tall matching Image 2) */
+/* Top Navigation Header Bar (~50px tall matching Image 2) - Fixed & Constant at top */
 .admin-header-bar {
   height: 50px;
-  background: rgba(244, 247, 253, 0.95);
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1.5px solid #bfdbfe;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 6px 16px;
   position: sticky;
   top: 0;
-  z-index: 90;
+  z-index: 100;
   box-sizing: border-box;
 }
 
@@ -1461,7 +1465,9 @@ body {
   flex: 1;
   padding: 2px 14px 16px 14px;
   box-sizing: border-box;
+  overflow-y: auto;
   overflow-x: hidden;
+  height: calc(100vh - 50px);
 }
 
 /* ===================================================================
@@ -1540,7 +1546,7 @@ body {
 body,
 .admin-app-container,
 .admin-main-canvas {
-  background-color: #F4F7FD !important;
+  background-color: #c4daf5 !important;
 }
 
 .nav-item.active {
@@ -1881,7 +1887,7 @@ html, body {
 body,
 .admin-app-container,
 .admin-main-canvas {
-  background-color: #F4F7FD !important;
+  background-color: #c4daf5 !important;
 }
 
 /* Sidebar Nav Spacing for 9 items */

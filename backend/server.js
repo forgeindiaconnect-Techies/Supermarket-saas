@@ -11,12 +11,15 @@ require("dotenv").config({ path: path.join(__dirname, ".env") });
 // Ensure high-resolution supermarket hero banner & sidebar images are copied to frontend assets & public
 function syncInitialAssets() {
   try {
-    const brainDir = "C:\\Users\\Forgeindiaconnect\\.gemini\\antigravity\\brain\\fb582fb9-2b2b-411c-ac43-40149f4c94a9";
     const assetsDir = path.join(__dirname, "../frontend/src/assets");
     const publicDir = path.join(__dirname, "../frontend/public");
+    const mobileAssetsDir = path.join(__dirname, "../mobile-app/assets/images");
+
     if (!fs.existsSync(assetsDir)) fs.mkdirSync(assetsDir, { recursive: true });
     if (!fs.existsSync(publicDir)) fs.mkdirSync(publicDir, { recursive: true });
+    if (!fs.existsSync(mobileAssetsDir)) fs.mkdirSync(mobileAssetsDir, { recursive: true });
 
+    const brainDir = "C:\\Users\\Forgeindiaconnect\\.gemini\\antigravity\\brain\\fb582fb9-2b2b-411c-ac43-40149f4c94a9";
     const syncList = [
       { src: path.join(brainDir, "sidebar_abstract_blue_waves_1794046512095.jpg"), names: ["sidebar-waves-bg.jpg", "sidebar_abstract_blue_waves.jpg"] },
       { src: path.join(brainDir, "grocery_basket_3d_1794046555765.jpg"), names: ["grocery-basket-3d.jpg", "grocery_basket_3d.jpg"] },
@@ -27,22 +30,45 @@ function syncInitialAssets() {
       { src: path.join(brainDir, "gift_box_3d_icon_1794053425724.jpg"), names: ["gift-box-3d.jpg"] },
     ];
 
-    for (const item of syncList) {
+    syncList.forEach(item => {
       if (fs.existsSync(item.src)) {
-        for (const name of item.names) {
+        item.names.forEach(name => {
           fs.copyFileSync(item.src, path.join(assetsDir, name));
           fs.copyFileSync(item.src, path.join(publicDir, name));
-        }
+        });
       }
-    }
+    });
 
-    // Sync exact user-provided Super Admin Header Banner (pristine crop from prompt 7)
+    // Sync master Super Admin Reference
     const userUploadedDir = "C:\\Users\\Forgeindiaconnect\\.gemini\\antigravity\\brain\\c9a15307-ca50-4a98-86d7-d740eabbe413\\.user_uploaded";
-    // Copy candidate cart images
     const cartCandidate = path.join(userUploadedDir, "media_1794646062763_01232915.png");
     if (fs.existsSync(cartCandidate)) {
       fs.copyFileSync(cartCandidate, path.join(publicDir, "check-cart.png"));
     }
+
+    // Sync exact user-provided Super Admin Header Banner (pristine panorama from user prompt)
+    const exactHeaderBanner = path.join(userUploadedDir, "media_1794807037848_916ec656.jpg");
+    if (fs.existsSync(exactHeaderBanner)) {
+      fs.copyFileSync(exactHeaderBanner, path.join(publicDir, "exact-header-banner.jpg"));
+      fs.copyFileSync(exactHeaderBanner, path.join(publicDir, "super-admin-exact-header.jpg"));
+      fs.copyFileSync(exactHeaderBanner, path.join(publicDir, "supermarket-storefront-banner.png"));
+      fs.copyFileSync(exactHeaderBanner, path.join(publicDir, "exact-banner.jpg"));
+      fs.copyFileSync(exactHeaderBanner, path.join(assetsDir, "exact-header-banner.jpg"));
+      fs.copyFileSync(exactHeaderBanner, path.join(assetsDir, "super-admin-exact-header.jpg"));
+
+      const buf = fs.readFileSync(exactHeaderBanner);
+      let w = 0, h = 0;
+      for (let i = 0; i < buf.length - 8; i++) {
+        if (buf[i] === 0xFF && (buf[i+1] === 0xC0 || buf[i+1] === 0xC2)) {
+          h = buf.readUInt16BE(i + 5);
+          w = buf.readUInt16BE(i + 7);
+          break;
+        }
+      }
+      fs.writeFileSync(path.join(__dirname, "header_banner_dims.json"), JSON.stringify({ w, h, size: buf.length }));
+      console.log(`✓ Synced pristine header banner (${w}x${h}) -> super-admin-exact-header.jpg`);
+    }
+
     const refMaster = path.join(userUploadedDir, "media_1794659704107_58fbadce.jpg");
     const refMasterFallback = path.join(userUploadedDir, "media_1794659026168_be103530.jpg");
     const masterToUse = fs.existsSync(refMaster) ? refMaster : (fs.existsSync(refMasterFallback) ? refMasterFallback : path.join(userUploadedDir, "media_1794658309735_226a05fd.jpg"));
@@ -52,8 +78,34 @@ function syncInitialAssets() {
       console.log(`✓ Synced master reference image (${path.basename(masterToUse)}) to public & assets`);
     }
 
+    // Sync clean login background
+    const loginBgSource = "C:\\Users\\Forgeindiaconnect\\.gemini\\antigravity\\brain\\f36b6542-12a0-4c50-a383-186a05bdb99d\\supermarket_portal_bg_v3_1794561743408.jpg";
+    if (fs.existsSync(loginBgSource)) {
+      fs.copyFileSync(loginBgSource, path.join(assetsDir, "supermarket-login-bg.jpg"));
+      fs.copyFileSync(loginBgSource, path.join(publicDir, "supermarket-login-bg.jpg"));
+      fs.copyFileSync(loginBgSource, path.join(publicDir, "grocerease-clean-login.jpg"));
+      console.log("✓ Synced clean login background -> supermarket-login-bg.jpg");
+    }
+
+    // Sync celebration illustration
+    const celebrationDollImg = "C:\\Users\\Forgeindiaconnect\\.gemini\\antigravity\\brain\\66da6e68-95f4-42d0-a640-30ba83b6ef48\\payment_success_celebration_1794473637341.jpg";
+    const currentBrainDir = "C:\\Users\\Forgeindiaconnect\\.gemini\\antigravity\\brain\\6fa4a95c-77f9-4a4d-950b-d57336a67a4c";
+    const paymentImages = [
+      { src: path.join(currentBrainDir, "payment_pending_1794467892344.jpg"), destName: "payment-pending.jpg" },
+      { src: celebrationDollImg, destName: "payment-approved.jpg" },
+      { src: celebrationDollImg, destName: "payment-celebration.jpg" },
+    ];
+
+    paymentImages.forEach(img => {
+      if (fs.existsSync(img.src)) {
+        fs.copyFileSync(img.src, path.join(mobileAssetsDir, img.destName));
+        fs.copyFileSync(img.src, path.join(assetsDir, img.destName));
+        fs.copyFileSync(img.src, path.join(publicDir, img.destName));
+      }
+    });
+
     // Cleanup temporary debug files
-    [
+    const debugFiles = [
       "git_push_result.json",
       "git_status_output.txt",
       "user_files.json",
@@ -63,42 +115,13 @@ function syncInitialAssets() {
       "img_check.json",
       "latest_inspect.json",
       "startup_status.json"
-    ].forEach(f => {
+    ];
+    debugFiles.forEach(f => {
       const p = path.join(__dirname, f);
       if (fs.existsSync(p)) {
         try { fs.unlinkSync(p); } catch (_) {}
       }
     });
-    const mobileAssetsDir = path.join(__dirname, "../mobile-app/assets/images");
-    if (!fs.existsSync(mobileAssetsDir)) fs.mkdirSync(mobileAssetsDir, { recursive: true });
-
-    const currentBrainDir2026 = "C:\\Users\\Forgeindiaconnect\\.gemini\\antigravity\\brain\\66da6e68-95f4-42d0-a640-30ba83b6ef48";
-    const celebrationDollImg = path.join(currentBrainDir2026, "payment_success_celebration_1794473637341.jpg");
-
-    // Sync ultra-high-resolution 16:9 supermarket SaaS portal login background
-    const loginBgSource = "C:\\Users\\Forgeindiaconnect\\.gemini\\antigravity\\brain\\f36b6542-12a0-4c50-a383-186a05bdb99d\\supermarket_portal_bg_v3_1794561743408.jpg";
-    if (fs.existsSync(loginBgSource)) {
-      fs.copyFileSync(loginBgSource, path.join(assetsDir, "supermarket-login-bg.jpg"));
-      fs.copyFileSync(loginBgSource, path.join(publicDir, "supermarket-login-bg.jpg"));
-      fs.copyFileSync(loginBgSource, path.join(publicDir, "grocerease-clean-login.jpg"));
-      console.log("✓ Synced clean login background -> supermarket-login-bg.jpg");
-    }
-
-    const currentBrainDir = "C:\\Users\\Forgeindiaconnect\\.gemini\\antigravity\\brain\\6fa4a95c-77f9-4a4d-950b-d57336a67a4c";
-    const paymentImages = [
-      { src: path.join(currentBrainDir, "payment_pending_1794467892344.jpg"), destName: "payment-pending.jpg" },
-      { src: celebrationDollImg, destName: "payment-approved.jpg" },
-      { src: celebrationDollImg, destName: "payment-celebration.jpg" },
-    ];
-
-    for (const img of paymentImages) {
-      if (fs.existsSync(img.src)) {
-        fs.copyFileSync(img.src, path.join(mobileAssetsDir, img.destName));
-        fs.copyFileSync(img.src, path.join(assetsDir, img.destName));
-        fs.copyFileSync(img.src, path.join(publicDir, img.destName));
-        console.log(`✓ Synced 3D illustration: ${img.destName}`);
-      }
-    }
   } catch (e) {
     console.warn("Asset sync notice:", e.message);
   }
@@ -110,10 +133,12 @@ const orderRoutes = require("./routes/orderRoutes");
 const uploadRoutes = require("./routes/uploadRoutes");
 const authRoutes = require("./routes/authRoutes");
 const superAdminRoutes = require("./routes/superAdminRoutes");
+const chatRoutes = require("./routes/chatRoutes");
 const { authMiddleware } = require("./middleware/authMiddleware");
 const { tenantMiddleware } = require("./middleware/tenantMiddleware");
 const { seedSaaSPlatformData } = require("./utils/saasSeeder");
 const { checkCloudinaryConnection } = require("./config/cloudinary");
+const { verifySmtpConnection } = require("./utils/mailer");
 const Product = require("./models/Product");
 const Supermarket = require("./models/Supermarket");
 
@@ -201,7 +226,8 @@ dns.setServers(["8.8.8.8", "8.8.4.4"]);
 const app = express();
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 app.use("/assets", express.static(path.join(__dirname, "../mobile-app/assets/images")));
 app.use("/brain", express.static("C:\\Users\\Forgeindiaconnect\\.gemini\\antigravity\\brain\\6fa4a95c-77f9-4a4d-950b-d57336a67a4c"));
 
@@ -269,6 +295,7 @@ app.get("/api/login-bg", (req, res) => {
 
 app.use("/api/auth", authRoutes);
 app.use("/api/super-admin", superAdminRoutes);
+app.use("/api/chat", chatRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/upload", uploadRoutes);
@@ -341,5 +368,14 @@ httpServer.listen(PORT, "0.0.0.0", async () => {
     }
   } catch (err) {
     console.warn("⚠️  [Cloudinary] Connection notice:", err.message);
+  }
+
+  try {
+    const smtpRes = await verifySmtpConnection();
+    if (smtpRes && smtpRes.connected) {
+      console.log(`✓ Brevo SMTP connected successfully (host: ${smtpRes.host}:${smtpRes.port}, login: ${smtpRes.user})`);
+    }
+  } catch (err) {
+    console.warn("⚠️  [Brevo SMTP] Connection notice:", err.message);
   }
 });

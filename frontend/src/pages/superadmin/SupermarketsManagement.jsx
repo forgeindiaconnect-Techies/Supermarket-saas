@@ -21,6 +21,7 @@ import {
   X,
   RefreshCw,
   Sparkles,
+  Mail,
 } from "lucide-react";
 import API from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
@@ -49,7 +50,28 @@ export default function SupermarketsManagement() {
   const [logoInputUrl, setLogoInputUrl] = useState("");
   const [logoPreviewError, setLogoPreviewError] = useState(false);
   const [isSavingLogo, setIsSavingLogo] = useState(false);
+  const [sendingEmailId, setSendingEmailId] = useState(null);
   const logoFilePickerRef = React.useRef(null);
+
+  // Send automated subscription notice email via Brevo SMTP
+  const handleSendPlanEmail = async (store) => {
+    const storeKey = store._id || store.code;
+    if (sendingEmailId) return;
+    try {
+      setSendingEmailId(storeKey);
+      showToast(`Dispatching automated subscription notice to ${store.name}...`);
+      const res = await API.post(`/super-admin/supermarkets/${store._id}/send-plan-email`, {});
+      if (res.data?.success) {
+        showToast(res.data?.message || `✓ Subscription notice delivered to ${store.name}!`);
+      } else {
+        showToast(`⚠️ ${res.data?.message || "Failed to dispatch email."}`);
+      }
+    } catch (err) {
+      showToast(`⚠️ Email dispatch failed: ${err.response?.data?.message || err.message}`);
+    } finally {
+      setSendingEmailId(null);
+    }
+  };
 
   // Helper: Extract actual image source if wrapped in Google Images search URLs
   const cleanAndExtractImageUrl = (raw) => {
@@ -511,6 +533,22 @@ export default function SupermarketsManagement() {
                     <div style={{ display: "flex", gap: "6px" }}>
                       <button
                         type="button"
+                        className="sa-btn-email"
+                        style={{ padding: "5px 10px", fontSize: "12px", background: "#16a34a" }}
+                        onClick={() => handleSendPlanEmail(store)}
+                        disabled={sendingEmailId === (store._id || store.code)}
+                        title={`Send automated subscription email notice to ${store.name} (${store.email})`}
+                      >
+                        {sendingEmailId === (store._id || store.code) ? (
+                          <RefreshCw size={12} className="spin-icon" />
+                        ) : (
+                          <Mail size={12} />
+                        )}
+                        <span>{sendingEmailId === (store._id || store.code) ? "Sending..." : "Email"}</span>
+                      </button>
+
+                      <button
+                        type="button"
                         className="sa-btn-secondary"
                         style={{ padding: "5px 10px", fontSize: "12px" }}
                         onClick={() => {
@@ -641,7 +679,7 @@ export default function SupermarketsManagement() {
                   </div>
                 </div>
 
-                <div className="sa-form-grid-2">
+                <div className="sa-form-grid-3">
                   <div className="sa-form-group">
                     <label className="sa-form-label">City / Location</label>
                     <input
@@ -661,6 +699,22 @@ export default function SupermarketsManagement() {
                       value={formValues.phone}
                       onChange={(e) => setFormValues({ ...formValues, phone: e.target.value })}
                       placeholder="+91 98765 43210"
+                    />
+                  </div>
+
+                  <div className="sa-form-group">
+                    <label className="sa-form-label">Store Email (Lowercase)</label>
+                    <input
+                      type="email"
+                      className="sa-form-input"
+                      value={formValues.email}
+                      onChange={(e) =>
+                        setFormValues({
+                          ...formValues,
+                          email: e.target.value.toLowerCase().replace(/[^a-z0-9@._+-]/g, ""),
+                        })
+                      }
+                      placeholder="store@grocerease.store"
                     />
                   </div>
                 </div>

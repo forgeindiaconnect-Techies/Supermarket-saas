@@ -897,78 +897,121 @@ exports.deleteProduct = async (req, res) => {
 
 // External barcode lookup (does not modify inventory)
 exports.lookupExternalProduct = async (req, res) => {
-  const barcode = String(req.params.barcode || "").replace(/\D/g, "");
+  const rawBarcode = String(req.params.barcode || "").trim();
+  const digitsOnly = rawBarcode.replace(/\D/g, "");
 
-  if (!/^\d{8,14}$/.test(barcode)) {
-    return res.status(400).json({ success: false, message: "Invalid barcode" });
+  if (!rawBarcode || rawBarcode.length < 3) {
+    return res.status(400).json({ success: false, message: "Invalid barcode number" });
   }
 
-  try {
-    // Source 1: Open Food Facts
-    const offResponse = await fetch(
-      `https://world.openfoodfacts.org/api/v0/product/${barcode}.json`,
-      { signal: AbortSignal.timeout(8000) }
-    );
-
-    if (offResponse.ok) {
-      const data = await offResponse.json();
-      const p = data.product;
-      const returnedCode = String(p?.code || "").replace(/\D/g, "");
-
-      if (data.status === 1 && p && returnedCode === barcode && (p.image_front_url || p.image_url || p.image_front_small_url || p.image_small_url)) {
-        return res.json({
-          success: true,
-          source: "Open Food Facts",
-          product: {
-            barcode,
-            name: p.product_name || p.generic_name || "",
-            brand: p.brands || "",
-            imageUrl: p.image_front_url || p.image_url || "",
-            category: p.categories || "",
-          },
-        });
-      }
-    }
-
-    // Source 2: UPCitemdb trial
-    const upcResponse = await fetch(
-      `https://api.upcitemdb.com/prod/trial/lookup?upc=${barcode}`,
-      { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8000) }
-    );
-
-    if (upcResponse.ok) {
-      const data = await upcResponse.json();
-      const item = data.items?.find(p =>
-        [p.ean, p.upc].some(v => String(v || "").replace(/\D/g, "") === barcode)
+  // 1. If numeric barcode (EAN-13, EAN-8, UPC-A, UPC-E)
+  if (/^\d{6,14}$/.test(digitsOnly)) {
+    const barcode = digitsOnly;
+    try {
+      // Source 1: Open Food Facts
+      const offResponse = await fetch(
+        `https://world.openfoodfacts.org/api/v0/product/${barcode}.json`,
+        { signal: AbortSignal.timeout(8000) }
       );
 
-      if (item && item.images?.[0]) {
-        let imgUrl = String(item.images[0]).trim();
-        if (imgUrl.startsWith("http://")) {
-          imgUrl = imgUrl.replace("http://", "https://");
-        }
-        return res.json({
-          success: true,
-          source: "UPCitemdb",
-          product: {
-            barcode,
-            name: item.title || "",
-            brand: item.brand || "",
-            imageUrl: imgUrl,
-            category: item.category || "",
-          },
-        });
-      }
-    }
+      if (offResponse.ok) {
+        const data = await offResponse.json();
+        const p = data.product;
+        const returnedCode = String(p?.code || "").replace(/\D/g, "");
 
-    return res.status(404).json({
-      success: false,
-      message: "No verified product match found. Please upload the actual product photo.",
-    });
-  } catch (error) {
-    return res.status(502).json({
-      success: false,
-      message: "External barcode lookup temporarily unavailable.",
-    });
+        if (data.status === 1 && p && (returnedCode === barcode || !returnedCode)) {
+          const name = p.product_name || p.product_name_en || p.generic_name || p.generic_name_en || "";
+          if (name) {
+            const img = p.image_front_url || p.image_url || p.image_front_small_url || p.image_small_url || "";
+            let categoryName = "Groceries";
+            if (p.categories) {
+              const catArr = p.categories.split(",");
+              categoryName = catArr[catArr.length - 1].trim();
+            }
+
+            return res.json({
+              success: true,
+              source: "Open Food Facts",
+              product: {
+                barcode,
+                name: name.trim(),
+                brand: p.brands ? p.brands.split(",")[0].trim() : "",
+                imageUrl: img ? String(img).trim().replace(/^http:\/\//, "https://") : "",
+                category: categoryName,
+              },
+            });
+          }
+        }
+      }
+    } catch (_) {}
+
+    try {
+      // Source 2: UPCitemdb trial
+      const upcResponse = await fetch(
+        `https://api.upcitemdb.com/prod/trial/lookup?upc=${barcode}`,
+        { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8000) }
+      );
+
+      if (upcResponse.ok) {
+        const data = await upcResponse.json();
+        const item =
+          data.items?.find((p) =>
+            [p.ean, p.upc].some((v) => String(v || "").replace(/\D/g, "") === barcode)
+          ) || data.items?.[0];
+
+        if (item && (item.title || item.brand)) {
+          let imgUrl = item.images?.[0] ? String(item.images[0]).trim() : "";
+          if (imgUrl.startsWith("http://")) {
+            imgUrl = imgUrl.replace("http://", "https://");
+          }
+
+          let cat = "Groceries";
+          if (item.category) {
+            cat = item.category.split(">").pop().trim();
+          }
+
+          return res.json({
+            success: true,
+            source: "UPCitemdb",
+            product: {
+              barcode,
+              name: item.title ? item.title.trim() : "",
+              brand: item.brand ? item.brand.trim() : "",
+              imageUrl: imgUrl,
+              category: cat,
+            },
+          });
+        }
+      }
+    } catch (_) {}
   }
+
+  // 2. Check local database catalog across any store for verified product info
+  try {
+    const Product = require("../models/Product");
+    const foundLocal = await Product.findOne({
+      barcode: rawBarcode,
+      isActive: { $ne: false },
+    });
+    if (foundLocal && foundLocal.name) {
+      return res.json({
+        success: true,
+        source: "Catalog",
+        product: {
+          barcode: foundLocal.barcode,
+          name: foundLocal.name,
+          brand: foundLocal.brand || "",
+          imageUrl: foundLocal.imageUrl || "",
+          category: foundLocal.category || "Groceries",
+          price: foundLocal.price,
+        },
+      });
+    }
+  } catch (_) {}
+
+  return res.status(404).json({
+    success: false,
+    barcode: rawBarcode,
+    message: `No existing product found for barcode ${rawBarcode}. Please enter product details to register.`,
+  });
 };

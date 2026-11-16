@@ -19,6 +19,8 @@ import TurnstileManagement from "./pages/superadmin/TurnstileManagement";
 import PlatformReports from "./pages/superadmin/PlatformReports";
 import SaaSPlans from "./pages/superadmin/SaaSPlans";
 import SuperAdminSettings from "./pages/superadmin/SuperAdminSettings";
+import SuperAdminChat from "./pages/superadmin/SuperAdminChat";
+import SuperAdminNotifications from "./pages/superadmin/SuperAdminNotifications";
 
 // Store Admin Tenant Portal
 import AdminLayout from "./layouts/AdminLayout";
@@ -33,17 +35,43 @@ import CustomersManagement from "./pages/admin/CustomersManagement";
 import ReportsManagement from "./pages/admin/ReportsManagement";
 import SettingsManagement from "./pages/admin/SettingsManagement";
 import NotificationsManagement from "./pages/admin/NotificationsManagement";
+import StoreChat from "./pages/admin/StoreChat";
 
 // Customer Self-Checkout Web Mirror
 import CustomerLayout from "./layouts/CustomerLayout";
 import CustomerDashboard from "./pages/customer/CustomerDashboard";
 
-// Role-based Router Guard / Entrypoint
-function RootRedirect() {
-  const { user } = useAuth();
-  if (!user) {
+// Protected Route Guard: Strictly blocks dashboard access until the user logs in
+function ProtectedRoute({ children, allowedRoles }) {
+  const { user, token } = useAuth();
+
+  // If not logged in, block dashboard access and redirect to Login page
+  if (!user || !token) {
     return <Navigate to="/login" replace />;
   }
+
+  // If role is restricted and doesn't match, send to user's authorized portal
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
+    if (user.role === "SUPER_ADMIN") {
+      return <Navigate to="/super-admin" replace />;
+    }
+    return <Navigate to="/admin" replace />;
+  }
+
+  return children;
+}
+
+// Root Entrypoint for http://localhost:5173/
+// Shows ONLY the Login page until email/ID & password are typed and submitted
+function RootRedirect() {
+  const { user, token } = useAuth();
+
+  // Until logged in, show ONLY the login page
+  if (!user || !token) {
+    return <LoginPage />;
+  }
+
+  // Only AFTER authenticating credentials, open the dashboard
   if (user.role === "SUPER_ADMIN") {
     return <Navigate to="/super-admin" replace />;
   }
@@ -55,14 +83,21 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          {/* Default entry root */}
+          {/* Default entry root http://localhost:5173/ -> Shows ONLY Login page until authenticated */}
           <Route path="/" element={<RootRedirect />} />
 
           {/* Unified SaaS Login Portal */}
           <Route path="/login" element={<LoginPage />} />
 
-          {/* Super Admin Centralized Multi-Tenant Command Center (10 Enterprise Modules) */}
-          <Route path="/super-admin" element={<SuperAdminLayout />}>
+          {/* Super Admin Centralized Multi-Tenant Command Center (Protected: requires Super Admin login) */}
+          <Route
+            path="/super-admin"
+            element={
+              <ProtectedRoute allowedRoles={["SUPER_ADMIN"]}>
+                <SuperAdminLayout />
+              </ProtectedRoute>
+            }
+          >
             <Route index element={<SuperAdminDashboard />} />
             <Route path="add-supermarket" element={<AddSupermarket />} />
             <Route path="add" element={<AddSupermarket />} />
@@ -79,11 +114,20 @@ export default function App() {
             <Route path="customers" element={<CustomersDirectory />} />
             <Route path="turnstiles" element={<TurnstileManagement />} />
             <Route path="reports" element={<PlatformReports />} />
+            <Route path="notifications" element={<SuperAdminNotifications />} />
+            <Route path="chat" element={<SuperAdminChat />} />
             <Route path="settings" element={<SuperAdminSettings />} />
           </Route>
 
-          {/* Store Admin Tenant Management Portal (Isolated Data Scoping) */}
-          <Route path="/admin" element={<AdminLayout />}>
+          {/* Store Admin Tenant Management Portal (Protected: requires Store Admin login) */}
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute allowedRoles={["STORE_ADMIN", "SUPER_ADMIN"]}>
+                <AdminLayout />
+              </ProtectedRoute>
+            }
+          >
             <Route index element={<AdminDashboard />} />
             <Route path="products" element={<ProductManagement />} />
             <Route path="add-product" element={<AddProduct />} />
@@ -95,7 +139,11 @@ export default function App() {
             <Route path="reports" element={<ReportsManagement />} />
             <Route path="analytics" element={<ReportsManagement />} />
             <Route path="notifications" element={<NotificationsManagement />} />
+            <Route path="chat" element={<StoreChat />} />
             <Route path="settings" element={<SettingsManagement />} />
+            <Route path="profile" element={<SettingsManagement />} />
+            <Route path="settings/profile" element={<SettingsManagement />} />
+            <Route path="my-profile" element={<SettingsManagement />} />
           </Route>
 
           {/* Customer Self-Checkout Web Mirror */}

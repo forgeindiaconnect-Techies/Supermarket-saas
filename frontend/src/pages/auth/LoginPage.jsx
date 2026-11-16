@@ -58,7 +58,7 @@ export default function LoginPage() {
   const handleSubmit = async (e) => {
     e?.preventDefault();
     if (!username.trim() || !password.trim()) {
-      setErrorMessage("Please enter both Supermarket Name / ID and password.");
+      setErrorMessage("Please enter both Email ID / Username and password.");
       return;
     }
 
@@ -243,7 +243,7 @@ export default function LoginPage() {
                 style={{ position: "absolute", opacity: 0, height: 0, width: 0, pointerEvents: "none", zIndex: -1 }}
               />
 
-              {/* Field 1: Supermarket Name / ID */}
+              {/* Field 1: Supermarket Name / Email / Username */}
               <div className="ge-input-group">
                 <span className="ge-input-icon">
                   <Store size={18} color="#64748b" />
@@ -255,10 +255,17 @@ export default function LoginPage() {
                   required
                   value={username}
                   onChange={(e) => {
-                    setUsername(e.target.value);
+                    // Convert all input characters to lowercase automatically
+                    setUsername(e.target.value.toLowerCase());
                     setErrorMessage("");
                   }}
-                  placeholder="Supermarket Name / ID"
+                  onPaste={(e) => {
+                    e.preventDefault();
+                    const pasted = (e.clipboardData || window.clipboardData).getData("text") || "";
+                    setUsername(pasted.toLowerCase());
+                    setErrorMessage("");
+                  }}
+                  placeholder="Email ID / Supermarket ID / Username"
                   className="ge-input-control"
                   autoComplete="off"
                   autoCorrect="off"
@@ -491,20 +498,43 @@ export default function LoginPage() {
             </div>
 
             <div className="ge-modal-body">
+              {/* Super Admin */}
+              <div className="ge-cred-card">
+                <div className="ge-cred-header">
+                  <strong>Platform Super Admin</strong>
+                  <span className="ge-badge-saas" style={{ background: "#dcfce7", color: "#15803d" }}>Super Admin</span>
+                </div>
+                <div className="ge-cred-details">
+                  <div><span>Email / Username:</span> <code>admin</code> or <code>superadmin@grocerease.store</code></div>
+                  <div><span>Password:</span> <code>admin123</code></div>
+                </div>
+                <button
+                  type="button"
+                  className="ge-cred-use-btn"
+                  onClick={() => {
+                    handleQuickFill("admin", "admin123");
+                    setShowForgotModal(false);
+                  }}
+                >
+                  Use Super Admin Credentials
+                </button>
+              </div>
+
+              {/* Pooja Admin */}
               <div className="ge-cred-card">
                 <div className="ge-cred-header">
                   <strong>Pooja Admin Account</strong>
                   <span className="ge-badge-saas">Store Admin</span>
                 </div>
                 <div className="ge-cred-details">
-                  <div><span>Username / Mail:</span> <code>pooja</code></div>
+                  <div><span>Email / Username:</span> <code>poojasree@gmail.com</code> or <code>pooja</code></div>
                   <div><span>Password:</span> <code>pooja@123</code></div>
                 </div>
                 <button
                   type="button"
                   className="ge-cred-use-btn"
                   onClick={() => {
-                    handleQuickFill("pooja", "pooja@123");
+                    handleQuickFill("poojasree@gmail.com", "pooja@123");
                     setShowForgotModal(false);
                   }}
                 >
@@ -512,24 +542,47 @@ export default function LoginPage() {
                 </button>
               </div>
 
+              {/* Akshaya Supermarket */}
               <div className="ge-cred-card">
                 <div className="ge-cred-header">
-                  <strong>FreshMart Supermarket #1</strong>
-                  <span className="ge-badge-tenant">STR-001</span>
+                  <strong>Akshaya Supermarket</strong>
+                  <span className="ge-badge-tenant">SM-7087</span>
                 </div>
                 <div className="ge-cred-details">
-                  <div><span>Username:</span> <code>STR-001</code></div>
-                  <div><span>Password:</span> <code>password123</code></div>
+                  <div><span>Email / Username:</span> <code>akshaya@gmail.com</code> or <code>akshaya</code></div>
+                  <div><span>Password:</span> <code>akshaya@123</code></div>
                 </div>
                 <button
                   type="button"
                   className="ge-cred-use-btn"
                   onClick={() => {
-                    handleQuickFill("STR-001", "password123");
+                    handleQuickFill("akshaya@gmail.com", "akshaya@123");
                     setShowForgotModal(false);
                   }}
                 >
-                  Use Store #1 Credentials
+                  Use Akshaya Credentials
+                </button>
+              </div>
+
+              {/* FreshMart Supermarket */}
+              <div className="ge-cred-card">
+                <div className="ge-cred-header">
+                  <strong>FreshMart Supermarket</strong>
+                  <span className="ge-badge-tenant">STR-002</span>
+                </div>
+                <div className="ge-cred-details">
+                  <div><span>Email / Username:</span> <code>storeb@freshmart.store</code> or <code>storeb</code></div>
+                  <div><span>Password:</span> <code>storeb@123</code></div>
+                </div>
+                <button
+                  type="button"
+                  className="ge-cred-use-btn"
+                  onClick={() => {
+                    handleQuickFill("storeb@freshmart.store", "storeb@123");
+                    setShowForgotModal(false);
+                  }}
+                >
+                  Use FreshMart Credentials
                 </button>
               </div>
             </div>

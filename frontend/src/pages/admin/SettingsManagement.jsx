@@ -1,636 +1,1253 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
-  Settings,
-  Store,
-  QrCode,
-  ShieldCheck,
-  CheckCircle2,
-  Save,
-  Cpu,
-  Bell,
-  Smartphone,
-  IndianRupee,
-  RotateCcw,
-  Phone,
+  User,
   Mail,
-  MapPin,
+  Phone,
+  Store,
+  ShieldCheck,
+  Crown,
+  Camera,
   Lock,
-  Volume2,
-  CreditCard,
+  Edit3,
+  Check,
+  X,
+  Home,
+  CheckCircle2,
+  AlertCircle,
+  Eye,
+  EyeOff,
   Building2,
-  BadgeCheck,
+  MapPin,
   Sparkles,
 } from "lucide-react";
-import bannerCartImg from "../../assets/banner-cart.png";
-import ErpPageBanner from "../../components/ErpPageBanner";
+import API from "../../services/api";
+import { useAuth } from "../../context/AuthContext";
 import "./ProductManagement.css";
 
-const SETTINGS_TABS = [
-  { id: "store", label: "Store & Branch Profile", icon: Store },
-  { id: "turnstile", label: "Exit Turnstiles & IoT Gates", icon: Cpu },
-  { id: "payment", label: "UPI & Cashier Config", icon: QrCode },
-  { id: "security", label: "Admin Security & Roles", icon: ShieldCheck },
-];
-
 export default function SettingsManagement() {
-  const [activeTab, setActiveTab] = useState("store");
-  const [toastMessage, setToastMessage] = useState("");
+  const { user, currentSupermarket } = useAuth();
 
-  // Store Settings State
-  const [storeForm, setStoreForm] = useState({
-    storeName: "Smart Supermarket - GrocerEase",
-    branchCode: "STORE-001 (Downtown Central)",
-    address: "100 Feet Road, Indiranagar, Bengaluru, KA 560038",
-    phone: "+91 80 2345 6789",
-    email: "support@grocerease.com",
-    gstin: "29AAAAA0000A1Z5",
-    currency: "INR (₹)",
-    defaultGstRate: "5%",
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState({ show: false, message: "", type: "success" });
+
+  // Store & Admin details state
+  const [fullName, setFullName] = useState("");
+  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [storeName, setStoreName] = useState("");
+  const [storeCode, setStoreCode] = useState("");
+  const [storeCity, setStoreCity] = useState("");
+  const [storeAddress, setStoreAddress] = useState("");
+  const [storePlan, setStorePlan] = useState("Standard");
+  const [storeLogo, setStoreLogo] = useState("");
+
+  // Initial state for Cancel reset
+  const [initialData, setInitialData] = useState({
+    fullName: "",
+    username: "",
+    email: "",
+    phone: "",
   });
 
-  // Turnstile Hardware State
-  const [turnstileForm, setTurnstileForm] = useState({
-    autoOpenOnApproved: true,
-    gateCount: 4,
-    gatePassExpiryMinutes: 15,
-    soundBeepOnExit: true,
-    requireCashierPinForCash: true,
-  });
+  // Password section state
+  const [showPasswordSection, setShowPasswordSection] = useState(true);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showCurrentPass, setShowCurrentPass] = useState(false);
+  const [showNewPass, setShowNewPass] = useState(false);
+  const [showConfirmPass, setShowConfirmPass] = useState(false);
+  const [updatingPassword, setUpdatingPassword] = useState(false);
 
-  // Payment Config State
-  const [paymentForm, setPaymentForm] = useState({
-    upiId: "smartsupermarket@upi",
-    merchantName: "Smart Supermarket GrocerEase",
-    enableCashAtExit: true,
-    enableUpiQRFastPay: true,
-    enableCardPayment: true,
-  });
+  // Load authenticated Store Admin profile with strict tenant scoping
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        setLoading(true);
+        const res = await API.get("/auth/me");
+        if (res.data?.success && res.data.user) {
+          const u = res.data.user;
+          const sm = res.data.supermarket || currentSupermarket;
 
-  const handleSave = (e) => {
-    e.preventDefault();
-    setToastMessage("✓ Settings saved and synced with store turnstiles successfully!");
-    setTimeout(() => setToastMessage(""), 4500);
+          const uName = u?.name || sm?.adminName || "";
+          const uUsername = (u?.username || sm?.adminUsername || "").toLowerCase();
+          const uEmail = (u?.email || sm?.email || "").toLowerCase();
+          const uPhone = u?.phone || sm?.phone || "";
+
+          setFullName(uName);
+          setUsername(uUsername);
+          setEmail(uEmail);
+          setPhone(uPhone);
+
+          setStoreName(sm?.name || u?.supermarketName || "Supermarket");
+          setStoreCode(sm?.code || u?.supermarketCode || "");
+          setStoreCity(sm?.city || "");
+          setStoreAddress(sm?.address || "");
+          setStorePlan(sm?.plan || "Standard");
+          setStoreLogo(sm?.logoUrl || "");
+
+          setInitialData({
+            fullName: uName,
+            username: uUsername,
+            email: uEmail,
+            phone: uPhone,
+          });
+        }
+      } catch (err) {
+        console.warn("Store profile fetch notice:", err.message);
+        // Fallback to authContext data
+        if (user) {
+          setFullName(user.name || "");
+          setUsername((user.username || "").toLowerCase());
+          setEmail((user.email || "").toLowerCase());
+          setPhone(user.phone || "");
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProfile();
+  }, [currentSupermarket, user]);
+
+  const showToastMsg = (message, type = "success") => {
+    setToast({ show: true, message, type });
+    setTimeout(() => {
+      setToast({ show: false, message: "", type: "success" });
+    }, 4000);
   };
 
-  const handleReset = () => {
-    if (window.confirm("Reset settings on this tab to default values?")) {
-      if (activeTab === "store") {
-        setStoreForm({
-          storeName: "Smart Supermarket - GrocerEase",
-          branchCode: "STORE-001 (Downtown Central)",
-          address: "100 Feet Road, Indiranagar, Bengaluru, KA 560038",
-          phone: "+91 80 2345 6789",
-          email: "support@grocerease.com",
-          gstin: "29AAAAA0000A1Z5",
-          currency: "INR (₹)",
-          defaultGstRate: "5%",
-        });
-      } else if (activeTab === "turnstile") {
-        setTurnstileForm({
-          autoOpenOnApproved: true,
-          gateCount: 4,
-          gatePassExpiryMinutes: 15,
-          soundBeepOnExit: true,
-          requireCashierPinForCash: true,
-        });
-      } else if (activeTab === "payment") {
-        setPaymentForm({
-          upiId: "smartsupermarket@upi",
-          merchantName: "Smart Supermarket GrocerEase",
-          enableCashAtExit: true,
-          enableUpiQRFastPay: true,
-          enableCardPayment: true,
-        });
+  const handleEmailChange = (e) => {
+    setEmail(e.target.value.toLowerCase().replace(/\s+/g, ""));
+  };
+
+  const handleCancel = () => {
+    setFullName(initialData.fullName);
+    setUsername(initialData.username);
+    setEmail(initialData.email);
+    setPhone(initialData.phone);
+    setShowPasswordSection(false);
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setShowCurrentPass(false);
+    setShowNewPass(false);
+    setShowConfirmPass(false);
+    showToastMsg("Changes reverted to original profile.", "info");
+  };
+
+  const handleUpdatePassword = async (e) => {
+    if (e) e.preventDefault();
+
+    if (!currentPassword) {
+      showToastMsg("Current Password is required.", "error");
+      return;
+    }
+    if (!newPassword) {
+      showToastMsg("New Password is required.", "error");
+      return;
+    }
+    if (newPassword.length < 6) {
+      showToastMsg("New password must be at least 6 characters long.", "error");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      showToastMsg("New password and confirm password do not match.", "error");
+      return;
+    }
+    if (currentPassword === newPassword) {
+      showToastMsg("New password cannot be the same as your current password.", "error");
+      return;
+    }
+
+    try {
+      setUpdatingPassword(true);
+      const res = await API.post("/auth/change-password", {
+        currentPassword,
+        newPassword,
+        confirmPassword,
+      });
+
+      if (res.data?.success) {
+        showToastMsg(
+          "✓ Password updated successfully! Super Admin has been notified.",
+          "success"
+        );
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+        setShowCurrentPass(false);
+        setShowNewPass(false);
+        setShowConfirmPass(false);
       }
-      setToastMessage("✓ Tab configuration reset to default values.");
-      setTimeout(() => setToastMessage(""), 3500);
+    } catch (err) {
+      console.error("Change password error:", err);
+      showToastMsg(
+        err.response?.data?.message || "Failed to update password. Please verify your current password.",
+        "error"
+      );
+    } finally {
+      setUpdatingPassword(false);
+    }
+  };
+
+  const handleSaveChanges = async (e) => {
+    if (e) e.preventDefault();
+
+    if (!fullName.trim()) {
+      showToastMsg("Full Name is required.", "error");
+      return;
+    }
+    if (!email.trim()) {
+      showToastMsg("Registered Email Address is required.", "error");
+      return;
+    }
+
+    const emailRegex = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/;
+    if (!emailRegex.test(email.trim().toLowerCase())) {
+      showToastMsg("Please enter a valid lowercase email address.", "error");
+      return;
+    }
+
+    if (showPasswordSection && (newPassword || currentPassword || confirmPassword)) {
+      if (!currentPassword) {
+        showToastMsg("Please enter your current password to proceed.", "error");
+        return;
+      }
+      if (newPassword.length < 6) {
+        showToastMsg("New password must be at least 6 characters long.", "error");
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        showToastMsg("New password and confirmation do not match.", "error");
+        return;
+      }
+    }
+
+    try {
+      setSaving(true);
+      const payload = {
+        name: fullName.trim(),
+        email: email.trim().toLowerCase(),
+        phone: phone.trim(),
+      };
+
+      if (showPasswordSection && newPassword) {
+        payload.currentPassword = currentPassword;
+        payload.newPassword = newPassword;
+      }
+
+      const res = await API.put("/auth/profile", payload);
+      if (res.data?.success) {
+        showToastMsg("✓ Supermarket Admin profile updated successfully!", "success");
+        setInitialData({
+          fullName: fullName.trim(),
+          username: username.trim().toLowerCase(),
+          email: email.trim().toLowerCase(),
+          phone: phone.trim(),
+        });
+
+        // Sync local storage user
+        try {
+          const currentU = JSON.parse(localStorage.getItem("grocerease_user") || "{}");
+          const updatedU = {
+            ...currentU,
+            name: fullName.trim(),
+            email: email.trim().toLowerCase(),
+            phone: phone.trim(),
+          };
+          localStorage.setItem("grocerease_user", JSON.stringify(updatedU));
+          window.dispatchEvent(new Event("grocerease_storage_updated"));
+        } catch (_) {}
+
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+        setShowPasswordSection(false);
+      }
+    } catch (err) {
+      console.error("Store admin profile save error:", err);
+      showToastMsg(
+        err.response?.data?.message || "Failed to update profile. Please verify your current password.",
+        "error"
+      );
+    } finally {
+      setSaving(false);
     }
   };
 
   return (
-    <div className="grocer-page-container">
-      {/* ========================================================================= */}
-      {/* 1. TOP HERO BANNER - EXACT MATCH TO REGISTER NEW PRODUCT                  */}
-      {/* ========================================================================= */}
-      <ErpPageBanner
-        title="Store & Hardware Settings"
-        subtitle="Configure supermarket branch profile, exit turnstile IoT gates, UPI billing & security"
-        badges={["Branch: STORE-001 (Active)", "4 Turnstiles Online", "Automated IoT Gates"]}
-        icon={<Store size={22} color="#ffffff" strokeWidth={2.4} />}
-      />
-
+    <div
+      style={{
+        maxWidth: "1280px",
+        margin: "0 auto",
+        padding: "1.25rem 1.5rem 3rem 1.5rem",
+        backgroundColor: "#c4daf5",
+        borderRadius: "20px",
+        border: "1.5px solid #93c5fd",
+        boxShadow: "0 6px 24px rgba(37, 99, 235, 0.08)",
+        minHeight: "calc(100vh - 110px)",
+      }}
+    >
       {/* Toast Notification */}
-      {toastMessage && (
+      {toast.show && (
         <div
           style={{
-            background: "#DCFCE7",
-            border: "1px solid #86EFAC",
-            color: "#166534",
-            padding: "12px 18px",
+            position: "fixed",
+            bottom: "28px",
+            right: "28px",
+            background: toast.type === "error" ? "#dc2626" : toast.type === "info" ? "#2563eb" : "#1e40af",
+            color: "#ffffff",
+            padding: "14px 22px",
             borderRadius: "14px",
-            fontSize: "13.5px",
-            fontWeight: "700",
-            marginBottom: "20px",
+            boxShadow: "0 14px 35px rgba(0,0,0,0.22)",
+            zIndex: 99999,
+            fontSize: "14px",
+            fontWeight: 700,
             display: "flex",
             alignItems: "center",
-            gap: "8px",
-            boxShadow: "0 4px 12px rgba(22, 101, 52, 0.08)",
+            gap: "10px",
           }}
         >
-          <CheckCircle2 size={18} />
-          <span>{toastMessage}</span>
+          {toast.type === "error" ? (
+            <AlertCircle size={18} color="#ffffff" />
+          ) : (
+            <CheckCircle2 size={18} color="#60a5fa" />
+          )}
+          <span>{toast.message}</span>
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* 2. NAVIGATION TABS STRIP                                                  */}
-      {/* ========================================================================= */}
-      <div style={{ display: "flex", gap: "10px", marginBottom: "22px", flexWrap: "wrap" }}>
-        {SETTINGS_TABS.map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={`om-tab-btn ${isActive ? "active" : ""}`}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "8px",
-                padding: "10px 20px",
-                borderRadius: "14px",
-                fontSize: "13.5px",
-                fontWeight: 700,
-                cursor: "pointer",
-                border: "1px solid",
-                background: isActive ? "#2563EB" : "#FFFFFF",
-                color: isActive ? "#FFFFFF" : "#475569",
-                borderColor: isActive ? "#2563EB" : "#E2E8F0",
-                boxShadow: isActive ? "0 4px 14px rgba(37, 99, 235, 0.28)" : "0 2px 6px rgba(0,0,0,0.02)",
-                transition: "all 0.15s ease",
-              }}
-            >
-              <Icon size={16} />
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* ========================================================================= */}
-      {/* 3. SETTINGS CONTENT CARD                                                  */}
-      {/* ========================================================================= */}
-      <div className="pm-catalog-card" style={{ padding: "30px 36px", marginBottom: "48px" }}>
-        <form onSubmit={handleSave}>
-          {/* TAB 1: STORE & BRANCH PROFILE */}
-          {activeTab === "store" && (
-            <div>
-              <div style={{ borderBottom: "1px solid #F1F5F9", paddingBottom: "16px", marginBottom: "24px" }}>
-                <h3 style={{ margin: "0 0 4px", fontSize: "17.5px", fontWeight: "800", color: "#0F172A" }}>
-                  Supermarket Branch Information
-                </h3>
-                <p style={{ margin: 0, fontSize: "13px", color: "#64748B" }}>
-                  These branch details appear on customer digital receipts, tax invoices, and mobile order records.
-                </p>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "22px" }}>
-                <div className="pm-form-group">
-                  <label className="pm-form-label">
-                    <Store size={14} color="#2563EB" />
-                    <span>Supermarket Trade Name</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={storeForm.storeName}
-                    onChange={(e) => setStoreForm({ ...storeForm, storeName: e.target.value })}
-                    className="pm-form-input"
-                    placeholder="e.g. Smart Supermarket - GrocerEase"
-                    required
-                  />
-                </div>
-
-                <div className="pm-form-group">
-                  <label className="pm-form-label">
-                    <Building2 size={14} color="#2563EB" />
-                    <span>Store Branch Code</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={storeForm.branchCode}
-                    onChange={(e) => setStoreForm({ ...storeForm, branchCode: e.target.value })}
-                    className="pm-form-input"
-                    placeholder="e.g. STORE-001 (Downtown Central)"
-                    required
-                  />
-                </div>
-
-                <div className="pm-form-group">
-                  <label className="pm-form-label">
-                    <BadgeCheck size={14} color="#2563EB" />
-                    <span>GSTIN / Tax ID</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={storeForm.gstin}
-                    onChange={(e) => setStoreForm({ ...storeForm, gstin: e.target.value })}
-                    className="pm-form-input"
-                    placeholder="e.g. 29AAAAA0000A1Z5"
-                    required
-                  />
-                </div>
-
-                <div className="pm-form-group">
-                  <label className="pm-form-label">
-                    <IndianRupee size={14} color="#2563EB" />
-                    <span>Default GST Rate</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={storeForm.defaultGstRate}
-                    onChange={(e) => setStoreForm({ ...storeForm, defaultGstRate: e.target.value })}
-                    className="pm-form-input"
-                    placeholder="e.g. 5%"
-                    required
-                  />
-                </div>
-
-                <div className="pm-form-group">
-                  <label className="pm-form-label">
-                    <Phone size={14} color="#2563EB" />
-                    <span>Customer Support Phone</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={storeForm.phone}
-                    onChange={(e) => setStoreForm({ ...storeForm, phone: e.target.value })}
-                    className="pm-form-input"
-                    placeholder="e.g. +91 80 2345 6789"
-                  />
-                </div>
-
-                <div className="pm-form-group">
-                  <label className="pm-form-label">
-                    <Mail size={14} color="#2563EB" />
-                    <span>Official Support Email</span>
-                  </label>
-                  <input
-                    type="email"
-                    value={storeForm.email}
-                    onChange={(e) => setStoreForm({ ...storeForm, email: e.target.value })}
-                    className="pm-form-input"
-                    placeholder="e.g. support@grocerease.com"
-                  />
-                </div>
-
-                <div className="pm-form-group" style={{ gridColumn: "span 2" }}>
-                  <label className="pm-form-label">
-                    <MapPin size={14} color="#2563EB" />
-                    <span>Store Physical Address</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={storeForm.address}
-                    onChange={(e) => setStoreForm({ ...storeForm, address: e.target.value })}
-                    className="pm-form-input"
-                    placeholder="Full street address, city, state, postal code"
-                    required
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 2: TURNSTILE HARDWARE */}
-          {activeTab === "turnstile" && (
-            <div>
-              <div style={{ borderBottom: "1px solid #F1F5F9", paddingBottom: "16px", marginBottom: "24px" }}>
-                <h3 style={{ margin: "0 0 4px", fontSize: "17.5px", fontWeight: "800", color: "#0F172A" }}>
-                  Exit Turnstiles & IoT Gate Pass Integration
-                </h3>
-                <p style={{ margin: 0, fontSize: "13px", color: "#64748B" }}>
-                  Control automated supermarket exit turnstile hardware barriers, barcode scanners, and gate timers.
-                </p>
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                <div className="settings-toggle-card">
-                  <div className="settings-toggle-info">
-                    <h4>Auto-Unlock Turnstile Upon Payment Approval</h4>
-                    <p>
-                      Automatically transmit open signal to Turnstile Exit Gates 1–4 when payment status transitions to Approved or Completed.
-                    </p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={turnstileForm.autoOpenOnApproved}
-                    onChange={(e) =>
-                      setTurnstileForm({ ...turnstileForm, autoOpenOnApproved: e.target.checked })
-                    }
-                    style={{ width: "22px", height: "22px", cursor: "pointer", accentColor: "#2563EB" }}
-                  />
-                </div>
-
-                <div className="settings-toggle-card">
-                  <div className="settings-toggle-info">
-                    <h4>Audio Chime on Gate Pass Scan</h4>
-                    <p>
-                      Play high-fidelity confirmation chime when customer scans their mobile exit barcode at turnstile optical scanner.
-                    </p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={turnstileForm.soundBeepOnExit}
-                    onChange={(e) =>
-                      setTurnstileForm({ ...turnstileForm, soundBeepOnExit: e.target.checked })
-                    }
-                    style={{ width: "22px", height: "22px", cursor: "pointer", accentColor: "#2563EB" }}
-                  />
-                </div>
-
-                <div className="settings-toggle-card">
-                  <div className="settings-toggle-info">
-                    <h4>Require Cashier PIN for Cash Clearance</h4>
-                    <p>
-                      Prompt exit security staff for verification confirmation before opening turnstile for cash payments.
-                    </p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={turnstileForm.requireCashierPinForCash}
-                    onChange={(e) =>
-                      setTurnstileForm({
-                        ...turnstileForm,
-                        requireCashierPinForCash: e.target.checked,
-                      })
-                    }
-                    style={{ width: "22px", height: "22px", cursor: "pointer", accentColor: "#2563EB" }}
-                  />
-                </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginTop: "8px" }}>
-                  <div className="pm-form-group">
-                    <label className="pm-form-label">Exit Pass Expiration Window</label>
-                    <select
-                      value={turnstileForm.gatePassExpiryMinutes}
-                      onChange={(e) =>
-                        setTurnstileForm({
-                          ...turnstileForm,
-                          gatePassExpiryMinutes: Number(e.target.value),
-                        })
-                      }
-                      className="pm-form-select"
-                    >
-                      <option value={10}>10 Minutes from Checkout</option>
-                      <option value={15}>15 Minutes (Recommended Standard)</option>
-                      <option value={30}>30 Minutes Extended</option>
-                    </select>
-                  </div>
-
-                  <div className="pm-form-group">
-                    <label className="pm-form-label">Active Exit Turnstile Lanes</label>
-                    <select
-                      value={turnstileForm.gateCount}
-                      onChange={(e) =>
-                        setTurnstileForm({
-                          ...turnstileForm,
-                          gateCount: Number(e.target.value),
-                        })
-                      }
-                      className="pm-form-select"
-                    >
-                      <option value={2}>2 Lanes (Express Exit)</option>
-                      <option value={4}>4 Lanes (Standard Supermarket)</option>
-                      <option value={6}>6 Lanes (High Traffic Hypermarket)</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 3: PAYMENTS & CASHIER CONFIG */}
-          {activeTab === "payment" && (
-            <div>
-              <div style={{ borderBottom: "1px solid #F1F5F9", paddingBottom: "16px", marginBottom: "24px" }}>
-                <h3 style={{ margin: "0 0 4px", fontSize: "17.5px", fontWeight: "800", color: "#0F172A" }}>
-                  Payment Gateway & UPI Billing Configuration
-                </h3>
-                <p style={{ margin: 0, fontSize: "13px", color: "#64748B" }}>
-                  Dynamic QR codes generated on customer mobile self-checkouts direct customer payments to this UPI Virtual Payment Address.
-                </p>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "22px", marginBottom: "24px" }}>
-                <div className="pm-form-group">
-                  <label className="pm-form-label">
-                    <QrCode size={14} color="#2563EB" />
-                    <span>Merchant UPI ID (VPA)</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={paymentForm.upiId}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, upiId: e.target.value })}
-                    className="pm-form-input"
-                    placeholder="e.g. storename@upi"
-                    required
-                  />
-                </div>
-
-                <div className="pm-form-group">
-                  <label className="pm-form-label">
-                    <Building2 size={14} color="#2563EB" />
-                    <span>Merchant Display Name</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={paymentForm.merchantName}
-                    onChange={(e) =>
-                      setPaymentForm({ ...paymentForm, merchantName: e.target.value })
-                    }
-                    className="pm-form-input"
-                    placeholder="e.g. Smart Supermarket GrocerEase"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                <div className="settings-toggle-card">
-                  <div className="settings-toggle-info">
-                    <h4>Dynamic UPI Fast Pay QR Codes</h4>
-                    <p>
-                      Generate live UPI intent QR codes on customer mobile self-checkout screen with exact invoice subtotal.
-                    </p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={paymentForm.enableUpiQRFastPay}
-                    onChange={(e) =>
-                      setPaymentForm({ ...paymentForm, enableUpiQRFastPay: e.target.checked })
-                    }
-                    style={{ width: "22px", height: "22px", cursor: "pointer", accentColor: "#2563EB" }}
-                  />
-                </div>
-
-                <div className="settings-toggle-card">
-                  <div className="settings-toggle-info">
-                    <h4>Enable "Cash at Exit" Self-Checkout Option</h4>
-                    <p>
-                      Allow shoppers to select cash and receive a temporary Gate Pass barcode to settle at the exit cashier counter.
-                    </p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={paymentForm.enableCashAtExit}
-                    onChange={(e) =>
-                      setPaymentForm({ ...paymentForm, enableCashAtExit: e.target.checked })
-                    }
-                    style={{ width: "22px", height: "22px", cursor: "pointer", accentColor: "#2563EB" }}
-                  />
-                </div>
-
-                <div className="settings-toggle-card">
-                  <div className="settings-toggle-info">
-                    <h4>Enable Card / Swipe POS Integration</h4>
-                    <p>
-                      Accept debit and credit cards via integrated supermarket payment terminal devices.
-                    </p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={paymentForm.enableCardPayment}
-                    onChange={(e) =>
-                      setPaymentForm({ ...paymentForm, enableCardPayment: e.target.checked })
-                    }
-                    style={{ width: "22px", height: "22px", cursor: "pointer", accentColor: "#2563EB" }}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 4: ADMIN SECURITY & ROLES */}
-          {activeTab === "security" && (
-            <div>
-              <div style={{ borderBottom: "1px solid #F1F5F9", paddingBottom: "16px", marginBottom: "24px" }}>
-                <h3 style={{ margin: "0 0 4px", fontSize: "17.5px", fontWeight: "800", color: "#0F172A" }}>
-                  Admin Authentication & Role-Based Access
-                </h3>
-                <p style={{ margin: 0, fontSize: "13px", color: "#64748B" }}>
-                  Super Admin credentials, payment approval authority, and hardware access clearance.
-                </p>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "22px", marginBottom: "24px" }}>
-                <div className="pm-form-group">
-                  <label className="pm-form-label">
-                    <ShieldCheck size={14} color="#2563EB" />
-                    <span>Administrator Name</span>
-                  </label>
-                  <input
-                    type="text"
-                    defaultValue="Eleanor Pena"
-                    className="pm-form-input"
-                    readOnly
-                  />
-                </div>
-
-                <div className="pm-form-group">
-                  <label className="pm-form-label">
-                    <Lock size={14} color="#2563EB" />
-                    <span>Security Clearance Role</span>
-                  </label>
-                  <input
-                    type="text"
-                    value="Super Admin (Full Read, Write & Approval Rights)"
-                    className="pm-form-input"
-                    readOnly
-                  />
-                </div>
-
-                <div className="pm-form-group" style={{ gridColumn: "span 2" }}>
-                  <label className="pm-form-label">
-                    <Mail size={14} color="#2563EB" />
-                    <span>Authorized Admin Email</span>
-                  </label>
-                  <input
-                    type="email"
-                    defaultValue="admin@grocerease.com"
-                    className="pm-form-input"
-                    readOnly
-                  />
-                </div>
-              </div>
-
-              <div className="settings-toggle-card">
-                <div className="settings-toggle-info">
-                  <h4>Emergency Turnstile Lockdown Override</h4>
-                  <p>
-                    Enable immediate turnstile gate lock override in case of power failure or store evacuation protocol.
-                  </p>
-                </div>
-                <span
-                  style={{
-                    background: "#EFF6FF",
-                    color: "#1D4ED8",
-                    padding: "4px 12px",
-                    borderRadius: "12px",
-                    fontWeight: 700,
-                    fontSize: "12px",
-                    border: "1px solid #DBEAFE",
-                  }}
-                >
-                  Override Ready
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* ===================================================================== */}
-          {/* ACTION FOOTER BAR                                                     */}
-          {/* ===================================================================== */}
+      {/* 1. Header with Breadcrumb - Enclosed White Card Box */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: "1rem",
+          background: "#ffffff",
+          padding: "1.25rem 1.75rem",
+          borderRadius: "16px",
+          border: "1.5px solid #93c5fd",
+          boxShadow: "0 4px 14px rgba(37, 99, 235, 0.08)",
+          marginBottom: "1.75rem",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
           <div
             style={{
-              marginTop: "36px",
-              paddingTop: "20px",
-              borderTop: "1px solid #F1F5F9",
+              width: "48px",
+              height: "48px",
+              borderRadius: "14px",
+              background: "#dbeafe",
+              color: "#1d4ed8",
               display: "flex",
-              justifyContent: "space-between",
               alignItems: "center",
-              flexWrap: "wrap",
-              gap: "14px",
+              justifyContent: "center",
+              boxShadow: "0 2px 8px rgba(37, 99, 235, 0.15)",
+              border: "1.5px solid #93c5fd",
             }}
           >
+            <Store size={26} strokeWidth={2.4} />
+          </div>
+          <div>
+            <h1 style={{ margin: 0, fontSize: "1.45rem", fontWeight: 800, color: "#0f172a", letterSpacing: "-0.02em" }}>
+              My Profile
+            </h1>
+            <p style={{ margin: "2px 0 0 0", fontSize: "0.86rem", color: "#64748b" }}>
+              Manage your supermarket profile information and admin credentials
+            </p>
+          </div>
+        </div>
+
+        {/* Breadcrumb */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            fontSize: "0.82rem",
+            color: "#64748b",
+            background: "#ffffff",
+            padding: "8px 14px",
+            borderRadius: "10px",
+            border: "1.5px solid #bfdbfe",
+            boxShadow: "0 2px 6px rgba(37, 99, 235, 0.04)",
+          }}
+        >
+          <Home size={14} color="#2563eb" />
+          <span style={{ color: "#94a3b8" }}>/</span>
+          <span>Settings</span>
+          <span style={{ color: "#94a3b8" }}>/</span>
+          <strong style={{ color: "#1e40af" }}>My Profile</strong>
+        </div>
+      </div>
+
+      {/* 2. Main Two-Column Profile Grid */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(300px, 350px) 1fr",
+          gap: "1.75rem",
+          alignItems: "start",
+        }}
+      >
+        {/* Left Column: Supermarket & Admin Card (Blue & Navy SaaS Theme) */}
+        <div
+          style={{
+            background: "#ffffff",
+            borderRadius: "20px",
+            border: "1.5px solid #bfdbfe",
+            padding: "2rem 1.75rem",
+            boxShadow: "0 8px 24px rgba(37, 99, 235, 0.08)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            textAlign: "center",
+          }}
+        >
+          {/* Logo or Store Initial */}
+          <div style={{ position: "relative", marginBottom: "1.25rem" }}>
+            <div
+              style={{
+                width: "104px",
+                height: "104px",
+                borderRadius: "50%",
+                background: "linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%)",
+                color: "#ffffff",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "2rem",
+                fontWeight: 800,
+                letterSpacing: "0.05em",
+                boxShadow: "0 8px 24px rgba(37, 99, 235, 0.28)",
+                border: "4px solid #ffffff",
+                overflow: "hidden",
+              }}
+            >
+              {storeLogo ? (
+                <img
+                  src={storeLogo}
+                  alt={storeName}
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  onError={(e) => {
+                    e.currentTarget.style.display = "none";
+                  }}
+                />
+              ) : (
+                <span>{storeName ? storeName.charAt(0).toUpperCase() : "S"}</span>
+              )}
+            </div>
             <button
               type="button"
-              onClick={handleReset}
-              className="action-pill-btn refresh"
-              style={{ padding: "10px 18px", fontSize: "13px" }}
+              title="Store Logo / Photo"
+              style={{
+                position: "absolute",
+                bottom: "2px",
+                right: "2px",
+                width: "32px",
+                height: "32px",
+                borderRadius: "50%",
+                background: "#1e40af",
+                color: "#ffffff",
+                border: "2.5px solid #ffffff",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
+              }}
+              onClick={() => showToastMsg("Logo synced with Super Admin registry.", "info")}
             >
-              <RotateCcw size={14} />
-              <span>Reset Tab to Defaults</span>
+              <Camera size={15} />
             </button>
+          </div>
 
-            <button
-              type="submit"
-              className="pm-btn-save"
+          {/* Supermarket Name */}
+          <h2 style={{ margin: "0 0 4px 0", fontSize: "1.3rem", fontWeight: 800, color: "#0f172a" }}>
+            {storeName || "Supermarket"}
+          </h2>
+
+          <div style={{ fontSize: "0.85rem", color: "#64748b", fontWeight: 600, marginBottom: "1rem" }}>
+            Admin: {fullName || "Store Admin"}
+          </div>
+
+          {/* Badges: Store Admin & Plan */}
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", justifyContent: "center", marginBottom: "1.5rem" }}>
+            <div
               style={{
                 display: "inline-flex",
                 alignItems: "center",
-                gap: "8px",
-                padding: "11px 26px",
-                fontSize: "13.5px",
-                boxShadow: "0 4px 14px rgba(37, 99, 235, 0.3)",
+                gap: "5px",
+                background: "#eff6ff",
+                color: "#1e40af",
+                padding: "3px 12px",
+                borderRadius: "9999px",
+                fontSize: "0.76rem",
+                fontWeight: 800,
+                border: "1px solid #bfdbfe",
               }}
             >
-              <Save size={16} />
-              <span>Save Changes</span>
-            </button>
+              <Crown size={13} color="#2563eb" />
+              <span>Store Admin</span>
+            </div>
+
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "5px",
+                background: "#dbeafe",
+                color: "#1d4ed8",
+                padding: "3px 12px",
+                borderRadius: "9999px",
+                fontSize: "0.76rem",
+                fontWeight: 800,
+                border: "1px solid #bfdbfe",
+              }}
+            >
+              <Sparkles size={13} color="#2563eb" />
+              <span>{storePlan} Plan</span>
+            </div>
           </div>
-        </form>
+
+          {/* Details List */}
+          <div
+            style={{
+              width: "100%",
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.9rem",
+              padding: "1.25rem 0",
+              borderTop: "1px solid #e2e8f0",
+              borderBottom: "1px solid #e2e8f0",
+              marginBottom: "1.5rem",
+              textAlign: "left",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <div
+                style={{
+                  width: "32px",
+                  height: "32px",
+                  borderRadius: "8px",
+                  background: "#eff6ff",
+                  border: "1px solid #bfdbfe",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#2563eb",
+                  flexShrink: 0,
+                }}
+              >
+                <Building2 size={16} />
+              </div>
+              <span style={{ fontSize: "0.85rem", color: "#334155", fontWeight: 700 }}>
+                Tenant ID: {storeCode}
+              </span>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <div
+                style={{
+                  width: "32px",
+                  height: "32px",
+                  borderRadius: "8px",
+                  background: "#eff6ff",
+                  border: "1px solid #bfdbfe",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#2563eb",
+                  flexShrink: 0,
+                }}
+              >
+                <Mail size={16} />
+              </div>
+              <span style={{ fontSize: "0.85rem", color: "#334155", fontWeight: 600, wordBreak: "break-all" }}>
+                {email || "admin@store.com"}
+              </span>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <div
+                style={{
+                  width: "32px",
+                  height: "32px",
+                  borderRadius: "8px",
+                  background: "#eff6ff",
+                  border: "1px solid #bfdbfe",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#2563eb",
+                  flexShrink: 0,
+                }}
+              >
+                <Phone size={16} />
+              </div>
+              <span style={{ fontSize: "0.85rem", color: "#334155", fontWeight: 600 }}>
+                {phone || "+91 98765 43210"}
+              </span>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <div
+                style={{
+                  width: "32px",
+                  height: "32px",
+                  borderRadius: "8px",
+                  background: "#eff6ff",
+                  border: "1px solid #bfdbfe",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#2563eb",
+                  flexShrink: 0,
+                }}
+              >
+                <MapPin size={16} />
+              </div>
+              <span style={{ fontSize: "0.85rem", color: "#334155", fontWeight: 600 }}>
+                {storeCity} &bull; {storeAddress}
+              </span>
+            </div>
+          </div>
+
+          {/* Multi-Tenant Cryptographic Isolation Status */}
+          <div
+            style={{
+              width: "100%",
+              background: "#eff6ff",
+              border: "1.5px solid #bfdbfe",
+              borderRadius: "14px",
+              padding: "12px 14px",
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              textAlign: "left",
+            }}
+          >
+            <div
+              style={{
+                width: "34px",
+                height: "34px",
+                borderRadius: "10px",
+                background: "#2563eb",
+                color: "#ffffff",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <ShieldCheck size={20} strokeWidth={2.4} />
+            </div>
+            <span style={{ fontSize: "0.8rem", color: "#1e40af", fontWeight: 750, lineHeight: 1.35 }}>
+              Dedicated isolated tenant workspace. Profile data is protected.
+            </span>
+          </div>
+        </div>
+
+        {/* Right Column: Edit Profile Form */}
+        <div
+          style={{
+            background: "#ffffff",
+            borderRadius: "20px",
+            border: "1.5px solid #bfdbfe",
+            padding: "2rem",
+            boxShadow: "0 8px 28px rgba(37, 99, 235, 0.06)",
+          }}
+        >
+          {/* Header */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+              marginBottom: "1.75rem",
+              paddingBottom: "1rem",
+              borderBottom: "1px solid #e2e8f0",
+            }}
+          >
+            <div
+              style={{
+                width: "36px",
+                height: "36px",
+                borderRadius: "10px",
+                background: "#eff6ff",
+                color: "#2563eb",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                border: "1px solid #bfdbfe",
+              }}
+            >
+              <Edit3 size={18} strokeWidth={2.4} />
+            </div>
+            <h2 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 800, color: "#0f172a" }}>
+              Edit Store Admin Profile
+            </h2>
+          </div>
+
+          <form onSubmit={handleSaveChanges} style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+            {/* Store Name & Branch Code */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, color: "#334155", marginBottom: "6px" }}>
+                  Supermarket Name
+                </label>
+                <input
+                  type="text"
+                  value={storeName}
+                  disabled
+                  readOnly
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px",
+                    borderRadius: "10px",
+                    border: "1px solid #e2e8f0",
+                    background: "#f8fafc",
+                    fontSize: "0.9rem",
+                    fontWeight: 700,
+                    color: "#0f172a",
+                    cursor: "not-allowed",
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, color: "#334155", marginBottom: "6px" }}>
+                  Branch Unique Code
+                </label>
+                <input
+                  type="text"
+                  value={storeCode}
+                  disabled
+                  readOnly
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px",
+                    borderRadius: "10px",
+                    border: "1px solid #bfdbfe",
+                    background: "#eff6ff",
+                    fontSize: "0.9rem",
+                    fontWeight: 700,
+                    color: "#1e40af",
+                    cursor: "not-allowed",
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Admin Full Name */}
+            <div>
+              <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, color: "#334155", marginBottom: "6px" }}>
+                Admin Full Name <span style={{ color: "#ef4444" }}>*</span>
+              </label>
+              <input
+                type="text"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                onFocus={(e) => {
+                  e.target.style.borderColor = "#2563eb";
+                  e.target.style.boxShadow = "0 0 0 3px rgba(37, 99, 235, 0.15)";
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderColor = "#cbd5e1";
+                  e.target.style.boxShadow = "none";
+                }}
+                placeholder="Store Admin Name"
+                required
+                style={{
+                  width: "100%",
+                  padding: "10px 14px",
+                  borderRadius: "10px",
+                  border: "1px solid #cbd5e1",
+                  fontSize: "0.9rem",
+                  fontWeight: 600,
+                  color: "#0f172a",
+                  outline: "none",
+                  transition: "all 0.15s ease",
+                }}
+              />
+            </div>
+
+            {/* Username */}
+            <div>
+              <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, color: "#334155", marginBottom: "6px" }}>
+                Admin Username <span style={{ color: "#ef4444" }}>*</span>
+              </label>
+              <div style={{ position: "relative" }}>
+                <span style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)", color: "#2563eb" }}>
+                  <User size={16} />
+                </span>
+                <input
+                  type="text"
+                  value={username}
+                  disabled
+                  readOnly
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px 10px 40px",
+                    borderRadius: "10px",
+                    border: "1px solid #e2e8f0",
+                    background: "#f8fafc",
+                    fontSize: "0.9rem",
+                    fontWeight: 600,
+                    color: "#64748b",
+                    cursor: "not-allowed",
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Registered Email */}
+            <div>
+              <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, color: "#334155", marginBottom: "6px" }}>
+                Registered Email Address <span style={{ color: "#ef4444" }}>*</span>
+              </label>
+              <div style={{ position: "relative" }}>
+                <span style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)", color: "#2563eb" }}>
+                  <Mail size={16} />
+                </span>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={handleEmailChange}
+                  onFocus={(e) => {
+                    e.target.style.borderColor = "#2563eb";
+                    e.target.style.boxShadow = "0 0 0 3px rgba(37, 99, 235, 0.15)";
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = "#cbd5e1";
+                    e.target.style.boxShadow = "none";
+                  }}
+                  placeholder="admin@store.com"
+                  required
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px 10px 40px",
+                    borderRadius: "10px",
+                    border: "1px solid #cbd5e1",
+                    fontSize: "0.9rem",
+                    fontWeight: 600,
+                    color: "#0f172a",
+                    outline: "none",
+                    transition: "all 0.15s ease",
+                  }}
+                />
+              </div>
+              <small style={{ color: "#64748b", fontSize: "11px", marginTop: "4px", display: "block" }}>
+                Strict lowercase enforced. Subscription and account notifications will be sent to this email.
+              </small>
+            </div>
+
+            {/* Mobile Number */}
+            <div>
+              <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, color: "#334155", marginBottom: "6px" }}>
+                Mobile Number <span style={{ color: "#ef4444" }}>*</span>
+              </label>
+              <div style={{ position: "relative" }}>
+                <span style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)", color: "#2563eb" }}>
+                  <Phone size={16} />
+                </span>
+                <input
+                  type="text"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  onFocus={(e) => {
+                    e.target.style.borderColor = "#2563eb";
+                    e.target.style.boxShadow = "0 0 0 3px rgba(37, 99, 235, 0.15)";
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = "#cbd5e1";
+                    e.target.style.boxShadow = "none";
+                  }}
+                  placeholder="+91 98765 43210"
+                  required
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px 10px 40px",
+                    borderRadius: "10px",
+                    border: "1px solid #cbd5e1",
+                    fontSize: "0.9rem",
+                    fontWeight: 600,
+                    color: "#0f172a",
+                    outline: "none",
+                    transition: "all 0.15s ease",
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Change Admin Password Section */}
+            <div
+              style={{
+                border: "1.5px solid #bfdbfe",
+                borderRadius: "16px",
+                padding: "20px 22px",
+                background: "#f8fafc",
+                display: "flex",
+                flexDirection: "column",
+                gap: "1.25rem",
+                boxShadow: "0 2px 10px rgba(37, 99, 235, 0.04)",
+              }}
+            >
+              {/* Card Header */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                  <div
+                    style={{
+                      width: "40px",
+                      height: "40px",
+                      borderRadius: "12px",
+                      background: "#eff6ff",
+                      color: "#2563eb",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      border: "1.5px solid #bfdbfe",
+                      boxShadow: "0 2px 6px rgba(37, 99, 235, 0.12)",
+                    }}
+                  >
+                    <Lock size={20} strokeWidth={2.4} />
+                  </div>
+                  <div>
+                    <strong style={{ fontSize: "0.98rem", color: "#0f172a", display: "block" }}>
+                      Change Admin Password
+                    </strong>
+                    <span style={{ fontSize: "0.8rem", color: "#64748b" }}>
+                      Update and secure your store admin login credentials
+                    </span>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    background: "#eff6ff",
+                    color: "#1e40af",
+                    border: "1px solid #bfdbfe",
+                    padding: "4px 12px",
+                    borderRadius: "20px",
+                    fontSize: "0.76rem",
+                    fontWeight: 750,
+                  }}
+                >
+                  <ShieldCheck size={14} color="#2563eb" />
+                  <span>Secure Bcrypt Hash</span>
+                </div>
+              </div>
+
+              {/* 3 Password Fields Grid */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+                  gap: "1rem",
+                  paddingTop: "6px",
+                }}
+              >
+                {/* 1. Current Password */}
+                <div>
+                  <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, color: "#334155", marginBottom: "6px" }}>
+                    Current Password <span style={{ color: "#ef4444" }}>*</span>
+                  </label>
+                  <div style={{ position: "relative" }}>
+                    <input
+                      type={showCurrentPass ? "text" : "password"}
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      placeholder="Current password"
+                      onFocus={(e) => {
+                        e.target.style.borderColor = "#2563eb";
+                        e.target.style.boxShadow = "0 0 0 3px rgba(37, 99, 235, 0.15)";
+                      }}
+                      onBlur={(e) => {
+                        e.target.style.borderColor = "#cbd5e1";
+                        e.target.style.boxShadow = "none";
+                      }}
+                      style={{
+                        width: "100%",
+                        padding: "10px 42px 10px 14px",
+                        borderRadius: "10px",
+                        border: "1px solid #cbd5e1",
+                        fontSize: "0.88rem",
+                        color: "#0f172a",
+                        background: "#ffffff",
+                        outline: "none",
+                        transition: "all 0.15s ease",
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCurrentPass(!showCurrentPass)}
+                      title={showCurrentPass ? "Hide current password" : "Show current password"}
+                      style={{
+                        position: "absolute",
+                        right: "10px",
+                        top: "50%",
+                        transform: "translateY(-50%)",
+                        background: "none",
+                        border: "none",
+                        color: "#64748b",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        padding: "4px",
+                      }}
+                    >
+                      {showCurrentPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                  <span style={{ fontSize: "0.74rem", color: "#64748b", marginTop: "3px", display: "block" }}>
+                    Verify your existing password
+                  </span>
+                </div>
+
+                {/* 2. New Password */}
+                <div>
+                  <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, color: "#334155", marginBottom: "6px" }}>
+                    New Password <span style={{ color: "#ef4444" }}>*</span>
+                  </label>
+                  <div style={{ position: "relative" }}>
+                    <input
+                      type={showNewPass ? "text" : "password"}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Minimum 6 characters"
+                      onFocus={(e) => {
+                        e.target.style.borderColor = "#2563eb";
+                        e.target.style.boxShadow = "0 0 0 3px rgba(37, 99, 235, 0.15)";
+                      }}
+                      onBlur={(e) => {
+                        e.target.style.borderColor = "#cbd5e1";
+                        e.target.style.boxShadow = "none";
+                      }}
+                      style={{
+                        width: "100%",
+                        padding: "10px 42px 10px 14px",
+                        borderRadius: "10px",
+                        border: "1px solid #cbd5e1",
+                        fontSize: "0.88rem",
+                        color: "#0f172a",
+                        background: "#ffffff",
+                        outline: "none",
+                        transition: "all 0.15s ease",
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPass(!showNewPass)}
+                      title={showNewPass ? "Hide new password" : "Show new password"}
+                      style={{
+                        position: "absolute",
+                        right: "10px",
+                        top: "50%",
+                        transform: "translateY(-50%)",
+                        background: "none",
+                        border: "none",
+                        color: "#64748b",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        padding: "4px",
+                      }}
+                    >
+                      {showNewPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                  <span style={{ fontSize: "0.74rem", color: "#64748b", marginTop: "3px", display: "block" }}>
+                    Must be at least 6 characters
+                  </span>
+                </div>
+
+                {/* 3. Confirm Password */}
+                <div>
+                  <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, color: "#334155", marginBottom: "6px" }}>
+                    Confirm Password <span style={{ color: "#ef4444" }}>*</span>
+                  </label>
+                  <div style={{ position: "relative" }}>
+                    <input
+                      type={showConfirmPass ? "text" : "password"}
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="Re-enter new password"
+                      onFocus={(e) => {
+                        e.target.style.borderColor = "#2563eb";
+                        e.target.style.boxShadow = "0 0 0 3px rgba(37, 99, 235, 0.15)";
+                      }}
+                      onBlur={(e) => {
+                        e.target.style.borderColor = "#cbd5e1";
+                        e.target.style.boxShadow = "none";
+                      }}
+                      style={{
+                        width: "100%",
+                        padding: "10px 42px 10px 14px",
+                        borderRadius: "10px",
+                        border: "1px solid #cbd5e1",
+                        fontSize: "0.88rem",
+                        color: "#0f172a",
+                        background: "#ffffff",
+                        outline: "none",
+                        transition: "all 0.15s ease",
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPass(!showConfirmPass)}
+                      title={showConfirmPass ? "Hide confirm password" : "Show confirm password"}
+                      style={{
+                        position: "absolute",
+                        right: "10px",
+                        top: "50%",
+                        transform: "translateY(-50%)",
+                        background: "none",
+                        border: "none",
+                        color: "#64748b",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        padding: "4px",
+                      }}
+                    >
+                      {showConfirmPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                  {confirmPassword && (
+                    <span
+                      style={{
+                        fontSize: "0.74rem",
+                        marginTop: "3px",
+                        display: "block",
+                        fontWeight: 700,
+                        color: newPassword === confirmPassword ? "#16a34a" : "#dc2626",
+                      }}
+                    >
+                      {newPassword === confirmPassword ? "✓ Passwords match" : "✕ Passwords do not match"}
+                    </span>
+                  )}
+                  {!confirmPassword && (
+                    <span style={{ fontSize: "0.74rem", color: "#64748b", marginTop: "3px", display: "block" }}>
+                      Matches new password
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Dedicated Update Password Button */}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  alignItems: "center",
+                  gap: "10px",
+                  paddingTop: "8px",
+                  borderTop: "1px dashed #cbd5e1",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={handleUpdatePassword}
+                  disabled={updatingPassword || !currentPassword || !newPassword || !confirmPassword}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    background:
+                      updatingPassword || !currentPassword || !newPassword || !confirmPassword
+                        ? "#94a3b8"
+                        : "linear-gradient(135deg, #1e40af 0%, #2563eb 100%)",
+                    color: "#ffffff",
+                    border: "none",
+                    padding: "9px 22px",
+                    borderRadius: "10px",
+                    fontSize: "0.85rem",
+                    fontWeight: 750,
+                    cursor:
+                      updatingPassword || !currentPassword || !newPassword || !confirmPassword
+                        ? "not-allowed"
+                        : "pointer",
+                    boxShadow:
+                      updatingPassword || !currentPassword || !newPassword || !confirmPassword
+                        ? "none"
+                        : "0 4px 14px rgba(37, 99, 235, 0.28)",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  <Lock size={15} />
+                  <span>{updatingPassword ? "Updating Password..." : "Update Password"}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Bottom Actions */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                gap: "1rem",
+                marginTop: "1.5rem",
+              }}
+            >
+              <button
+                type="submit"
+                disabled={saving}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "8px",
+                  background: "#1e40af",
+                  color: "#ffffff",
+                  border: "none",
+                  padding: "11px 28px",
+                  borderRadius: "10px",
+                  fontSize: "0.92rem",
+                  fontWeight: 800,
+                  cursor: saving ? "wait" : "pointer",
+                  boxShadow: "0 4px 14px rgba(30, 64, 175, 0.35)",
+                  minWidth: "160px",
+                }}
+              >
+                <Check size={18} strokeWidth={2.4} />
+                <span>{saving ? "Saving..." : "Save Changes"}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleCancel}
+                disabled={saving}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "8px",
+                  background: "#ffffff",
+                  color: "#334155",
+                  border: "1.5px solid #cbd5e1",
+                  padding: "11px 28px",
+                  borderRadius: "10px",
+                  fontSize: "0.92rem",
+                  fontWeight: 750,
+                  cursor: "pointer",
+                  minWidth: "130px",
+                }}
+              >
+                <X size={18} strokeWidth={2.4} />
+                <span>Cancel</span>
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   );

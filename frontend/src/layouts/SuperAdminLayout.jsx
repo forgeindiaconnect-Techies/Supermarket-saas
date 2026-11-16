@@ -25,7 +25,7 @@ import {
   FileText,
   TrendingUp,
   Headphones,
-  Rocket,
+  MessageSquare,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { io } from "socket.io-client";
@@ -40,6 +40,9 @@ export default function SuperAdminLayout() {
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
+  const [notifDropdownOpen, setNotifDropdownOpen] = useState(false);
+  const notifRef = useRef(null);
+  const profileRef = useRef(null);
 
   // Collapsible Menu Groups State (all open by default for rich display)
   const [openGroups, setOpenGroups] = useState({
@@ -51,27 +54,97 @@ export default function SuperAdminLayout() {
   });
 
   const [unreadNotifCount, setUnreadNotifCount] = useState(0);
-  const [croppedBannerUrl, setCroppedBannerUrl] = useState(null);
+  const [notifications, setNotifications] = useState([]);
+  const [connectedStoreCount, setConnectedStoreCount] = useState(3);
 
-  // Crop the exact top 56px header banner from master reference image
+  // Fetch registered supermarkets count for sidebar status card
+  useEffect(() => {
+    API.get("/super-admin/supermarkets")
+      .then((res) => {
+        if (res.data?.success && Array.isArray(res.data.supermarkets)) {
+          setConnectedStoreCount(res.data.supermarkets.length);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (profileRef.current && !profileRef.current.contains(e.target)) {
+        setProfileDropdownOpen(false);
+      }
+      if (notifRef.current && !notifRef.current.contains(e.target)) {
+        setNotifDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Using exact user-provided header banner with full clearance
+  const exactBannerUrl = "/exact-header-banner.jpg";
+  const [cleanBannerUrl, setCleanBannerUrl] = useState(null);
+
+  // Seamlessly clean any green artifacts or stray borders without affecting natural sky/clouds
   useEffect(() => {
     const img = new Image();
     img.crossOrigin = "anonymous";
-    img.src = "/super-admin-reference-master.jpg";
+    img.src = exactBannerUrl;
     img.onload = () => {
       try {
+        const W = img.naturalWidth || 1023;
+        const H = img.naturalHeight || 92;
         const canvas = document.createElement("canvas");
-        const origW = img.naturalWidth || 618;
-        const origH = img.naturalHeight || 383;
-        // In the master reference image, the header banner is exactly the top 14.8% of height
-        const bannerH = Math.round(origH * 0.148);
-        canvas.width = origW;
-        canvas.height = bannerH;
+        canvas.width = W;
+        canvas.height = H;
         const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0, origW, bannerH, 0, 0, origW, bannerH);
-        setCroppedBannerUrl(canvas.toDataURL("image/png"));
-      } catch (err) {
-        console.warn("Banner crop fallback:", err);
+        ctx.drawImage(img, 0, 0);
+
+        const imgData = ctx.getImageData(0, 0, W, H);
+        const data = imgData.data;
+
+        // 1. Inpaint only the tiny green chevron in the sky at top-left (x: 20..55, y: 6..28)
+        // Samples clean adjacent sky from (x + 35, y) at the exact same altitude/lighting
+        for (let y = 6; y < Math.min(H, 28); y++) {
+          for (let x = 20; x < Math.min(W, 55); x++) {
+            const idx = (y * W + x) * 4;
+            const r = data[idx];
+            const g = data[idx + 1];
+            const b = data[idx + 2];
+
+            // Stray green chevron / mark check: greenish hue where g > r + 15 and b < 242
+            if (g > r + 15 && b < 242 && g > 130) {
+              const cleanIdx = (y * W + Math.min(W - 1, x + 35)) * 4;
+              data[idx] = data[cleanIdx];
+              data[idx + 1] = data[cleanIdx + 1];
+              data[idx + 2] = data[cleanIdx + 2];
+              data[idx + 3] = 255;
+            }
+          }
+        }
+
+        // 2. Clean any 1px white border line along the very top edge if present (y < 2)
+        for (let y = 0; y < Math.min(H, 2); y++) {
+          for (let x = 0; x < W; x++) {
+            const idx = (y * W + x) * 4;
+            const refIdx = (Math.min(H - 1, 3) * W + x) * 4;
+            const r = data[idx];
+            const g = data[idx + 1];
+            const b = data[idx + 2];
+            if (r > 220 && g > 220 && b > 220) {
+              data[idx] = data[refIdx];
+              data[idx + 1] = data[refIdx + 1];
+              data[idx + 2] = data[refIdx + 2];
+              data[idx + 3] = 255;
+            }
+          }
+        }
+
+        ctx.putImageData(imgData, 0, 0);
+        setCleanBannerUrl(canvas.toDataURL("image/jpeg", 0.98));
+      } catch (e) {
+        console.warn("Banner cleaning notice:", e);
       }
     };
   }, []);
@@ -79,11 +152,14 @@ export default function SuperAdminLayout() {
   useEffect(() => {
     const fetchCentralNotifs = async () => {
       try {
-        const res = await API.get("/orders/notifications");
+        const res = await API.get("/super-admin/notifications");
         if (res.data?.success && Array.isArray(res.data.notifications)) {
-          setUnreadNotifCount(res.data.notifications.length);
+          setUnreadNotifCount(res.data.unreadCount || 0);
+          setNotifications(res.data.notifications);
         }
-      } catch (_) {}
+      } catch (err) {
+        console.warn("Platform notifications fetch notice:", err.message);
+      }
     };
 
     fetchCentralNotifs();
@@ -101,12 +177,12 @@ export default function SuperAdminLayout() {
       socket.emit("join-tenant", { role: "SUPER_ADMIN", supermarketCode: "ALL" });
     });
 
-    socket.on("admin:notification", () => {
-      setUnreadNotifCount((prev) => prev + 1);
+    socket.on("platform:notification", () => {
+      fetchCentralNotifs();
     });
 
-    socket.on("new-order", () => {
-      setUnreadNotifCount((prev) => prev + 1);
+    socket.on("supermarket:registered", () => {
+      fetchCentralNotifs();
     });
 
     const timer = setInterval(fetchCentralNotifs, 15000);
@@ -115,6 +191,33 @@ export default function SuperAdminLayout() {
       clearInterval(timer);
     };
   }, []);
+
+  const handleMarkNotifRead = async (id, e) => {
+    if (e) e.stopPropagation();
+    try {
+      await API.put(`/super-admin/notifications/${id}/read`);
+      setNotifications((prev) =>
+        prev.map((n) => (n._id === id ? { ...n, isRead: true } : n))
+      );
+      setUnreadNotifCount((prev) => Math.max(0, prev - 1));
+    } catch (_) {}
+  };
+
+  const handleMarkAllNotifsRead = async () => {
+    try {
+      await API.put("/super-admin/notifications/mark-all-read");
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      setUnreadNotifCount(0);
+    } catch (_) {}
+  };
+
+  const handleClearAllNotifs = async () => {
+    try {
+      await API.delete("/super-admin/notifications/clear-all");
+      setNotifications([]);
+      setUnreadNotifCount(0);
+    } catch (_) {}
+  };
 
   const toggleGroup = (groupKey) => {
     setOpenGroups((prev) => ({ ...prev, [groupKey]: !prev[groupKey] }));
@@ -348,7 +451,45 @@ export default function SuperAdminLayout() {
             )}
           </div>
 
-          {/* Group 5: Settings */}
+          {/* Group 5: Supermarket Chat Line */}
+          <NavLink
+            to="/super-admin/chat"
+            onClick={handleNavClick}
+            className={({ isActive }) => `sa-nav-pill-main ${isActive ? "active" : ""}`}
+            style={{ margin: "4px 0" }}
+          >
+            <MessageSquare size={17} />
+            <span>Supermarket Chat</span>
+          </NavLink>
+
+          {/* Group 5B: Platform Notifications & Alerts */}
+          <NavLink
+            to="/super-admin/notifications"
+            onClick={handleNavClick}
+            className={({ isActive }) => `sa-nav-pill-main ${isActive ? "active" : ""}`}
+            style={{ margin: "4px 0", display: "flex", alignItems: "center" }}
+          >
+            <Bell size={17} />
+            <span>Notifications</span>
+            {unreadNotifCount > 0 && (
+              <span
+                style={{
+                  marginLeft: "auto",
+                  background: "#dc2626",
+                  color: "#ffffff",
+                  fontSize: "10px",
+                  fontWeight: 800,
+                  padding: "1px 7px",
+                  borderRadius: "10px",
+                  boxShadow: "0 0 6px rgba(220, 38, 38, 0.5)",
+                }}
+              >
+                {unreadNotifCount}
+              </span>
+            )}
+          </NavLink>
+
+          {/* Group 6: Settings - Profile Only */}
           <div className="sa-nav-group">
             <button
               type="button"
@@ -372,49 +513,26 @@ export default function SuperAdminLayout() {
                   className={({ isActive }) => `sa-subitem ${isActive ? "active-sub" : ""}`}
                 >
                   <span className="sa-dot">&rsaquo;</span>
-                  <span>System Settings</span>
-                </NavLink>
-                <NavLink
-                  to="/super-admin/settings"
-                  onClick={handleNavClick}
-                  className={({ isActive }) => `sa-subitem ${isActive ? "active-sub" : ""}`}
-                >
-                  <span className="sa-dot">&rsaquo;</span>
-                  <span>Notifications</span>
+                  <span>My Profile</span>
                 </NavLink>
               </div>
             )}
           </div>
-
-          {/* Help & Support */}
-          <div className="sa-nav-single">
-            <button
-              type="button"
-              className="sa-group-header-single"
-              onClick={() => navigate("/super-admin/settings")}
-            >
-              <Headphones size={16} />
-              <span>Help & Support</span>
-            </button>
-          </div>
         </nav>
 
-        {/* Sidebar Footer Rocket Banner */}
+        {/* Sidebar Footer Logout Button */}
         <div className="sa-sidebar-bottom-promo">
-          <div className="sa-promo-card">
-            <div className="sa-promo-icon-wrap">
-              <Rocket size={20} color="#facc15" />
-            </div>
-            <h4>Grow Your Supermarket Business</h4>
-            <button
-              type="button"
-              className="sa-promo-btn"
-              onClick={() => navigate("/super-admin/plans")}
-            >
-              <span>Learn More</span>
-              <span>&rarr;</span>
-            </button>
-          </div>
+          {/* Single Dedicated Logout Button - Bright Solid Red & Ultra-Bright White Text */}
+          <button
+            type="button"
+            className="sa-sidebar-bottom-logout-btn"
+            onClick={logout}
+            aria-label="Logout"
+          >
+            <LogOut size={16} color="#ffffff" strokeWidth={2.4} />
+            <span style={{ color: "#ffffff", fontWeight: 800 }}>Logout</span>
+          </button>
+
           <span className="sa-copyright-text">
             &copy; 2025 GrocerEase. All rights reserved.
           </span>
@@ -426,35 +544,15 @@ export default function SuperAdminLayout() {
         {/* Top Fixed Header Bar with user exact provided banner */}
         <header className="sa-top-header">
           <div className="sa-exact-header-banner-box">
-            {/* Background Storefront Panoramic Banner cropped from Master Reference */}
-            <img
-              src={croppedBannerUrl || "/super-admin-reference-master.jpg"}
-              alt="GrocerEase Super Admin Storefront Banner"
-              className="sa-exact-header-banner-img"
-              onError={(e) => {
-                e.currentTarget.src = "/supermarket-storefront-banner.png";
-              }}
-            />
-
-            {/* Seamless Interactive Clickable Overlay Hotspots */}
-            <div className="sa-banner-hotspot-container">
-              {/* Hotspot 1: Notification Bell */}
-              <button
-                type="button"
-                className="sa-hotspot-bell-btn"
-                onClick={() => navigate("/super-admin/reports")}
-                title="Platform Notifications"
-                aria-label="Platform Notifications"
-              />
-
-              {/* Hotspot 2: Super Admin Profile Pill */}
-              <div
-                className="sa-hotspot-profile-pill"
-                onClick={() => setProfileDropdownOpen((prev) => !prev)}
-                title="Super Admin Profile Menu"
-                role="button"
-                tabIndex={0}
-                aria-label="Super Admin Profile"
+            {/* Inner clipping wrapper to ensure 100% edge-to-edge seamless banner */}
+            <div className="sa-banner-img-clip">
+              <img
+                src={cleanBannerUrl || exactBannerUrl}
+                alt="GrocerEase Super Admin Storefront Banner"
+                className="sa-exact-header-banner-img"
+                onError={(e) => {
+                  e.currentTarget.src = "/exact-header-banner.jpg";
+                }}
               />
             </div>
 
@@ -464,40 +562,294 @@ export default function SuperAdminLayout() {
               className="sa-banner-mobile-toggle"
               onClick={() => setSidebarOpen(true)}
               aria-label="Toggle Navigation Menu"
-              title="Menu"
             >
               <Menu size={18} />
             </button>
 
-            {/* Profile Dropdown Menu */}
-            {profileDropdownOpen && (
-              <div className="sa-profile-dropdown sa-banner-dropdown-pos">
-                <div className="sa-pd-header">
-                  <strong>Platform Super Admin</strong>
-                  <small>admin@grocerease.store</small>
-                </div>
-                <div className="sa-pd-divider" />
+            {/* Precision Interactive Hotspots mapped 1:1 over Image 1's Bell & Super Admin Pill */}
+            <div className="sa-banner-actions-layer">
+              {/* Hotspot 1: Notification Bell (Invisible 1:1 Click Hotspot directly over Image Bell) */}
+              <div className="sa-notif-hotspot-wrap" ref={notifRef}>
                 <button
                   type="button"
-                  className="sa-pd-item"
+                  className={`sa-hotspot-bell-click ${notifDropdownOpen ? "active" : ""}`}
                   onClick={() => {
+                    setNotifDropdownOpen((prev) => !prev);
                     setProfileDropdownOpen(false);
-                    navigate("/super-admin/settings");
                   }}
-                >
-                  <Settings size={14} />
-                  <span>Platform Settings</span>
-                </button>
+                  aria-label="Platform Notifications"
+                />
+
+                {/* Notifications Dropdown Menu */}
+                {notifDropdownOpen && (
+                  <div className="sa-notif-dropdown-menu" style={{ width: "380px" }}>
+                    <div className="sa-nd-header">
+                      <div className="sa-nd-title-row">
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <strong>Platform Notifications</strong>
+                          {unreadNotifCount > 0 && (
+                            <span className="sa-nd-count-pill">{unreadNotifCount} New</span>
+                          )}
+                        </div>
+                        <div style={{ display: "flex", gap: "6px" }}>
+                          {unreadNotifCount > 0 && (
+                            <button
+                              type="button"
+                              onClick={handleMarkAllNotifsRead}
+                              style={{
+                                background: "none",
+                                border: "none",
+                                color: "#16a34a",
+                                fontSize: "11px",
+                                fontWeight: 700,
+                                cursor: "pointer",
+                                padding: "2px 4px",
+                              }}
+                              title="Mark all as read"
+                            >
+                              Mark All Read
+                            </button>
+                          )}
+                          {notifications.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={handleClearAllNotifs}
+                              style={{
+                                background: "none",
+                                border: "none",
+                                color: "#94a3b8",
+                                fontSize: "11px",
+                                fontWeight: 600,
+                                cursor: "pointer",
+                                padding: "2px 4px",
+                              }}
+                              title="Clear all notifications"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <small>SaaS Platform Management &amp; Subscription Events</small>
+                    </div>
+
+                    <div className="sa-nd-list" style={{ maxHeight: "340px", overflowY: "auto" }}>
+                      {notifications.length > 0 ? (
+                        notifications.map((n) => {
+                          const color = n.color || "green";
+                          return (
+                            <div
+                              key={n._id}
+                              className={`sa-nd-item ${!n.isRead ? "unread" : ""}`}
+                              onClick={() => {
+                                if (n.actionUrl) {
+                                  setNotifDropdownOpen(false);
+                                  navigate(n.actionUrl);
+                                }
+                              }}
+                              style={{ cursor: n.actionUrl ? "pointer" : "default" }}
+                            >
+                              <div className={`sa-nd-item-dot ${color}`} />
+                              <div className="sa-nd-item-content">
+                                <div className="sa-nd-item-title-row">
+                                  <span className="sa-nd-item-title">{n.title}</span>
+                                  <span className={`sa-nd-type-badge ${color}`}>{color}</span>
+                                </div>
+                                {n.supermarketName && (
+                                  <div
+                                    style={{
+                                      fontSize: "11px",
+                                      fontWeight: 700,
+                                      color: "#059669",
+                                      marginBottom: "2px",
+                                    }}
+                                  >
+                                    {n.supermarketName} {n.supermarketCode ? `(${n.supermarketCode})` : ""}
+                                  </div>
+                                )}
+                                <p className="sa-nd-item-msg">{n.message}</p>
+                                {n.metadata?.activity && (
+                                  <div
+                                    style={{
+                                      fontSize: "10.5px",
+                                      color: "#334155",
+                                      background: "#f1f5f9",
+                                      padding: "4px 8px",
+                                      borderRadius: "6px",
+                                      margin: "4px 0",
+                                      border: "1px solid #e2e8f0",
+                                    }}
+                                  >
+                                    <div><strong>Admin:</strong> {n.metadata.adminName} ({n.metadata.email})</div>
+                                    <div style={{ color: "#2563eb", fontWeight: 700 }}>ID: {n.metadata.supermarketId || n.supermarketCode}</div>
+                                  </div>
+                                )}
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "center",
+                                    marginTop: "4px",
+                                  }}
+                                >
+                                  <span className="sa-nd-item-time">
+                                    {new Date(n.createdAt).toLocaleDateString("en-IN", {
+                                      month: "short",
+                                      day: "numeric",
+                                    })}{" "}
+                                    &bull;{" "}
+                                    {new Date(n.createdAt).toLocaleTimeString("en-IN", {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })}
+                                  </span>
+                                  {!n.isRead && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => handleMarkNotifRead(n._id, e)}
+                                      style={{
+                                        background: "transparent",
+                                        border: "none",
+                                        color: "#16a34a",
+                                        fontSize: "11px",
+                                        fontWeight: 700,
+                                        cursor: "pointer",
+                                        padding: "0 2px",
+                                      }}
+                                    >
+                                      Mark Read
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div style={{ padding: "2rem 1.5rem", textAlign: "center", color: "#64748b" }}>
+                          <Bell size={24} color="#94a3b8" style={{ marginBottom: "6px" }} />
+                          <p style={{ margin: 0, fontSize: "13px", fontWeight: 600 }}>
+                            No pending platform notifications
+                          </p>
+                          <small style={{ color: "#94a3b8", fontSize: "11px" }}>
+                            Registrations, renewals and trial alerts will appear here.
+                          </small>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="sa-nd-footer">
+                      <button
+                        type="button"
+                        className="sa-nd-view-all-btn"
+                        onClick={() => {
+                          setNotifDropdownOpen(false);
+                          navigate("/super-admin/notifications");
+                        }}
+                      >
+                        View All Notifications &amp; Activity &rarr;
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Hotspot 2: Super Admin Profile Dropdown (Invisible 1:1 Click Hotspot directly over Image Profile Pill) */}
+              <div className="sa-profile-hotspot-wrap" ref={profileRef}>
                 <button
                   type="button"
-                  className="sa-pd-item logout"
-                  onClick={logout}
-                >
-                  <LogOut size={14} />
-                  <span>Sign Out</span>
-                </button>
+                  className={`sa-hotspot-profile-click ${profileDropdownOpen ? "active" : ""}`}
+                  onClick={() => {
+                    setProfileDropdownOpen((prev) => !prev);
+                    setNotifDropdownOpen(false);
+                  }}
+                  aria-label="Super Admin Profile Menu"
+                  aria-expanded={profileDropdownOpen}
+                />
+
+                {/* Profile Dropdown Menu */}
+                {profileDropdownOpen && (
+                  <div className="sa-profile-dropdown-v2">
+                    <div className="sa-pd-header-v2">
+                      <div className="sa-pd-avatar-wrap">
+                        <div className="sa-pd-big-avatar">SA</div>
+                        <div>
+                          <strong className="sa-pd-user-title">Super Admin</strong>
+                          <span className="sa-pd-role-badge">Super Admin</span>
+                        </div>
+                      </div>
+                      <span className="sa-pd-email">superadmin@grocerease.com</span>
+                    </div>
+
+                    <div className="sa-pd-divider" />
+
+                    <div className="sa-pd-actions-list">
+                      <button
+                        type="button"
+                        className="sa-pd-item-v2"
+                        onClick={() => {
+                          setProfileDropdownOpen(false);
+                          navigate("/super-admin/settings");
+                        }}
+                      >
+                        <Settings size={15} color="#059669" />
+                        <span>My Profile</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        className="sa-pd-item-v2"
+                        onClick={() => {
+                          setProfileDropdownOpen(false);
+                          navigate("/super-admin/reports");
+                        }}
+                      >
+                        <BarChart2 size={15} color="#0284c7" />
+                        <span>Analytics &amp; Reports</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        className="sa-pd-item-v2"
+                        onClick={() => {
+                          setProfileDropdownOpen(false);
+                          navigate("/super-admin/chat");
+                        }}
+                      >
+                        <MessageSquare size={15} color="#059669" />
+                        <span>Supermarket Chat</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        className="sa-pd-item-v2"
+                        onClick={() => {
+                          setProfileDropdownOpen(false);
+                          navigate("/super-admin/supermarkets");
+                        }}
+                      >
+                        <Store size={15} color="#16a34a" />
+                        <span>Registered Supermarkets</span>
+                      </button>
+                    </div>
+
+                    <div className="sa-pd-divider" />
+
+                    <button
+                      type="button"
+                      className="sa-pd-logout-btn-v2"
+                      onClick={() => {
+                        setProfileDropdownOpen(false);
+                        logout();
+                      }}
+                    >
+                      <LogOut size={15} />
+                      <span>Sign Out of Console</span>
+                    </button>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </div>
         </header>
 

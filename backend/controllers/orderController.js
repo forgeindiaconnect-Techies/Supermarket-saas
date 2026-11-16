@@ -4,6 +4,7 @@ const Product = require("../models/Product");
 const CartActivity = require("../models/CartActivity");
 const Supermarket = require("../models/Supermarket");
 const { emitTenantNotification } = require("../utils/notificationEmitter");
+const { sendOrderReceiptEmail } = require("../utils/mailer");
 
 // Helper function to safely deduct order inventory once
 async function deductOrderInventory(order) {
@@ -730,6 +731,13 @@ exports.completePayment = async (req, res) => {
       order.paymentId = `${order.paymentMethod.toUpperCase()}-${Date.now().toString().slice(-6)}`;
     }
     await order.save();
+
+    // Send digital receipt and exit QR via Brevo SMTP if customer email is provided
+    if (order.customer?.email) {
+      sendOrderReceiptEmail({ order, customerEmail: order.customer.email }).catch((err) => {
+        console.warn("⚠️ Digital receipt delivery notice:", err.message);
+      });
+    }
 
     return res.status(200).json({
       success: true,

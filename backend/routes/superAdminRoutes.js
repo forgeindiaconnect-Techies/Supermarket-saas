@@ -18,6 +18,14 @@ const {
   sendRenewalEmail,
   sendRenewalChat,
   extendSubscription,
+  testEmailConnection,
+  sendAutomatedPlanEmail,
+  getEmailLogs,
+  getPlatformNotifications,
+  markPlatformNotificationRead,
+  markAllPlatformNotificationsRead,
+  deletePlatformNotification,
+  clearAllPlatformNotifications,
 } = require("../controllers/superAdminController");
 const { authMiddleware, requireSuperAdmin } = require("../middleware/authMiddleware");
 
@@ -33,8 +41,12 @@ router.put("/supermarkets/:id", updateSupermarket);
 router.delete("/supermarkets/:id", deleteSupermarket);
 router.post("/supermarkets/:id/reset-password", resetStorePassword);
 router.post("/supermarkets/:id/send-renewal-email", sendRenewalEmail);
+router.post("/supermarkets/:id/send-plan-email", sendAutomatedPlanEmail);
 router.post("/supermarkets/:id/send-renewal-chat", sendRenewalChat);
 router.post("/supermarkets/:id/extend-subscription", extendSubscription);
+router.post("/test-email", testEmailConnection);
+router.get("/test-email", testEmailConnection);
+router.get("/email-logs", getEmailLogs);
 
 // 2. Centralized Analytics & Product-Wise Breakdown per Supermarket
 router.get("/analytics", getPlatformAnalytics);
@@ -47,6 +59,13 @@ router.get("/plans", getSubscriptionPlans);
 router.post("/plans", createSubscriptionPlan);
 router.put("/plans/:id", updateSubscriptionPlan);
 router.delete("/plans/:id", deleteSubscriptionPlan);
+
+// 4. SaaS Platform Notifications (Strictly Platform Management Events Only)
+router.get("/notifications", getPlatformNotifications);
+router.put("/notifications/mark-all-read", markAllPlatformNotificationsRead);
+router.delete("/notifications/clear-all", clearAllPlatformNotifications);
+router.put("/notifications/:id/read", markPlatformNotificationRead);
+router.delete("/notifications/:id", deletePlatformNotification);
 
 module.exports = router;
 

@@ -3,6 +3,7 @@ const User = require("../models/User");
 const Product = require("../models/Product");
 const Order = require("../models/Order");
 const CartActivity = require("../models/CartActivity");
+const ChatMessage = require("../models/ChatMessage");
 
 async function seedSaaSPlatformData() {
   try {
@@ -21,7 +22,9 @@ async function seedSaaSPlatformData() {
       });
       console.log("✓ Created Platform Super Admin: admin / Admin@123");
     } else {
+      superAdmin.name = "Super Admin";
       superAdmin.role = "SUPER_ADMIN";
+      superAdmin.email = "superadmin@grocerease.com";
       superAdmin.password = "Admin@123";
       await superAdmin.save();
     }
@@ -507,6 +510,50 @@ async function seedSaaSPlatformData() {
         },
       }
     );
+
+    // =========================================================================
+    // 7. SEED INITIAL PRIVATE SUPPORT CHAT MESSAGES (Strictly Tenant-Isolated)
+    // =========================================================================
+    const chatCount = await ChatMessage.countDocuments();
+    if (chatCount === 0) {
+      const stores = await Supermarket.find();
+      const initialChats = [];
+
+      for (const sm of stores) {
+        // Welcome message from Super Admin
+        initialChats.push({
+          supermarket: sm._id,
+          supermarketName: sm.name,
+          supermarketCode: sm.code,
+          sender: superAdmin._id,
+          senderName: "GrocerEase Super Admin",
+          senderRole: "SUPER_ADMIN",
+          message: `Welcome to GrocerEase SaaS, ${sm.name}! Your dedicated private support channel with Super Admin is active. Feel free to reach out here anytime.`,
+          isRead: true,
+          createdAt: new Date(Date.now() - 3600000 * 4),
+        });
+
+        // Store Admin acknowledgment
+        if (sm.code === "SM-7087" || sm.code === "STR-001") {
+          initialChats.push({
+            supermarket: sm._id,
+            supermarketName: sm.name,
+            supermarketCode: sm.code,
+            sender: superAdmin._id, // Will show as store admin
+            senderName: `${sm.name} Admin`,
+            senderRole: "STORE_ADMIN",
+            message: `Thank you Super Admin! Our store dashboard and turnstiles are running smoothly.`,
+            isRead: false,
+            createdAt: new Date(Date.now() - 3600000 * 1),
+          });
+        }
+      }
+
+      if (initialChats.length > 0) {
+        await ChatMessage.insertMany(initialChats);
+        console.log(`✓ Initialized ${initialChats.length} private supermarket chat messages.`);
+      }
+    }
 
     console.log("✓ Multi-Tenant SaaS platform seeding complete:");
     console.log("  - Super Admin: admin / Admin@123");

@@ -6,9 +6,9 @@
    ========================================================================= */
 
 :root {
-  --sa-bg: #f2f7f4;
+  --sa-bg: #c5e4d2;
   --sa-card-bg: #ffffff;
-  --sa-sidebar-bg: #063d2e;
+  --sa-sidebar-bg: #064e3b;
   --sa-green-primary: #16a34a;
   --sa-green-dark: #15803d;
   --sa-heading: #172b24;
@@ -3762,19 +3762,22 @@ input[type="password"]::-ms-clear,
   right: 0;
   top: 0;
   bottom: 0;
-  width: 48%;
+  width: 44%;
   z-index: 1;
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  background: #0f172a;
 }
 
 .sa-hero-storefront-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center 25%;
+  object-position: right center;
+  opacity: 1;
+  display: block;
 }
 
 .sa-hero-storefront-mask {
@@ -3783,16 +3786,17 @@ input[type="password"]::-ms-clear,
   background: linear-gradient(
     90deg,
     #ffffff 0%,
-    rgba(255, 255, 255, 0.85) 15%,
-    rgba(255, 255, 255, 0.2) 40%,
-    rgba(255, 255, 255, 0) 70%
+    rgba(255, 255, 255, 0.7) 10%,
+    rgba(255, 255, 255, 0.15) 25%,
+    rgba(0, 0, 0, 0.15) 60%,
+    rgba(0, 0, 0, 0.3) 100%
   );
   pointer-events: none;
 }
 
 .sa-hero-banner-buttons {
   position: absolute;
-  right: 24px;
+  right: 20px;
   top: 50%;
   transform: translateY(-50%);
   display: flex;
@@ -3805,22 +3809,21 @@ input[type="password"]::-ms-clear,
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 15px;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(6px);
-  color: #0f172a;
-  border: 1.5px solid #cbd5e1;
+  padding: 8px 16px;
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border: 1.5px solid #cbd5e1 !important;
   border-radius: 9px;
   font-size: 12.5px;
-  font-weight: 750;
+  font-weight: 800;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
 }
 
 .sa-btn-hero-export:hover {
-  background: #ffffff;
-  border-color: #94a3b8;
+  background: #f8fafc !important;
+  border-color: #94a3b8 !important;
   transform: translateY(-1px);
 }
 
@@ -3828,20 +3831,20 @@ input[type="password"]::-ms-clear,
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 17px;
-  background: #16a34a;
-  color: #ffffff;
-  border: none;
+  padding: 8px 18px;
+  background: #16a34a !important;
+  color: #ffffff !important;
+  border: 1.5px solid #15803d !important;
   border-radius: 9px;
   font-size: 12.5px;
-  font-weight: 750;
+  font-weight: 800;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 4px 12px rgba(22, 163, 74, 0.35);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
 }
 
 .sa-btn-hero-refresh:hover:not(:disabled) {
-  background: #15803d;
+  background: #15803d !important;
   transform: translateY(-1px);
 }
 
@@ -4232,6 +4235,7 @@ input[type="password"]::-ms-clear,
   display: flex;
   flex-direction: column;
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
+  min-width: 0;
 }
 
 .sa-empty-state-box {
@@ -4302,6 +4306,7 @@ input[type="password"]::-ms-clear,
   border-radius: 14px;
   overflow: hidden;
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
+  min-width: 0;
 }
 
 .sa-subtoolbar-strip {
@@ -4458,63 +4463,98 @@ input[type="password"]::-ms-clear,
   box-sizing: border-box;
 }
 
-/* 1. Top 4 KPI Cards Grid */
+/* 1. Top 4 KPI Cards Grid - Compact & Beautiful Colors */
 .sa-ref-kpi-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 1rem;
+  gap: 0.85rem;
   width: 100%;
 }
 
 .sa-ref-kpi-card {
-  background: #ffffff;
-  border-radius: 16px;
-  border: 1px solid #e2ece6;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
-  padding: 1.1rem 1.25rem;
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
   box-sizing: border-box;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
+  position: relative;
+  overflow: hidden;
 }
 
 .sa-ref-kpi-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.07);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+}
+
+/* Card 1: Fresh Mint Green */
+.sa-ref-kpi-card.sa-kpi-mint {
+  background: linear-gradient(135deg, #ffffff 30%, #ecfdf5 100%);
+  border: 1px solid #a7f3d0;
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.06);
+}
+
+/* Card 2: Soft Sky Blue */
+.sa-ref-kpi-card.sa-kpi-blue {
+  background: linear-gradient(135deg, #ffffff 30%, #f0f9ff 100%);
+  border: 1px solid #bae6fd;
+  box-shadow: 0 2px 6px rgba(14, 165, 233, 0.06);
+}
+
+/* Card 3: Warm Gold & Emerald */
+.sa-ref-kpi-card.sa-kpi-amber {
+  background: linear-gradient(135deg, #ffffff 30%, #fefce8 100%);
+  border: 1px solid #fde68a;
+  box-shadow: 0 2px 6px rgba(245, 158, 11, 0.06);
+}
+
+/* Card 4: Soft Violet Purple */
+.sa-ref-kpi-card.sa-kpi-purple {
+  background: linear-gradient(135deg, #ffffff 30%, #faf5ff 100%);
+  border: 1px solid #e9d5ff;
+  box-shadow: 0 2px 6px rgba(168, 85, 247, 0.06);
 }
 
 .sa-ref-kpi-left {
   display: flex;
   align-items: center;
-  gap: 0.85rem;
+  gap: 0.7rem;
 }
 
-.sa-ref-icon-mint {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  background: #ecfdf5;
-  border: 1px solid #d1fae5;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.sa-ref-icon-circle-green {
-  width: 42px;
-  height: 42px;
+.sa-ref-icon-wrap {
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
-  background: #059669;
-  color: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 800;
-  font-size: 1.25rem;
   flex-shrink: 0;
-  box-shadow: 0 2px 6px rgba(5, 150, 105, 0.25);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.sa-icon-mint {
+  background: #dcfce7;
+  border: 1px solid #bbf7d0;
+}
+
+.sa-icon-blue {
+  background: #e0f2fe;
+  border: 1px solid #bae6fd;
+}
+
+.sa-icon-purple {
+  background: #f3e8ff;
+  border: 1px solid #ddd6fe;
+}
+
+.sa-ref-revenue-icon-wrap {
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .sa-ref-kpi-text {
@@ -4523,10 +4563,11 @@ input[type="password"]::-ms-clear,
 }
 
 .sa-ref-kpi-label {
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: #64748b;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #475569;
   margin-bottom: 2px;
+  white-space: nowrap;
 }
 
 .sa-ref-kpi-val-row {
@@ -4536,29 +4577,53 @@ input[type="password"]::-ms-clear,
 }
 
 .sa-ref-kpi-val {
-  font-size: 1.6rem;
+  font-size: 1.38rem;
   font-weight: 850;
   color: #0f172a;
   letter-spacing: -0.02em;
+  line-height: 1.1;
 }
 
-.sa-ref-pill-mint {
-  background: #ecfdf5;
-  border: 1px solid #a7f3d0;
-  color: #059669;
-  font-size: 0.72rem;
-  font-weight: 750;
-  padding: 2px 7px;
+.sa-ref-pill {
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 1.5px 6.5px;
   border-radius: 9999px;
   line-height: 1.2;
+  white-space: nowrap;
+}
+
+.sa-pill-mint {
+  background: #dcfce7;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #044e36;
+}
+
+.sa-pill-blue {
+  background: #e0f2fe;
+  border: 1px solid rgba(14, 165, 233, 0.3);
+  color: #0369a1;
+}
+
+.sa-pill-amber {
+  background: #fef3c7;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #b45309;
+}
+
+.sa-pill-purple {
+  background: #f3e8ff;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+  color: #6b21a8;
 }
 
 .sa-ref-kpi-spark {
-  width: 68px;
-  height: 34px;
+  width: 56px;
+  height: 26px;
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  flex-shrink: 0;
 }
 
 .sa-spark-svg {
@@ -4569,22 +4634,28 @@ input[type="password"]::-ms-clear,
 .sa-ref-mini-bars {
   display: flex;
   align-items: flex-end;
-  gap: 3px;
-  height: 28px;
-  padding-bottom: 2px;
+  gap: 2.5px;
+  height: 22px;
+  padding-bottom: 1px;
+  flex-shrink: 0;
 }
 
 .sa-mbar {
-  width: 4.5px;
-  background: #10b981;
+  width: 3.5px;
+  background: #059669;
   border-radius: 2px;
 }
 
-.sa-mbar.b1 { height: 7px; opacity: 0.45; }
-.sa-mbar.b2 { height: 11px; opacity: 0.6; }
-.sa-mbar.b3 { height: 16px; opacity: 0.75; }
-.sa-mbar.b4 { height: 21px; opacity: 0.9; }
-.sa-mbar.b5 { height: 26px; opacity: 1; }
+.sa-mbar.b1 { height: 5px; }
+.sa-mbar.b2 { height: 8px; }
+.sa-mbar.b3 { height: 11px; }
+.sa-mbar.b4 { height: 14px; }
+.sa-mbar.b5 { height: 18px; }
+.sa-mbar.b6 { height: 22px; }
+
+.sa-bars-purple .sa-mbar {
+  background: #7c3aed;
+}
 
 /* 2. Common Card Wrapper */
 .sa-ref-card {
@@ -4833,15 +4904,15 @@ input[type="password"]::-ms-clear,
 
 .sa-chart-axis-text {
   font-size: 11px;
-  fill: #94a3b8;
-  font-weight: 600;
+  fill: #334155;
+  font-weight: 750;
   font-family: inherit;
 }
 
 .sa-chart-date-text {
   font-size: 11px;
-  fill: #64748b;
-  font-weight: 650;
+  fill: #1e293b;
+  font-weight: 750;
   font-family: inherit;
 }
 
