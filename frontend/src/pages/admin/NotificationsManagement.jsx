@@ -43,7 +43,7 @@ import {
   Terminal,
 } from "lucide-react";
 import { io } from "socket.io-client";
-import API from "../../services/api";
+import API, { SOCKET_URL } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import BarcodeSVG from "../../components/BarcodeSVG";
 import ErpPageBanner from "../../components/ErpPageBanner";
@@ -296,7 +296,7 @@ export default function NotificationsManagement() {
   useEffect(() => {
     fetchAllSources(false);
 
-    const socket = io("http://localhost:5001", {
+    const socket = io(SOCKET_URL, {
       query: {
         supermarketId: tenantIdStr || "",
         supermarketCode: tenantCodeStr || "",
