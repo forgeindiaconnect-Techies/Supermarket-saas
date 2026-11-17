@@ -23,13 +23,14 @@ import {
   Sparkles,
   Mail,
 } from "lucide-react";
-import API from "../../services/api";
+import { io } from "socket.io-client";
+import API, { SOCKET_URL } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import "./SuperAdmin.css";
 
 export default function SupermarketsManagement() {
   const navigate = useNavigate();
-  const { supermarkets, currentSupermarket, switchSupermarket, loadSupermarkets } = useAuth();
+  const { supermarkets, currentSupermarket, switchSupermarket, loadSupermarkets, deleteSupermarketById } = useAuth();
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -43,6 +44,27 @@ export default function SupermarketsManagement() {
   const [selectedStoreForReset, setSelectedStoreForReset] = useState(null);
   const [newPasswordValue, setNewPasswordValue] = useState("StoreAdmin@123");
   const [showPasswordMap, setShowPasswordMap] = useState({});
+
+  // Delete Supermarket States
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [selectedStoreForDelete, setSelectedStoreForDelete] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Real-time synchronization via Socket.IO
+  useEffect(() => {
+    let socket;
+    try {
+      socket = io(SOCKET_URL, { transports: ["websocket", "polling"] });
+      const refresh = () => loadSupermarkets();
+      socket.on("supermarket:deleted", refresh);
+      socket.on("supermarket:created", refresh);
+      socket.on("supermarket:updated", refresh);
+      socket.on("platform:stats_updated", refresh);
+    } catch (_) {}
+    return () => {
+      if (socket) socket.disconnect();
+    };
+  }, [loadSupermarkets]);
 
   // Logo Edit Modal States
   const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
@@ -273,6 +295,33 @@ export default function SupermarketsManagement() {
     }
   };
 
+  // Handle Permanent Delete Supermarket
+  const handleOpenDeleteModal = (store) => {
+    setSelectedStoreForDelete(store);
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleExecuteDelete = async () => {
+    if (!selectedStoreForDelete) return;
+    try {
+      setIsDeleting(true);
+      const storeId = selectedStoreForDelete._id || selectedStoreForDelete.code;
+      if (deleteSupermarketById) {
+        await deleteSupermarketById(storeId);
+      } else {
+        await API.delete(`/super-admin/supermarkets/${storeId}`);
+        await loadSupermarkets();
+      }
+      showToast(`✓ Supermarket "${selectedStoreForDelete.name}" permanently deleted.`);
+      setIsDeleteModalOpen(false);
+      setSelectedStoreForDelete(null);
+    } catch (err) {
+      showToast(`Failed to delete supermarket: ${err.response?.data?.message || err.message}`);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   // Filtered Supermarkets
   const filteredStores = supermarkets.filter((s) => {
     const matchSearch =
@@ -343,7 +392,7 @@ export default function SupermarketsManagement() {
               className="sa-search-input"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by store name, branch code, city or admin username..."
+              placeholder="Search by store name, branch code, or city..."
             />
           </div>
 
@@ -437,15 +486,20 @@ export default function SupermarketsManagement() {
                       </span>
                     </div>
 
-                    {store.tagline ? (
-                      <p style={{ margin: "0.75rem 0 0 0", fontSize: "12px", color: "#64748b", fontStyle: "italic" }}>
-                        "{store.tagline}"
-                      </p>
-                    ) : (
-                      <p style={{ margin: "0.75rem 0 0 0", fontSize: "12px", color: "#64748b" }}>
-                        {store.storeType || "Dedicated Multi-Tenant Instance"}
-                      </p>
-                    )}
+                    <p
+                      style={{
+                        margin: "0.65rem 0 0 0",
+                        fontSize: "12px",
+                        color: "#64748b",
+                        fontStyle: store.tagline ? "italic" : "normal",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                      title={store.tagline || store.storeType || "Dedicated Multi-Tenant Instance"}
+                    >
+                      {store.tagline ? `"${store.tagline}"` : (store.storeType || "Dedicated Multi-Tenant Instance")}
+                    </p>
                   </div>
 
                   {/* Operational Metrics Strip (Strict Zero-State for newly onboarded stores) */}
@@ -513,21 +567,33 @@ export default function SupermarketsManagement() {
                       </div>
                     </div>
 
-                    <div className="sa-cred-row" style={{ paddingTop: "2px", borderTop: "1px dashed #cbd5e1" }}>
+                    <div className="sa-cred-row" style={{ paddingTop: "4px", borderTop: "1px dashed #cbd5e1" }}>
                       <span className="sa-cred-label">Admin Name:</span>
-                      <span style={{ fontSize: "11px", fontWeight: 600, color: "#334155" }}>
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          color: "#334155",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          maxWidth: "180px",
+                          textAlign: "right",
+                        }}
+                        title={store.adminName || "Store Manager"}
+                      >
                         {store.adminName || "Store Manager"}
                       </span>
                     </div>
                   </div>
 
-                  {/* Card Actions */}
+                  {/* Card Actions - Fully Aligned 2-Tier Layout */}
                   <div className="sa-store-card-actions">
-                    <div style={{ display: "flex", gap: "6px" }}>
+                    {/* Top Row: 4 Store Management Operations */}
+                    <div className="sa-store-actions-grid">
                       <button
                         type="button"
-                        className="sa-btn-email"
-                        style={{ padding: "5px 10px", fontSize: "12px", background: "#16a34a" }}
+                        className="sa-card-action-btn email"
                         onClick={() => handleSendPlanEmail(store)}
                         disabled={sendingEmailId === (store._id || store.code)}
                         title={`Send automated subscription email notice to ${store.name} (${store.email})`}
@@ -537,13 +603,12 @@ export default function SupermarketsManagement() {
                         ) : (
                           <Mail size={12} />
                         )}
-                        <span>{sendingEmailId === (store._id || store.code) ? "Sending..." : "Email"}</span>
+                        <span>{sendingEmailId === (store._id || store.code) ? "..." : "Email"}</span>
                       </button>
 
                       <button
                         type="button"
-                        className="sa-btn-secondary"
-                        style={{ padding: "5px 10px", fontSize: "12px" }}
+                        className="sa-card-action-btn secondary"
                         onClick={() => {
                           setSelectedStoreForReset(store);
                           setNewPasswordValue("StoreAdmin@123");
@@ -551,35 +616,40 @@ export default function SupermarketsManagement() {
                         }}
                         title="Reset Store Admin Password"
                       >
-                        <KeyRound size={13} />
-                        <span>Reset Pass</span>
+                        <KeyRound size={12} />
+                        <span>Reset</span>
                       </button>
 
                       <button
                         type="button"
-                        className="sa-btn-secondary"
-                        style={{
-                          padding: "5px 10px",
-                          fontSize: "12px",
-                          color: isSuspended ? "#059669" : "#dc2626",
-                          borderColor: isSuspended ? "#a7f3d0" : "#fecaca",
-                        }}
+                        className={`sa-card-action-btn ${isSuspended ? "activate" : "suspend"}`}
                         onClick={() => handleToggleStatus(store)}
                         title={isSuspended ? "Activate Store" : "Suspend Store"}
                       >
                         <span>{isSuspended ? "Activate" : "Suspend"}</span>
                       </button>
+
+                      <button
+                        type="button"
+                        className="sa-card-action-btn delete"
+                        onClick={() => handleOpenDeleteModal(store)}
+                        title={`Permanently delete ${store.name}`}
+                      >
+                        <Trash2 size={12} />
+                        <span>Delete</span>
+                      </button>
                     </div>
 
+                    {/* Bottom Row: Primary Launch / View Details Action */}
                     <button
                       type="button"
-                      className="sa-btn-primary"
-                      style={{ padding: "6px 14px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "6px" }}
+                      className="sa-card-view-details-btn"
                       onClick={() => handleViewDetails(store)}
                       title={`View detailed performance, products, and sales for ${store.name}`}
                     >
                       <Eye size={13} />
                       <span>View Details</span>
+                      <ExternalLink size={12} style={{ marginLeft: "auto" }} />
                     </button>
                   </div>
                 </div>
@@ -1008,6 +1078,74 @@ export default function SupermarketsManagement() {
                 disabled={isSavingLogo}
               >
                 {isSavingLogo ? "Saving Logo..." : "Save Logo"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {isDeleteModalOpen && selectedStoreForDelete && (
+        <div className="sa-modal-overlay" onClick={() => !isDeleting && setIsDeleteModalOpen(false)}>
+          <div className="sa-modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "460px" }}>
+            <div className="sa-modal-header" style={{ borderBottomColor: "#fee2e2" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <div style={{ width: "36px", height: "36px", borderRadius: "8px", background: "#fef2f2", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <Trash2 size={18} color="#dc2626" />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, color: "#991b1b" }}>Delete Supermarket</h3>
+                  <p style={{ margin: 0, fontSize: "12px", color: "#64748b" }}>Permanent database removal</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="sa-modal-close-btn"
+                onClick={() => !isDeleting && setIsDeleteModalOpen(false)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="sa-modal-body" style={{ padding: "20px" }}>
+              <p style={{ fontSize: "14px", color: "#334155", margin: "0 0 12px 0", lineHeight: 1.5 }}>
+                Are you sure you want to permanently delete <strong>{selectedStoreForDelete.name}</strong> ({selectedStoreForDelete.code})?
+              </p>
+              <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "10px", padding: "12px", fontSize: "12.5px", color: "#991b1b", display: "flex", gap: "8px" }}>
+                <AlertCircle size={16} style={{ flexShrink: 0, marginTop: "2px" }} />
+                <span>
+                  This will permanently delete the supermarket, its store admin credentials (<code>{selectedStoreForDelete.adminUsername}</code>), catalog products, orders, and all related records from the database. This action cannot be undone.
+                </span>
+              </div>
+            </div>
+
+            <div className="sa-modal-footer" style={{ display: "flex", justifyContent: "flex-end", gap: "10px", padding: "14px 20px" }}>
+              <button
+                type="button"
+                className="sa-btn-secondary"
+                onClick={() => setIsDeleteModalOpen(false)}
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="sa-btn-primary"
+                style={{ background: "#dc2626", borderColor: "#dc2626", color: "#ffffff" }}
+                onClick={handleExecuteDelete}
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <>
+                    <RefreshCw size={13} className="spin-icon" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 size={13} />
+                    <span>Yes, Delete Permanently</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
