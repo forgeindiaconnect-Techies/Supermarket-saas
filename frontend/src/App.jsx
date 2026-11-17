@@ -61,30 +61,13 @@ function ProtectedRoute({ children, allowedRoles }) {
   return children;
 }
 
-// Root Entrypoint for http://localhost:5173/
-// Shows ONLY the Login page until email/ID & password are typed and submitted
-function RootRedirect() {
-  const { user, token } = useAuth();
-
-  // Until logged in, show ONLY the login page
-  if (!user || !token) {
-    return <LoginPage />;
-  }
-
-  // Only AFTER authenticating credentials, open the dashboard
-  if (user.role === "SUPER_ADMIN") {
-    return <Navigate to="/super-admin" replace />;
-  }
-  return <Navigate to="/admin" replace />;
-}
-
 export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          {/* Default entry root http://localhost:5173/ -> Shows ONLY Login page until authenticated */}
-          <Route path="/" element={<RootRedirect />} />
+          {/* Default entry root -> Shows ONLY Login page whenever the site link is opened */}
+          <Route path="/" element={<LoginPage />} />
 
           {/* Unified SaaS Login Portal */}
           <Route path="/login" element={<LoginPage />} />

@@ -36,6 +36,7 @@ export default function SuperAdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const mainWrapperRef = useRef(null);
+  const pageContentRef = useRef(null);
   const { user, logout, supermarkets, currentSupermarket, switchSupermarket } = useAuth();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -53,7 +54,7 @@ export default function SuperAdminLayout() {
     settings: false,
   });
 
-  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
+  const [unreadNotifCount, setUnreadNotifCount] = useState(3);
   const [notifications, setNotifications] = useState([]);
   const [connectedStoreCount, setConnectedStoreCount] = useState(3);
 
@@ -141,6 +142,25 @@ export default function SuperAdminLayout() {
           }
         }
 
+        // 3. Clean and inpaint the natural sky over the old blurry baked-in pill and bell (x: 805..W, y: 0..76)
+        // Samples clean sky from column x: 788 at the exact same altitude/lighting
+        for (let y = 0; y < Math.min(H, 76); y++) {
+          const refX = Math.min(W - 1, 788);
+          const refIdx = (y * W + refX) * 4;
+          const r = data[refIdx];
+          const g = data[refIdx + 1];
+          const b = data[refIdx + 2];
+          const a = data[refIdx + 3];
+
+          for (let x = 805; x < W; x++) {
+            const idx = (y * W + x) * 4;
+            data[idx] = r;
+            data[idx + 1] = g;
+            data[idx + 2] = b;
+            data[idx + 3] = a;
+          }
+        }
+
         ctx.putImageData(imgData, 0, 0);
         setCleanBannerUrl(canvas.toDataURL("image/jpeg", 0.98));
       } catch (e) {
@@ -164,7 +184,11 @@ export default function SuperAdminLayout() {
 
     fetchCentralNotifs();
 
-    const socket = io("http://localhost:5001", {
+    const socketUrl = import.meta.env.VITE_API_URL
+      ? import.meta.env.VITE_API_URL.replace(/\/api\/?$/, "")
+      : "http://localhost:5001";
+
+    const socket = io(socketUrl, {
       transports: ["websocket", "polling"],
       query: { role: "SUPER_ADMIN" },
       auth: {
@@ -225,6 +249,9 @@ export default function SuperAdminLayout() {
 
   // Smooth scroll to top on path change
   useEffect(() => {
+    if (pageContentRef.current) {
+      pageContentRef.current.scrollTo({ top: 0, behavior: "smooth" });
+    }
     if (mainWrapperRef.current) {
       mainWrapperRef.current.scrollTo({ top: 0, behavior: "smooth" });
     }
@@ -566,9 +593,9 @@ export default function SuperAdminLayout() {
               <Menu size={18} />
             </button>
 
-            {/* Precision Interactive Hotspots mapped 1:1 over Image 1's Bell & Super Admin Pill */}
+            {/* Header Right Action Controls: High-Resolution, Ultra-Bright Notifications Bell & Super Admin Profile Pill */}
             <div className="sa-banner-actions-layer">
-              {/* Hotspot 1: Notification Bell (Invisible 1:1 Click Hotspot directly over Image Bell) */}
+              {/* Notification Bell Button */}
               <div className="sa-notif-hotspot-wrap" ref={notifRef}>
                 <button
                   type="button"
@@ -578,7 +605,26 @@ export default function SuperAdminLayout() {
                     setProfileDropdownOpen(false);
                   }}
                   aria-label="Platform Notifications"
-                />
+                  title="Platform Notifications"
+                >
+                  <svg
+                    className="sa-banner-bell-icon"
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="#0f172a"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M12 2.5a2 2 0 0 0-2 2v.4C7.8 5.6 6 8.1 6 11.5c0 4-1.2 5.5-2.2 6.5h16.4c-1-1-2.2-2.5-2.2-6.5 0-3.4-1.8-5.9-4-6.6v-.4a2 2 0 0 0-2-2z" />
+                    <circle cx="12" cy="19.5" r="1.6" fill="#0f172a" stroke="none" />
+                  </svg>
+                  <span className="sa-hotspot-bell-badge">
+                    {unreadNotifCount > 0 ? unreadNotifCount : (notifications.length > 0 ? notifications.length : 3)}
+                  </span>
+                </button>
 
                 {/* Notifications Dropdown Menu */}
                 {notifDropdownOpen && (
@@ -754,7 +800,7 @@ export default function SuperAdminLayout() {
                 )}
               </div>
 
-              {/* Hotspot 2: Super Admin Profile Dropdown (Invisible 1:1 Click Hotspot directly over Image Profile Pill) */}
+              {/* Super Admin Profile Pill */}
               <div className="sa-profile-hotspot-wrap" ref={profileRef}>
                 <button
                   type="button"
@@ -765,7 +811,26 @@ export default function SuperAdminLayout() {
                   }}
                   aria-label="Super Admin Profile Menu"
                   aria-expanded={profileDropdownOpen}
-                />
+                >
+                  <div className="sa-pill-avatar">SA</div>
+                  <div className="sa-pill-meta">
+                    <span className="sa-pill-name">Super Admin</span>
+                    <span className="sa-pill-role">superadmin</span>
+                  </div>
+                  <svg
+                    className={`sa-pill-chevron ${profileDropdownOpen ? "open" : ""}`}
+                    width="11"
+                    height="11"
+                    viewBox="0 0 12 12"
+                    fill="none"
+                    stroke="#0f172a"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M2.5 4.5L6 8L9.5 4.5" />
+                  </svg>
+                </button>
 
                 {/* Profile Dropdown Menu */}
                 {profileDropdownOpen && (
@@ -854,7 +919,7 @@ export default function SuperAdminLayout() {
         </header>
 
         {/* Page Canvas */}
-        <main className="sa-page-content">
+        <main className="sa-page-content" ref={pageContentRef}>
           <Outlet />
         </main>
       </div>

@@ -427,7 +427,7 @@ exports.createSupermarket = async (req, res) => {
         supermarket: newSupermarket,
         adminUser: createdUser,
         companyName: "GrocerEase – Smart Supermarket Solutions",
-        loginUrl: "http://localhost:5173/login",
+        loginUrl: `${process.env.FRONTEND_URL || "https://super-market-scan.vercel.app"}/login`,
       });
       console.log(`✓ [BREVO SMTP] Supermarket welcome email delivered to ${storeEmail} (Message-ID: ${welcomeEmailResult?.messageId})`);
     } catch (emailErr) {

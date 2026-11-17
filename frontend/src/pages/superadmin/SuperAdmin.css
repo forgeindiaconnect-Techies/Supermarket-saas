@@ -4953,11 +4953,16 @@ input[type="password"]::-ms-clear,
 /* Recent Supermarkets Table */
 .sa-ref-table-wrap {
   width: 100%;
-  overflow-x: auto;
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  display: block;
+  margin-top: 0.5rem;
+  padding-bottom: 6px;
 }
 
 .sa-ref-table {
   width: 100%;
+  min-width: 540px; /* Guarantees columns never squeeze or get clipped on mobile screens */
   border-collapse: collapse;
   text-align: left;
 }
@@ -5113,17 +5118,68 @@ input[type="password"]::-ms-clear,
   }
 }
 
-@media (max-width: 680px) {
+@media (max-width: 768px) {
+  .sa-ref-dashboard-container {
+    gap: 0.85rem !important;
+    width: 100% !important;
+    overflow-x: hidden !important;
+  }
+
   .sa-ref-kpi-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr !important;
+    gap: 0.65rem !important;
   }
+
+  .sa-ref-center-grid {
+    grid-template-columns: 1fr !important;
+    gap: 0.85rem !important;
+  }
+
+  .sa-ref-bottom-grid {
+    grid-template-columns: 1fr !important;
+    gap: 0.85rem !important;
+  }
+
+  .sa-ref-card {
+    padding: 1rem 0.85rem !important;
+    border-radius: 14px !important;
+  }
+
   .sa-ref-metric-pills-row {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 0.5rem !important;
   }
+
   .sa-ref-overview-bottom {
-    flex-direction: column;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 0.85rem !important;
   }
+
+  .sa-ref-cart-img-box {
+    width: 100% !important;
+    height: 110px !important;
+  }
+
+  .sa-ref-overview-desc-side {
+    width: 100% !important;
+  }
+
+  .sa-ref-onboard-btn {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  .sa-ref-chart-container {
+    height: 180px !important;
+  }
+
   .sa-ref-qa-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr !important;
+    gap: 0.6rem !important;
+  }
+
+  .sa-ref-qa-btn {
+    padding: 0.85rem 1rem !important;
   }
 }

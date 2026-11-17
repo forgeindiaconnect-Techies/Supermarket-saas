@@ -1,6 +1,6 @@
 // Supermarket API Configuration & Safe Fetch Helper
 
-const DEFAULT_SERVER_URL = "http://192.168.1.38:5001/api";
+const DEFAULT_SERVER_URL = "https://super-market-scan.onrender.com/api";
 
 const RAW_URL = process.env.EXPO_PUBLIC_API_URL || DEFAULT_SERVER_URL;
 
