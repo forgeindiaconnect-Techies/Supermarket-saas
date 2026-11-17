@@ -1182,10 +1182,10 @@ export default function Header({ onMenuClick }) {
             >
               {currentSupermarket.name ? currentSupermarket.name[0].toUpperCase() : "S"}
             </div>
-            <span style={{ fontSize: "12px", fontWeight: 700, color: "#166534", maxWidth: "120px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <span className="header-store-name-text" style={{ fontSize: "12px", fontWeight: 700, color: "#166534", maxWidth: "120px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {currentSupermarket.name}
             </span>
-            <span style={{ fontSize: "10px", fontWeight: 800, color: "#15803d", background: "#dcfce7", padding: "1px 5px", borderRadius: "4px", fontFamily: "monospace" }}>
+            <span className="header-store-code-badge" style={{ fontSize: "10px", fontWeight: 800, color: "#15803d", background: "#dcfce7", padding: "1px 5px", borderRadius: "4px", fontFamily: "monospace" }}>
               {currentSupermarket.code}
             </span>
           </div>

@@ -26,6 +26,7 @@ import {
   TrendingUp,
   Headphones,
   MessageSquare,
+  Check,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { io } from "socket.io-client";
@@ -624,55 +625,40 @@ export default function SuperAdminLayout() {
 
                 {/* Notifications Dropdown Menu */}
                 {notifDropdownOpen && (
-                  <div className="sa-notif-dropdown-menu" style={{ width: "380px" }}>
+                  <div className="sa-notif-dropdown-menu">
                     <div className="sa-nd-header">
                       <div className="sa-nd-title-row">
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                          <strong>Platform Notifications</strong>
+                        <div className="sa-nd-title-group">
+                          <strong className="sa-nd-title-text">Platform Notifications</strong>
                           {unreadNotifCount > 0 && (
                             <span className="sa-nd-count-pill">{unreadNotifCount} New</span>
                           )}
                         </div>
-                        <div style={{ display: "flex", gap: "6px" }}>
+                        <div className="sa-nd-actions-wrap">
                           {unreadNotifCount > 0 && (
                             <button
                               type="button"
+                              className="sa-nd-btn-mark-all"
                               onClick={handleMarkAllNotifsRead}
-                              style={{
-                                background: "none",
-                                border: "none",
-                                color: "#16a34a",
-                                fontSize: "11px",
-                                fontWeight: 700,
-                                cursor: "pointer",
-                                padding: "2px 4px",
-                              }}
-                              title="Mark all as read"
+                              title="Mark all notifications as read"
                             >
-                              Mark All Read
+                              <Check size={12} strokeWidth={2.6} />
+                              <span>Mark All Read</span>
                             </button>
                           )}
                           {notifications.length > 0 && (
                             <button
                               type="button"
+                              className="sa-nd-btn-clear"
                               onClick={handleClearAllNotifs}
-                              style={{
-                                background: "none",
-                                border: "none",
-                                color: "#94a3b8",
-                                fontSize: "11px",
-                                fontWeight: 600,
-                                cursor: "pointer",
-                                padding: "2px 4px",
-                              }}
                               title="Clear all notifications"
                             >
-                              Clear
+                              <span>Clear</span>
                             </button>
                           )}
                         </div>
                       </div>
-                      <small>SaaS Platform Management &amp; Subscription Events</small>
+                      <small className="sa-nd-subtitle">SaaS Platform Management &amp; Subscription Events</small>
                     </div>
 
                     <div className="sa-nd-list" style={{ maxHeight: "340px", overflowY: "auto" }}>
@@ -918,6 +904,18 @@ export default function SuperAdminLayout() {
         <main className="sa-page-content" ref={pageContentRef}>
           <Outlet />
         </main>
+
+        {/* Mobile Floating Quick Chat Action Button */}
+        {location.pathname !== "/super-admin/chat" && (
+          <Link
+            to="/super-admin/chat"
+            className="sa-mobile-floating-chat"
+            title="Chat with Supermarkets"
+            aria-label="Supermarket Chat"
+          >
+            <MessageSquare size={22} color="#ffffff" strokeWidth={2.4} />
+          </Link>
+        )}
       </div>
     </div>
   );

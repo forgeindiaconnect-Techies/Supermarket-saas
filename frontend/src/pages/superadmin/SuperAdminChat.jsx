@@ -20,6 +20,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Layers,
+  ArrowLeft,
 } from "lucide-react";
 import { io } from "socket.io-client";
 import API, { SOCKET_URL } from "../../services/api";
@@ -76,6 +77,7 @@ export default function SuperAdminChat() {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
+  const [mobileTab, setMobileTab] = useState("list");
 
   const messagesEndRef = useRef(null);
   const socketRef = useRef(null);
@@ -123,6 +125,7 @@ export default function SuperAdminChat() {
     selectedStoreRef.current = store;
     setInputText("");
     setStatusDropdownOpen(false);
+    setMobileTab("chat");
 
     try {
       setLoadingMessages(true);
@@ -503,25 +506,11 @@ export default function SuperAdminChat() {
 
       {/* 2. Main Two-Column Chat Command Center */}
       <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "390px 1fr",
-          gap: "1.25rem",
-          height: "calc(100vh - 250px)",
-          minHeight: "620px",
-        }}
+        className={`sa-chat-grid-container ${mobileTab === "chat" ? "show-chat" : "show-list"}`}
       >
         {/* ================= Left Column: Supermarket Conversation Directory ================= */}
         <div
-          style={{
-            background: "#ffffff",
-            borderRadius: "18px",
-            border: "1px solid #e2e8f0",
-            display: "flex",
-            flexDirection: "column",
-            overflow: "hidden",
-            boxShadow: "0 2px 12px rgba(15, 23, 42, 0.04)",
-          }}
+          className="sa-chat-list-col"
         >
           {/* Search Bar */}
           <div style={{ padding: "14px 16px 10px 16px", borderBottom: "1px solid #f1f5f9" }}>
@@ -890,45 +879,37 @@ export default function SuperAdminChat() {
 
         {/* ================= Right Column: Private Supermarket Thread ================= */}
         <div
-          style={{
-            background: "#ffffff",
-            borderRadius: "18px",
-            border: "1px solid #e2e8f0",
-            display: "flex",
-            flexDirection: "column",
-            overflow: "hidden",
-            boxShadow: "0 2px 12px rgba(15, 23, 42, 0.04)",
-          }}
+          className="sa-chat-thread-col"
         >
           {selectedStore ? (
             <>
               {/* Selected Supermarket Header with Full Details */}
               <div
-                style={{
-                  padding: "16px 22px",
-                  background: "#f8fafc",
-                  borderBottom: "1px solid #e2e8f0",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  flexWrap: "wrap",
-                  gap: "14px",
-                }}
+                className="sa-chat-thread-header"
               >
                 {/* Store Profile Details */}
-                <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    className="sa-chat-mobile-back-btn"
+                    onClick={() => setMobileTab("list")}
+                    title="Back to Supermarket List"
+                  >
+                    <ArrowLeft size={16} />
+                    <span>Stores</span>
+                  </button>
                   <div
                     style={{
-                      width: "48px",
-                      height: "48px",
-                      borderRadius: "14px",
+                      width: "44px",
+                      height: "44px",
+                      borderRadius: "12px",
                       background: "#065f46",
                       color: "#ffffff",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
                       fontWeight: 850,
-                      fontSize: "17px",
+                      fontSize: "16px",
                       border: "2px solid #bbf7d0",
                       overflow: "hidden",
                       flexShrink: 0,

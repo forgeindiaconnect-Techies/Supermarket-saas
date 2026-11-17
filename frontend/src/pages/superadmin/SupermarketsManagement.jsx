@@ -324,16 +324,6 @@ export default function SupermarketsManagement() {
         <div className="sa-page-header-actions">
           <button
             type="button"
-            className="sa-btn-secondary"
-            onClick={loadSupermarkets}
-            title="Reload from backend"
-          >
-            <RefreshCw size={15} />
-            <span>Sync Stores</span>
-          </button>
-
-          <button
-            type="button"
             className="sa-btn-primary"
             onClick={() => navigate("/super-admin/add-supermarket")}
           >

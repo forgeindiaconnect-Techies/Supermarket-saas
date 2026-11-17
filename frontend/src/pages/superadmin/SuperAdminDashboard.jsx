@@ -15,6 +15,7 @@ import {
   RefreshCw,
   Eye,
   Wifi,
+  MessageSquare,
 } from "lucide-react";
 import API, { SOCKET_URL } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
@@ -151,7 +152,7 @@ export default function SuperAdminDashboard() {
   const [salesRange, setSalesRange] = useState("7d"); // "7d" or "30d"
   const [wireCartUrl, setWireCartUrl] = useState(null);
 
-  // Extract the clean white wire shopping cart with produce from the master reference image
+  // Extract the complete white wire shopping cart with produce from the master reference image
   useEffect(() => {
     const img = new Image();
     img.crossOrigin = "anonymous";
@@ -161,12 +162,11 @@ export default function SuperAdminDashboard() {
         const canvas = document.createElement("canvas");
         const W = img.naturalWidth;
         const H = img.naturalHeight;
-        // Bounding box of the white shopping cart in master reference image
-        // Width strictly 0.063 prevents capturing any stray "3:" text
-        const x = Math.round(W * 0.021);
-        const y = Math.round(H * 0.446);
-        const w = Math.round(W * 0.063);
-        const h = Math.round(H * 0.192);
+        // Bounding box of the entire shopping cart (full produce, wire basket, wheels & handle)
+        const x = Math.round(W * 0.020);
+        const y = Math.round(H * 0.438);
+        const w = Math.round(W * 0.088);
+        const h = Math.round(H * 0.205);
         canvas.width = w;
         canvas.height = h;
         const ctx = canvas.getContext("2d");
@@ -762,17 +762,17 @@ export default function SuperAdminDashboard() {
             </Link>
           </div>
 
-          <div className="sa-ref-table-wrap">
-            <table className="sa-ref-table">
+          <div className="sa-ref-table-wrap" style={{ width: "100%", overflowX: "auto", WebkitOverflowScrolling: "touch", touchAction: "pan-x pan-y" }}>
+            <table className="sa-ref-table" style={{ width: "100%" }}>
               <thead>
                 <tr>
-                  <th style={{ width: "35px" }}>#</th>
+                  <th style={{ width: "30px" }}>#</th>
                   <th>Supermarket Name</th>
-                  <th>Admin</th>
-                  <th>Plan</th>
+                  <th className="sa-ref-col-admin">Admin</th>
+                  <th className="sa-ref-col-plan">Plan</th>
                   <th>Status</th>
-                  <th>Registered On</th>
-                  <th style={{ textAlign: "right" }}>Actions</th>
+                  <th className="sa-ref-col-date">Registered On</th>
+                  <th style={{ textAlign: "center", width: "115px", whiteSpace: "nowrap" }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -780,27 +780,33 @@ export default function SuperAdminDashboard() {
                   <tr key={store._id || idx}>
                     <td className="sa-ref-td-num">{idx + 1}</td>
                     <td>
-                      <span className="sa-ref-store-name">{store.name}</span>
+                      <div style={{ display: "flex", flexDirection: "column" }}>
+                        <span className="sa-ref-store-name">{store.name}</span>
+                        <span className="sa-ref-store-sub-mobile">
+                          {store.plan || "Basic"} &bull; {store.adminUsername || store.code || "Store Admin"}
+                        </span>
+                      </div>
                     </td>
-                    <td>
+                    <td className="sa-ref-col-admin">
                       <span className="sa-ref-admin-name">
                         {store.adminUsername || store.email || `${store.code || "store"}@grocerease.store`}
                       </span>
                     </td>
-                    <td>
+                    <td className="sa-ref-col-plan">
                       <span className="sa-ref-plan-name">{store.plan || "Basic"}</span>
                     </td>
                     <td>
                       <span className="sa-ref-status-pill">Active</span>
                     </td>
-                    <td>
+                    <td className="sa-ref-col-date">
                       <span className="sa-ref-date-text">{formatDate(store.createdAt)}</span>
                     </td>
-                    <td style={{ textAlign: "right" }}>
+                    <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
                       <button
                         type="button"
                         className="sa-ref-view-btn"
                         onClick={() => handleLaunchStore(store)}
+                        title={`View detailed performance for ${store.name}`}
                       >
                         <span>View Details</span>
                         <span>&rarr;</span>
@@ -838,7 +844,26 @@ export default function SuperAdminDashboard() {
               </div>
             </button>
 
-            {/* Action 2: View Platform Reports */}
+            {/* Action 2: Chat with Supermarkets */}
+            <button
+              type="button"
+              className="sa-ref-qa-btn chat-action"
+              onClick={() => navigate("/super-admin/chat")}
+              style={{
+                background: "linear-gradient(135deg, #065f46 0%, #047857 100%)",
+                color: "#ffffff",
+              }}
+            >
+              <div className="sa-ref-qa-icon chat" style={{ color: "#ffffff" }}>
+                <MessageSquare size={18} color="#ffffff" strokeWidth={2.4} />
+              </div>
+              <div className="sa-ref-qa-label">
+                <span>Supermarket Chat</span>
+                <span className="sa-ref-qa-arr" style={{ color: "#ffffff" }}>&rarr;</span>
+              </div>
+            </button>
+
+            {/* Action 3: View Platform Reports */}
             <button
               type="button"
               className="sa-ref-qa-btn mint"
@@ -853,7 +878,7 @@ export default function SuperAdminDashboard() {
               </div>
             </button>
 
-            {/* Action 3: Manage Plans */}
+            {/* Action 4: Manage Plans */}
             <button
               type="button"
               className="sa-ref-qa-btn mint"
@@ -868,7 +893,7 @@ export default function SuperAdminDashboard() {
               </div>
             </button>
 
-            {/* Action 4: Check Subscriptions */}
+            {/* Action 5: Check Subscriptions */}
             <button
               type="button"
               className="sa-ref-qa-btn mint"

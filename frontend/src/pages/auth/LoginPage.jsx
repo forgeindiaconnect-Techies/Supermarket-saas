@@ -195,6 +195,12 @@ export default function LoginPage() {
               <span className="ge-feature-label">Customer<br />Management</span>
             </div>
           </div>
+
+          {/* Bottom Left Cursive Script Under Shopping Cart: "Shop Smart... Live Better..." */}
+          <div className="ge-bottom-script">
+            <span>Shop Smart...</span>
+            <span>Live Better...</span>
+          </div>
         </section>
 
         {/* Right Side: The Crisp White Glass Login Card */}
@@ -385,12 +391,6 @@ export default function LoginPage() {
             </div>
           </div>
         </section>
-
-        {/* Bottom Left Cursive Script Under Shopping Cart: "Shop Smart... Live Better..." */}
-        <div className="ge-bottom-script">
-          <span>Shop Smart...</span>
-          <span>Live Better...</span>
-        </div>
       </main>
 
       {/* MODAL 1: Contact Support Modal */}

@@ -332,23 +332,20 @@
 
 /* Bottom Left Script Slogan Under the Cart: Exact Dancing Script Match to Image 2 */
 .ge-bottom-script {
-  position: absolute;
-  bottom: 2rem;
-  left: 2.5rem;
+  margin-top: 1.25rem;
   display: flex;
   flex-direction: column;
   font-family: 'Dancing Script', 'Satisfy', cursive, sans-serif;
-  font-size: clamp(34px, 2.8vw, 44px);
+  font-size: clamp(32px, 2.6vw, 42px);
   font-weight: 700;
   color: #ffffff;
   line-height: 1.12;
-  transform: rotate(-6deg);
+  transform: rotate(-5deg);
   transform-origin: left bottom;
   text-shadow:
     0 2px 14px rgba(0, 0, 0, 0.95),
     0 0 18px rgba(74, 222, 128, 0.6),
     0 0 35px rgba(74, 222, 128, 0.3);
-  z-index: 10;
   pointer-events: none;
   user-select: none;
   letter-spacing: 0.5px;
@@ -1010,6 +1007,10 @@
   .ge-login-card {
     width: 100%;
     max-width: 440px;
+  }
+
+  .ge-bottom-script {
+    display: none !important;
   }
 }
 

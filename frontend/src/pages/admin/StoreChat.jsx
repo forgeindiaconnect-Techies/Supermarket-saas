@@ -18,6 +18,7 @@ import { io } from "socket.io-client";
 import API, { SOCKET_URL } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import "./ProductManagement.css";
+import "./StoreChat.css";
 
 export default function StoreChat() {
   const { user, currentSupermarket } = useAuth();
@@ -161,23 +162,14 @@ export default function StoreChat() {
   };
 
   return (
-    <div style={{ maxWidth: "1100px", margin: "0 auto", padding: "1.5rem 1rem 2.5rem 1rem" }}>
+    <div className="store-chat-page-wrapper">
       {/* 1. Header with Breadcrumb & Supermarket Badge */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: "1rem",
-          marginBottom: "1.25rem",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+      <div className="store-chat-header-row">
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: 0, flex: "1 1 auto" }}>
           <div
             style={{
-              width: "48px",
-              height: "48px",
+              width: "44px",
+              height: "44px",
               borderRadius: "14px",
               background: "#dcfce7",
               color: "#16a34a",
@@ -185,13 +177,14 @@ export default function StoreChat() {
               alignItems: "center",
               justifyContent: "center",
               boxShadow: "0 2px 8px rgba(22, 163, 74, 0.15)",
+              flexShrink: 0,
             }}
           >
-            <MessageSquare size={26} strokeWidth={2.4} />
+            <MessageSquare size={24} strokeWidth={2.4} />
           </div>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <h1 style={{ margin: 0, fontSize: "1.45rem", fontWeight: 800, color: "#0f172a" }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+              <h1 style={{ margin: 0, fontSize: "1.35rem", fontWeight: 800, color: "#0f172a" }}>
                 Super Admin Chat
               </h1>
               <span
@@ -205,13 +198,14 @@ export default function StoreChat() {
                   borderRadius: "9999px",
                   fontSize: "0.72rem",
                   fontWeight: 750,
+                  whiteSpace: "nowrap",
                 }}
               >
                 <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#16a34a" }} />
                 Online &bull; Private Line
               </span>
             </div>
-            <p style={{ margin: "2px 0 0 0", fontSize: "0.85rem", color: "#64748b" }}>
+            <p style={{ margin: "2px 0 0 0", fontSize: "0.82rem", color: "#64748b" }}>
               Direct encrypted communication channel with GrocerEase Super Admin
             </p>
           </div>
@@ -219,6 +213,7 @@ export default function StoreChat() {
 
         {/* Store Identifier Badge */}
         <div
+          className="store-chat-store-badge"
           style={{
             background: "#ffffff",
             border: "1px solid #e2e8f0",
@@ -231,7 +226,7 @@ export default function StoreChat() {
           }}
         >
           <Building2 size={16} color="#059669" />
-          <div style={{ textAlign: "right" }}>
+          <div>
             <div style={{ fontSize: "0.86rem", fontWeight: 750, color: "#0f172a" }}>
               {storeInfo.name}
             </div>
@@ -243,31 +238,10 @@ export default function StoreChat() {
       </div>
 
       {/* 2. Main Chat Box Container */}
-      <div
-        style={{
-          background: "#ffffff",
-          borderRadius: "20px",
-          border: "1px solid #e2e8f0",
-          boxShadow: "0 4px 20px rgba(15, 23, 42, 0.05)",
-          display: "flex",
-          flexDirection: "column",
-          height: "calc(100vh - 270px)",
-          minHeight: "520px",
-          overflow: "hidden",
-        }}
-      >
+      <div className="store-chat-box">
         {/* Chat Window Top Bar */}
-        <div
-          style={{
-            padding: "14px 20px",
-            background: "#f8fafc",
-            borderBottom: "1px solid #e2e8f0",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+        <div className="store-chat-top-bar">
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: 0 }}>
             <div
               style={{
                 width: "40px",
@@ -281,32 +255,35 @@ export default function StoreChat() {
                 fontWeight: 800,
                 fontSize: "14px",
                 boxShadow: "0 2px 6px rgba(6, 95, 70, 0.2)",
+                flexShrink: 0,
               }}
             >
               SA
             </div>
-            <div>
+            <div style={{ minWidth: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <strong style={{ fontSize: "0.94rem", color: "#0f172a" }}>
+                <strong style={{ fontSize: "0.92rem", color: "#0f172a" }}>
                   GrocerEase Super Admin
                 </strong>
                 <Crown size={14} color="#d97706" />
               </div>
-              <span style={{ fontSize: "0.76rem", color: "#64748b" }}>
+              <span style={{ fontSize: "0.74rem", color: "#64748b", display: "block" }}>
                 Platform Support &bull; Multi-Tenant Head Office
               </span>
             </div>
           </div>
 
           <div
+            className="store-chat-encrypted-badge"
             style={{
-              fontSize: "0.78rem",
+              fontSize: "0.76rem",
               color: "#15803d",
               background: "#f0fdf4",
               border: "1px solid #bbf7d0",
               padding: "4px 10px",
               borderRadius: "8px",
               fontWeight: 700,
+              whiteSpace: "nowrap",
             }}
           >
             Encrypted &bull; Strictly Tenant-Isolated
@@ -314,17 +291,7 @@ export default function StoreChat() {
         </div>
 
         {/* Chat Messages Stream Area */}
-        <div
-          style={{
-            flex: 1,
-            overflowY: "auto",
-            padding: "1.5rem",
-            background: "#fdfefe",
-            display: "flex",
-            flexDirection: "column",
-            gap: "1rem",
-          }}
-        >
+        <div className="store-chat-messages-area">
           {loading ? (
             <div style={{ margin: "auto", textAlign: "center", color: "#64748b" }}>
               <div style={{ fontSize: "14px", fontWeight: 600 }}>Loading conversation...</div>
@@ -473,52 +440,24 @@ export default function StoreChat() {
         </div>
 
         {/* Message Input Bar */}
-        <form
-          onSubmit={handleSendMessage}
-          style={{
-            padding: "14px 20px",
-            background: "#ffffff",
-            borderTop: "1px solid #e2e8f0",
-            display: "flex",
-            alignItems: "center",
-            gap: "10px",
-          }}
-        >
+        <form onSubmit={handleSendMessage} className="store-chat-input-form">
           <input
             type="text"
+            className="store-chat-input"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            placeholder={`Message Super Admin as ${storeInfo.name}...`}
+            placeholder={`Message Super Admin...`}
             disabled={sending}
-            style={{
-              flex: 1,
-              padding: "11px 16px",
-              borderRadius: "12px",
-              border: "1.5px solid #cbd5e1",
-              fontSize: "0.9rem",
-              fontWeight: 500,
-              outline: "none",
-              color: "#0f172a",
-              transition: "border 0.15s ease",
-            }}
           />
           <button
             type="submit"
+            className="store-chat-send-btn"
             disabled={!inputText.trim() || sending}
             style={{
               background: inputText.trim() && !sending ? "#065f46" : "#cbd5e1",
               color: "#ffffff",
-              border: "none",
-              borderRadius: "12px",
-              padding: "11px 22px",
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              fontSize: "0.88rem",
-              fontWeight: 800,
               cursor: inputText.trim() && !sending ? "pointer" : "not-allowed",
               boxShadow: inputText.trim() && !sending ? "0 4px 12px rgba(6, 95, 70, 0.25)" : "none",
-              transition: "all 0.15s ease",
             }}
           >
             <span>{sending ? "Sending..." : "Send"}</span>

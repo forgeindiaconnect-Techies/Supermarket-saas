@@ -23,6 +23,7 @@ import {
 import API from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import "./ProductManagement.css";
+import "./SettingsManagement.css";
 
 export default function SettingsManagement() {
   const { user, currentSupermarket } = useAuth();
@@ -279,18 +280,7 @@ export default function SettingsManagement() {
   };
 
   return (
-    <div
-      style={{
-        maxWidth: "1280px",
-        margin: "0 auto",
-        padding: "1.25rem 1.5rem 3rem 1.5rem",
-        backgroundColor: "#c4daf5",
-        borderRadius: "20px",
-        border: "1.5px solid #93c5fd",
-        boxShadow: "0 6px 24px rgba(37, 99, 235, 0.08)",
-        minHeight: "calc(100vh - 110px)",
-      }}
-    >
+    <div className="settings-page-wrapper">
       {/* Toast Notification */}
       {toast.show && (
         <div
@@ -321,21 +311,7 @@ export default function SettingsManagement() {
       )}
 
       {/* 1. Header with Breadcrumb - Enclosed White Card Box */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: "1rem",
-          background: "#ffffff",
-          padding: "1.25rem 1.75rem",
-          borderRadius: "16px",
-          border: "1.5px solid #93c5fd",
-          boxShadow: "0 4px 14px rgba(37, 99, 235, 0.08)",
-          marginBottom: "1.75rem",
-        }}
-      >
+      <div className="settings-header-box">
         <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
           <div
             style={{
@@ -387,28 +363,9 @@ export default function SettingsManagement() {
       </div>
 
       {/* 2. Main Two-Column Profile Grid */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(300px, 350px) 1fr",
-          gap: "1.75rem",
-          alignItems: "start",
-        }}
-      >
+      <div className="settings-profile-main-grid">
         {/* Left Column: Supermarket & Admin Card (Blue & Navy SaaS Theme) */}
-        <div
-          style={{
-            background: "#ffffff",
-            borderRadius: "20px",
-            border: "1.5px solid #bfdbfe",
-            padding: "2rem 1.75rem",
-            boxShadow: "0 8px 24px rgba(37, 99, 235, 0.08)",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            textAlign: "center",
-          }}
-        >
+        <div className="settings-left-card">
           {/* Logo or Store Initial */}
           <div style={{ position: "relative", marginBottom: "1.25rem" }}>
             <div
@@ -654,15 +611,7 @@ export default function SettingsManagement() {
         </div>
 
         {/* Right Column: Edit Profile Form */}
-        <div
-          style={{
-            background: "#ffffff",
-            borderRadius: "20px",
-            border: "1.5px solid #bfdbfe",
-            padding: "2rem",
-            boxShadow: "0 8px 28px rgba(37, 99, 235, 0.06)",
-          }}
-        >
+        <div className="settings-right-card">
           {/* Header */}
           <div
             style={{
@@ -696,7 +645,7 @@ export default function SettingsManagement() {
 
           <form onSubmit={handleSaveChanges} style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
             {/* Store Name & Branch Code */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+            <div className="settings-form-row-2col">
               <div>
                 <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, color: "#334155", marginBottom: "6px" }}>
                   Supermarket Name
@@ -947,14 +896,7 @@ export default function SettingsManagement() {
               </div>
 
               {/* 3 Password Fields Grid */}
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
-                  gap: "1rem",
-                  paddingTop: "6px",
-                }}
-              >
+              <div className="settings-password-grid">
                 {/* 1. Current Password */}
                 <div>
                   <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, color: "#334155", marginBottom: "6px" }}>
@@ -1189,15 +1131,7 @@ export default function SettingsManagement() {
             </div>
 
             {/* Bottom Actions */}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                gap: "1rem",
-                marginTop: "1.5rem",
-              }}
-            >
+            <div className="settings-action-buttons-row">
               <button
                 type="submit"
                 disabled={saving}

@@ -1167,30 +1167,38 @@ exports.sendAutomatedPlanEmail = async (req, res) => {
       .trim()
       .toLowerCase();
 
-    // Call automated plan notice dispatcher (Brevo SMTP + auto-template selector + EmailLog)
+    const appUrl = process.env.FRONTEND_URL || "https://super-market-scan.vercel.app";
+
+    // Call automated plan notice dispatcher (Brevo SMTP / Gmail + auto-template selector + EmailLog)
     const result = await sendAutomatedPlanNoticeEmail({
       supermarket,
       templateType: templateType || null,
       customMessage: customMessage || "",
-      portalUrl: "http://localhost:5173/login",
+      portalUrl: `${appUrl}/login`,
     });
+
+    const isLiveDelivered = result.delivered === true;
 
     // Record Super Admin Platform Notification for Email Sent
     try {
       await PlatformNotification.create({
         type: "EMAIL_SENT",
-        title: "Subscription Renewal Email Sent",
+        title: isLiveDelivered ? "Subscription Renewal Email Sent" : "Subscription Notice (Outbox)",
         supermarket: supermarket._id,
         supermarketName: supermarket.name,
         supermarketCode: supermarket.code,
-        message: `Subscription notice (${result.templateType}) sent successfully to ${supermarket.name} (${targetEmail}).`,
-        color: "blue",
+        message: isLiveDelivered
+          ? `Subscription notice (${result.templateType}) sent successfully to ${supermarket.name} (${targetEmail}).`
+          : `Subscription notice (${result.templateType}) saved to Outbox for ${supermarket.name} (${targetEmail}). Live inbox delivery requires verified Brevo sender or Gmail App Password in Render settings.`,
+        color: isLiveDelivered ? "blue" : "orange",
         actionUrl: "/super-admin/plans",
         metadata: {
           templateType: result.templateType,
           subject: result.subject,
           recipient: targetEmail,
           messageId: result.messageId || null,
+          delivered: isLiveDelivered,
+          error: result.error || null,
         },
       });
     } catch (notifErr) {
@@ -1199,11 +1207,16 @@ exports.sendAutomatedPlanEmail = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: `Subscription notification (${result.templateType}) successfully sent to ${supermarket.name} (${targetEmail})!`,
+      delivered: isLiveDelivered,
+      message: isLiveDelivered
+        ? `Subscription notification (${result.templateType}) successfully delivered live to ${supermarket.name} (${targetEmail})!`
+        : `Subscription notification (${result.templateType}) recorded in Outbox for ${targetEmail}. (SMTP delivery setup required on Render for live mailbox delivery)`,
       email: targetEmail,
       templateType: result.templateType,
       subject: result.subject,
       messageId: result.messageId || null,
+      notice: result.notice || null,
+      error: result.error || null,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {

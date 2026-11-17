@@ -251,16 +251,6 @@ export default function ProductWiseSalesReport() {
         <div className="sa-page-header-actions">
           <button
             type="button"
-            className="sa-btn-secondary"
-            onClick={fetchProductSales}
-            title="Refresh product matrix"
-          >
-            <RefreshCw size={15} />
-            <span>Refresh</span>
-          </button>
-
-          <button
-            type="button"
             className="sa-btn-primary"
             onClick={handleExportCSV}
           >

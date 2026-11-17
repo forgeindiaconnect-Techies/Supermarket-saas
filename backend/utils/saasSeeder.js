@@ -237,16 +237,9 @@ async function seedSaaSPlatformData() {
     }
 
     // =========================================================================
-    // 5. STORE 4: 24/7 Freshmart (STR-003) - Basic (Agila Admin)
+    // 5. STORE 4: 24/7 Freshmart (STR-003) - Demo Store ONLY (Strict Code Match)
     // =========================================================================
-    let storeFreshmart = await Supermarket.findOne({
-      $or: [
-        { code: "STR-003" },
-        { code: "SM-247" },
-        { name: /24\/7 Freshmart/i },
-        { adminUsername: "agila" },
-      ],
-    });
+    let storeFreshmart = await Supermarket.findOne({ code: "STR-003" });
     if (!storeFreshmart) {
       storeFreshmart = await Supermarket.create({
         name: "24/7 Freshmart",
@@ -258,12 +251,12 @@ async function seedSaaSPlatformData() {
         state: "Karnataka",
         pincode: "560025",
         phone: "+91 98452 33445",
-        email: "agila@grocerease.store",
+        email: "agila.demo@grocerease.store",
         ownerName: "Agila",
         contactPerson: "Agila Admin",
-        adminUsername: "agila",
+        adminUsername: "agila_demo",
         adminPassword: "Agila@123",
-        adminName: "Agila",
+        adminName: "Agila Demo",
         status: "Active",
         plan: "Basic",
         themeColor: "#16a34a",
@@ -273,24 +266,15 @@ async function seedSaaSPlatformData() {
         startDate: new Date("2026-11-14T00:00:00.000Z"),
         expiryDate: new Date("2026-12-14T00:00:00.000Z"),
       });
-      console.log("✓ Created Store 4: 24/7 Freshmart (STR-003)");
-    } else {
-      storeFreshmart.name = "24/7 Freshmart";
-      storeFreshmart.adminUsername = "agila";
-      storeFreshmart.adminPassword = "Agila@123";
-      storeFreshmart.adminName = "Agila";
-      storeFreshmart.status = "Active";
-      storeFreshmart.plan = "Basic";
-      storeFreshmart.subscriptionAmount = 4999;
-      await storeFreshmart.save();
+      console.log("✓ Created Demo Store: 24/7 Freshmart (STR-003)");
     }
 
-    let adminFreshmart = await User.findOne({ username: "agila" });
+    let adminFreshmart = await User.findOne({ username: "agila_demo" });
     if (!adminFreshmart) {
       adminFreshmart = await User.create({
-        name: "Agila",
-        username: "agila",
-        email: "agila@grocerease.store",
+        name: "Agila Demo",
+        username: "agila_demo",
+        email: "agila.demo@grocerease.store",
         password: "Agila@123",
         role: "STORE_ADMIN",
         supermarket: storeFreshmart._id,
@@ -299,14 +283,7 @@ async function seedSaaSPlatformData() {
         phone: "+91 98452 33445",
         status: "Active",
       });
-      console.log("✓ Created Store Admin 4: agila / Agila@123");
-    } else {
-      adminFreshmart.name = "Agila";
-      adminFreshmart.supermarket = storeFreshmart._id;
-      adminFreshmart.supermarketCode = storeFreshmart.code;
-      adminFreshmart.supermarketName = storeFreshmart.name;
-      adminFreshmart.status = "Active";
-      await adminFreshmart.save();
+      console.log("✓ Created Demo Store Admin: agila_demo / Agila@123");
     }
 
     // =========================================================================
@@ -546,89 +523,10 @@ async function seedSaaSPlatformData() {
       },
     ];
 
-    const storeFreshmartCatalog = [
-      {
-        name: "Fresh Cavendish Bananas 1kg",
-        brand: "Fresh Orchard",
-        category: "Fruits & Vegetables",
-        barcode: "2001938102948",
-        price: 60.0,
-        costPrice: 40.0,
-        stock: 50,
-        lowStockThreshold: 10,
-        imageUrl: "https://images.unsplash.com/photo-1571771894821-ce9b6c11b08e?w=120&auto=format&fit=crop&q=80",
-        description: "Fresh premium Cavendish ripe bananas.",
-        supermarket: storeFreshmart._id,
-        supermarketCode: storeFreshmart.code,
-        isActive: true,
-      },
-      {
-        name: "Amul Salted Butter 500g",
-        brand: "Amul",
-        category: "Dairy",
-        barcode: "2006738192049",
-        price: 275.0,
-        costPrice: 240.0,
-        stock: 30,
-        lowStockThreshold: 8,
-        imageUrl: "https://images.unsplash.com/photo-1589985270826-4b7bb135bc9d?w=120&auto=format&fit=crop&q=80",
-        description: "Pure pasteurized creamy salted table butter.",
-        supermarket: storeFreshmart._id,
-        supermarketCode: storeFreshmart.code,
-        isActive: true,
-      },
-      {
-        name: "Tata Salt Iodized 1kg",
-        brand: "Tata",
-        category: "Groceries",
-        barcode: "2005849102948",
-        price: 28.0,
-        costPrice: 22.0,
-        stock: 80,
-        lowStockThreshold: 20,
-        imageUrl: "https://images.unsplash.com/photo-1586201375761-83865001e31c?w=120&auto=format&fit=crop&q=80",
-        description: "Desh ka namak - pure vacuum evaporated iodized salt.",
-        supermarket: storeFreshmart._id,
-        supermarketCode: storeFreshmart.code,
-        isActive: true,
-      },
-      {
-        name: "Britannia Good Day Butter Cookies 200g",
-        brand: "Britannia",
-        category: "Snacks",
-        barcode: "2003849102847",
-        price: 45.0,
-        costPrice: 35.0,
-        stock: 60,
-        lowStockThreshold: 15,
-        imageUrl: "https://images.unsplash.com/photo-1558961363-fa8fdf82db35?w=120&auto=format&fit=crop&q=80",
-        description: "Rich butter cashew cookies for delightful tea time.",
-        supermarket: storeFreshmart._id,
-        supermarketCode: storeFreshmart.code,
-        isActive: true,
-      },
-      {
-        name: "Tropicana 100% Real Orange Juice 1L",
-        brand: "Tropicana",
-        category: "Beverages",
-        barcode: "8901020304082",
-        price: 145.0,
-        costPrice: 110.0,
-        stock: 25,
-        lowStockThreshold: 6,
-        imageUrl: "https://images.unsplash.com/photo-1534353473418-4cfa6c56fd38?w=120&auto=format&fit=crop&q=80",
-        description: "Pure pressed orange juice with no added sugar or preservatives.",
-        supermarket: storeFreshmart._id,
-        supermarketCode: storeFreshmart.code,
-        isActive: true,
-      },
-    ];
-
     const allStoreCatalogs = [
       ...storeACatalog,
       ...storeBCatalog,
       ...storeAkshayaCatalog,
-      ...storeFreshmartCatalog,
     ];
 
     for (const prodItem of allStoreCatalogs) {
@@ -649,7 +547,23 @@ async function seedSaaSPlatformData() {
         await existing.save();
       }
     }
-    console.log("✓ Guaranteed 20 Catalog SKUs across all 4 supermarkets (5 SKUs per store).");
+    console.log("✓ Guaranteed Catalog SKUs for system demonstration supermarkets.");
+
+    // Guarantee that user-created supermarkets (e.g. SM-3662 or any newly onboarded store)
+    // strictly have ZERO SKUs ("if I add the new supermarket it's no need to show anything")
+    try {
+      const deletedUserProds = await Product.deleteMany({
+        $or: [
+          { supermarketCode: "SM-3662" },
+          { supermarketCode: { $nin: ["STR-001", "STR-002", "SM-7087"] } },
+        ],
+      });
+      if (deletedUserProds?.deletedCount > 0) {
+        console.log(`✓ Cleaned ${deletedUserProds.deletedCount} default products from newly added user supermarkets.`);
+      }
+    } catch (cleanErr) {
+      console.warn("Product cleanup notice:", cleanErr.message);
+    }
 
     // =========================================================================
     // 7. ENSURE REALISTIC COMPLETED ORDERS & SALES LEDGER (₹76,066 Network Volume)

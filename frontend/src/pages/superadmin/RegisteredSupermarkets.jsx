@@ -512,17 +512,6 @@ export default function RegisteredSupermarkets() {
                     <Download size={14} />
                     <span>Export CSV</span>
                   </button>
-
-                  <button
-                    type="button"
-                    className="sa-btn-hero-refresh"
-                    onClick={() => fetchSupermarketDetails(selectedStoreId)}
-                    disabled={loadingDetail}
-                    title="Refresh live supermarket metrics"
-                  >
-                    <RefreshCw size={14} className={loadingDetail ? "spin-icon" : ""} />
-                    <span>Refresh Store Data</span>
-                  </button>
                 </div>
               </div>
             </div>
@@ -1585,8 +1574,8 @@ export default function RegisteredSupermarkets() {
         </div>
 
         {/* 4. Table with dedicated View Details Action (NO REDIRECTS) */}
-        <div className="sa-table-responsive">
-          <table className="sa-data-table">
+        <div className="sa-table-responsive" style={{ width: "100%", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+          <table className="sa-data-table" style={{ width: "100%", minWidth: "1150px" }}>
             <thead>
               <tr>
                 <th>#</th>
@@ -1597,7 +1586,7 @@ export default function RegisteredSupermarkets() {
                 <th>Assigned Plan</th>
                 <th>Status</th>
                 <th>Registered Date</th>
-                <th style={{ textAlign: "right" }}>Action</th>
+                <th style={{ textAlign: "center", width: "160px", minWidth: "150px", paddingRight: "20px" }}>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -1720,13 +1709,28 @@ export default function RegisteredSupermarkets() {
                       </span>
                     </td>
 
-                    <td style={{ textAlign: "right" }}>
+                    <td style={{ textAlign: "center", width: "160px", minWidth: "150px", paddingRight: "20px", whiteSpace: "nowrap" }}>
                       {/* Prominent View Details Button (No redirect to store admin) */}
                       <button
                         type="button"
                         className="sa-btn-view-details"
                         onClick={() => handleSelectStore(store)}
                         title={`View detailed performance, products, and sales for ${store.name}`}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          padding: "6px 14px",
+                          borderRadius: "8px",
+                          background: "#059669",
+                          color: "#ffffff",
+                          fontWeight: "750",
+                          fontSize: "12.5px",
+                          border: "none",
+                          cursor: "pointer",
+                          boxShadow: "0 1px 3px rgba(5, 150, 105, 0.25)",
+                          whiteSpace: "nowrap",
+                        }}
                       >
                         <Eye size={14} />
                         <span>View Details</span>

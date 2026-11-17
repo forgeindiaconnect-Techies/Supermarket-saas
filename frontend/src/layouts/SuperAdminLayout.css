@@ -498,9 +498,8 @@
   height: 100%;
   display: block;
   border-radius: 0;
-  object-fit: cover; /* Displays the 100% full panoramic clearance from Image 1 seamlessly */
-  transform: scale(1.02);
-  transform-origin: center center;
+  object-fit: cover;
+  object-position: center 25%;
   image-rendering: -webkit-optimize-contrast;
   user-select: none;
   -webkit-user-drag: none;
@@ -808,7 +807,6 @@
   color: #16a34a !important;
 }
 
-/* Dropdown Menus */
 .sa-profile-dropdown-v2 {
   position: absolute;
   top: calc(100% + 10px);
@@ -841,7 +839,7 @@
   right: 0;
   left: auto;
   transform: none;
-  width: min(380px, 90vw);
+  width: min(420px, calc(100vw - 20px));
   padding: 0;
   background: #ffffff !important;
   border: 1px solid #e2e8f0;
@@ -972,12 +970,12 @@
 
 /* Notifications Menu Structure */
 .sa-nd-header {
-  padding: 14px 18px;
+  padding: 12px 16px;
   background: #ffffff !important;
   border-bottom: 1px solid #f1f5f9;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
   line-height: normal !important;
 }
 
@@ -985,39 +983,107 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
   width: 100%;
   line-height: 1.2 !important;
 }
 
-.sa-nd-title-row strong {
-  font-size: 0.94rem;
+.sa-nd-title-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+.sa-nd-title-text {
+  font-size: 0.92rem;
   font-weight: 800;
   color: #0f172a;
-  line-height: 1.2 !important;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
   margin: 0;
-  display: inline-block;
+  line-height: 1.2 !important;
 }
 
 .sa-nd-count-pill {
   background: #ef4444;
   color: #ffffff;
-  font-size: 0.7rem;
-  font-weight: 800;
-  padding: 3px 8px;
+  font-size: 0.68rem;
+  font-weight: 850;
+  padding: 2.5px 7px;
   border-radius: 9999px;
   line-height: 1 !important;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  white-space: nowrap;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(239, 68, 68, 0.35);
 }
 
-.sa-nd-header small {
+.sa-nd-actions-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.sa-nd-btn-mark-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #059669;
+  font-size: 11.5px;
+  font-weight: 750;
+  padding: 3.5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  line-height: 1;
+}
+
+.sa-nd-btn-mark-all:hover {
+  background: #d1fae5;
+  border-color: #6ee7b7;
+  color: #047857;
+}
+
+.sa-nd-btn-clear {
+  display: inline-flex;
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #64748b;
+  font-size: 11.5px;
+  font-weight: 650;
+  padding: 3.5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  line-height: 1;
+}
+
+.sa-nd-btn-clear:hover {
+  background: #f1f5f9;
+  color: #334155;
+  border-color: #cbd5e1;
+}
+
+.sa-nd-subtitle {
   display: block;
-  font-size: 0.74rem;
+  font-size: 0.72rem;
   font-weight: 500;
   color: #64748b;
   margin: 0;
   line-height: 1.3 !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .sa-nd-list {
@@ -1468,20 +1534,20 @@
 
 @media (max-width: 768px) {
   .sa-top-header {
-    height: 56px !important;
-    min-height: 56px !important;
+    height: 60px !important;
+    min-height: 60px !important;
   }
 
   .sa-exact-header-banner-box {
     aspect-ratio: auto !important;
-    height: 56px !important;
-    min-height: 56px !important;
+    height: 60px !important;
+    min-height: 60px !important;
   }
 
   .sa-exact-header-banner-img {
     height: 100% !important;
     object-fit: cover !important;
-    object-position: center !important;
+    object-position: center 30% !important;
   }
 
   .sa-banner-mobile-toggle {
@@ -1561,5 +1627,143 @@
   }
   .sa-pill-chevron {
     display: none !important;
+  }
+}
+
+/* =========================================================================
+   Mobile View Responsive Fixes for Notifications & Profile Dropdowns
+   ========================================================================= */
+@media (max-width: 680px) {
+  .sa-notif-dropdown-menu {
+    position: fixed !important;
+    top: 64px !important;
+    left: 10px !important;
+    right: 10px !important;
+    width: auto !important;
+    max-width: calc(100vw - 20px) !important;
+    max-height: 80vh !important;
+    border-radius: 14px !important;
+    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.22), 0 4px 12px rgba(15, 23, 42, 0.12) !important;
+    z-index: 999999 !important;
+  }
+
+  .sa-nd-header {
+    padding: 10px 12px !important;
+  }
+
+  .sa-nd-title-text {
+    font-size: 0.86rem !important;
+  }
+
+  .sa-nd-btn-mark-all,
+  .sa-nd-btn-clear {
+    padding: 3px 6px !important;
+    font-size: 11px !important;
+  }
+
+  .sa-profile-dropdown-v2 {
+    position: fixed !important;
+    top: 64px !important;
+    right: 10px !important;
+    left: auto !important;
+    width: min(280px, calc(100vw - 20px)) !important;
+    max-height: 80vh !important;
+    border-radius: 14px !important;
+    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.22), 0 4px 12px rgba(15, 23, 42, 0.12) !important;
+    z-index: 999999 !important;
+  }
+}
+
+/* Super Admin Mobile Floating Quick Chat Button */
+.sa-mobile-floating-chat {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .sa-mobile-floating-chat {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    bottom: 22px;
+    right: 18px;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: #ffffff !important;
+    box-shadow: 0 6px 20px rgba(5, 150, 105, 0.45), 0 2px 6px rgba(0, 0, 0, 0.15);
+    z-index: 9990;
+    cursor: pointer;
+    border: 2px solid #ffffff;
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
+    text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .sa-mobile-floating-chat:active {
+    transform: scale(0.92);
+  }
+}
+
+/* =========================================================================
+   Mobile View Responsive Fixes for Notifications & Profile Dropdowns
+   ========================================================================= */
+@media (max-width: 680px) {
+  .sa-notif-dropdown-menu {
+    position: fixed !important;
+    top: 64px !important;
+    left: 10px !important;
+    right: 10px !important;
+    width: auto !important;
+    max-width: calc(100vw - 20px) !important;
+    max-height: 80vh !important;
+    border-radius: 14px !important;
+    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.22), 0 4px 12px rgba(15, 23, 42, 0.12) !important;
+    z-index: 999999 !important;
+  }
+
+  .sa-profile-dropdown-v2 {
+    position: fixed !important;
+    top: 64px !important;
+    right: 10px !important;
+    left: auto !important;
+    width: min(280px, calc(100vw - 20px)) !important;
+    max-height: 80vh !important;
+    border-radius: 14px !important;
+    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.22), 0 4px 12px rgba(15, 23, 42, 0.12) !important;
+    z-index: 999999 !important;
+  }
+}
+
+/* Super Admin Mobile Floating Quick Chat Button */
+.sa-mobile-floating-chat {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .sa-mobile-floating-chat {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    bottom: 22px;
+    right: 18px;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: #ffffff !important;
+    box-shadow: 0 6px 20px rgba(5, 150, 105, 0.45), 0 2px 6px rgba(0, 0, 0, 0.15);
+    z-index: 9990;
+    cursor: pointer;
+    border: 2px solid #ffffff;
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
+    text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .sa-mobile-floating-chat:active {
+    transform: scale(0.92);
   }
 }

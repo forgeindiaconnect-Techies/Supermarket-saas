@@ -58,14 +58,33 @@ async function logEmailAttempt({
  */
 
 function getSmtpConfig() {
+  // Support Gmail App Password (highest reliability for direct inbox delivery)
+  const gmailUser = (process.env.GMAIL_USER || "").trim();
+  const gmailPass = (process.env.GMAIL_APP_PASSWORD || process.env.GMAIL_PASS || "").trim();
+  if (gmailUser && gmailPass) {
+    return {
+      isGmail: true,
+      host: "smtp.gmail.com",
+      port: 465,
+      user: gmailUser,
+      pass: gmailPass,
+      fromEmail: process.env.SMTP_FROM_EMAIL || gmailUser,
+      fromName: (process.env.SMTP_FROM_NAME || "GrocerEase Supermarket").replace(/^"|"$/g, ""),
+    };
+  }
+
   const host = process.env.SMTP_HOST || process.env.SMTP_SERVER || "smtp-relay.brevo.com";
   const port = parseInt(process.env.SMTP_PORT || "587", 10);
   const user = process.env.SMTP_LOGIN || process.env.SMTP_USER || "";
-  const pass = process.env.SMTP_KEY || process.env.SMTP_PASSWORD || "";
-  const fromEmail = process.env.SMTP_FROM_EMAIL || user || "support@grocerease.store";
+  const pass =
+    process.env.SMTP_KEY ||
+    process.env.SMTP_PASSWORD ||
+    process.env.BREVO_API_KEY ||
+    "";
+  const fromEmail = process.env.SMTP_FROM_EMAIL || "support@grocerease.store";
   const fromName = (process.env.SMTP_FROM_NAME || "GrocerEase Supermarket").replace(/^"|"$/g, "");
 
-  return { host, port, user, pass, fromEmail, fromName };
+  return { isGmail: false, host, port, user, pass, fromEmail, fromName };
 }
 
 /**
@@ -204,6 +223,8 @@ async function sendMail({ to, subject, text = "", html = "", from, fromName }) {
     config.pass === "bskDCv3xCNR2mXy" ||
     (!config.pass.startsWith("xkeysib-") && config.user && config.user.startsWith("b5786a001@"));
 
+  let lastError = null;
+
   // PRIORITY 1: If an xkeysib- key is provided, send immediately via Brevo REST API (HTTPS port 443)
   if (config.pass && config.pass.startsWith("xkeysib-")) {
     try {
@@ -227,6 +248,7 @@ async function sendMail({ to, subject, text = "", html = "", from, fromName }) {
         timestamp: new Date().toISOString(),
       };
     } catch (brevoErr) {
+      lastError = brevoErr.message;
       console.warn(`⚠️ [BREVO API NOTICE] REST API send encountered (${brevoErr.message}). Attempting SMTP relay fallback...`);
     }
   }
@@ -234,7 +256,7 @@ async function sendMail({ to, subject, text = "", html = "", from, fromName }) {
   // PRIORITY 2: If real credentials are provided and nodemailer is available, attempt live SMTP delivery
   if (!isDummyPlaceholder && config.user && config.pass && nodemailer) {
     try {
-      const isGmail = (config.host && config.host.includes("gmail")) || (config.user && config.user.endsWith("@gmail.com"));
+      const isGmail = config.isGmail || (config.host && config.host.includes("gmail")) || (config.user && config.user.endsWith("@gmail.com"));
       const transportOptions = isGmail
         ? {
             service: "gmail",
@@ -268,6 +290,7 @@ async function sendMail({ to, subject, text = "", html = "", from, fromName }) {
         timestamp: new Date().toISOString(),
       };
     } catch (realErr) {
+      lastError = realErr.message;
       console.warn(`⚠️ [SMTP DELIVERY WARNING] Live delivery to <${cleanTo}> failed (${realErr.message}). Saving to database outbox.`);
     }
   }
@@ -284,9 +307,10 @@ async function sendMail({ to, subject, text = "", html = "", from, fromName }) {
     simulated: true,
     messageId: fallbackMessageId,
     to: cleanTo,
-    response: "Saved to database outbox (SMTP setup required for live external delivery)",
+    response: lastError ? `Outbox (Delivery attempt failed: ${lastError})` : "Saved to database outbox (SMTP setup required for live external delivery)",
+    error: lastError,
     timestamp: new Date().toISOString(),
-    notice: "To deliver to real personal inboxes, configure your real SMTP credentials in backend/.env.",
+    notice: "To deliver to real personal inboxes, configure your real SMTP credentials in backend/.env or Render environment variables.",
   };
 }
 
@@ -366,7 +390,7 @@ async function sendSubscriptionRenewalEmail({ supermarket, customMessage, subjec
           <p>To prevent any interruption in your barcode scanners, customer self-checkout mobile app, or gate turnstile validation, please ensure your renewal is confirmed.</p>
           
           <div class="btn-wrap">
-            <a href="http://localhost:5173/login" class="btn">Log In to Supermarket Portal &rarr;</a>
+            <a href="${(process.env.FRONTEND_URL || 'https://super-market-scan.vercel.app')}/login" class="btn">Log In to Supermarket Portal &rarr;</a>
           </div>
         </div>
         <div class="footer">
@@ -378,6 +402,7 @@ async function sendSubscriptionRenewalEmail({ supermarket, customMessage, subjec
     </html>
   `;
 
+  const appLoginUrl = `${(process.env.FRONTEND_URL || 'https://super-market-scan.vercel.app')}/login`;
   const text = `
     GrocerEase Subscription Renewal Notice
     --------------------------------------
@@ -389,7 +414,7 @@ async function sendSubscriptionRenewalEmail({ supermarket, customMessage, subjec
     
     ${customMessage ? `Platform Note: ${customMessage}\n\n` : ""}
     Please log in to your store management portal to review and renew your subscription:
-    http://localhost:5173/login
+    ${appLoginUrl}
     
     GrocerEase Smart Supermarket SaaS Network
   `;
@@ -996,6 +1021,8 @@ Smart Supermarket Solutions
       text: messageBodyText,
       html,
     });
+    logStatus = mailResult?.delivered ? "SENT" : "OUTBOX";
+    errorMessage = mailResult?.delivered ? "" : (mailResult?.error || "Captured in Outbox");
   } catch (err) {
     logStatus = "FAILED";
     errorMessage = err.message;

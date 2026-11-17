@@ -222,28 +222,6 @@ export default function PlatformReports() {
         <div className="sa-page-header-actions" style={{ display: "flex", gap: "10px" }}>
           <button
             type="button"
-            className="sa-btn-secondary"
-            onClick={fetchData}
-            title="Refresh database metrics"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              padding: "9px 16px",
-              borderRadius: "10px",
-              border: "1px solid #cbd5e1",
-              background: "#ffffff",
-              color: "#334155",
-              fontWeight: 700,
-              fontSize: "0.85rem",
-              cursor: "pointer",
-            }}
-          >
-            <RefreshCw size={15} className={loading ? "spin-icon" : ""} />
-            <span>Refresh</span>
-          </button>
-          <button
-            type="button"
             onClick={downloadReportCsv}
             style={{
               display: "flex",
@@ -441,19 +419,22 @@ export default function PlatformReports() {
 
       {/* 3. Tab Switcher (Overview vs Product-Wise vs Subscriptions) */}
       <div
+        className="sa-report-tabs-bar"
         style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
           flexWrap: "wrap",
-          gap: "1rem",
+          gap: "0.85rem",
           background: "#ffffff",
-          padding: "10px 16px",
+          padding: "10px 14px",
           borderRadius: "14px",
           border: "1px solid #e2e8f0",
+          width: "100%",
+          boxSizing: "border-box",
         }}
       >
-        <div style={{ display: "flex", gap: "8px" }}>
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", flex: "1 1 auto" }}>
           <button
             type="button"
             onClick={() => setActiveTab("overview")}
@@ -461,10 +442,10 @@ export default function PlatformReports() {
               display: "flex",
               alignItems: "center",
               gap: "6px",
-              padding: "8px 16px",
+              padding: "8px 14px",
               borderRadius: "10px",
               border: "none",
-              background: activeTab === "overview" ? "#065f46" : "transparent",
+              background: activeTab === "overview" ? "#065f46" : "#f1f5f9",
               color: activeTab === "overview" ? "#ffffff" : "#475569",
               fontSize: "0.84rem",
               fontWeight: 750,
@@ -483,10 +464,10 @@ export default function PlatformReports() {
               display: "flex",
               alignItems: "center",
               gap: "6px",
-              padding: "8px 16px",
+              padding: "8px 14px",
               borderRadius: "10px",
               border: "none",
-              background: activeTab === "product-sales" ? "#065f46" : "transparent",
+              background: activeTab === "product-sales" ? "#065f46" : "#f1f5f9",
               color: activeTab === "product-sales" ? "#ffffff" : "#475569",
               fontSize: "0.84rem",
               fontWeight: 750,
@@ -499,9 +480,9 @@ export default function PlatformReports() {
           </button>
         </div>
 
-        {/* Search & Store Filters */}
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <div style={{ position: "relative" }}>
+        {/* Search & Store Filters - Responsive Wrapped */}
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", width: "auto", maxWidth: "100%" }}>
+          <div style={{ position: "relative", flex: "1 1 180px", minWidth: "150px" }}>
             <Search
               size={14}
               color="#94a3b8"
@@ -517,7 +498,8 @@ export default function PlatformReports() {
                 borderRadius: "8px",
                 border: "1px solid #cbd5e1",
                 fontSize: "0.82rem",
-                width: "200px",
+                width: "100%",
+                boxSizing: "border-box",
                 outline: "none",
               }}
             />
@@ -535,6 +517,8 @@ export default function PlatformReports() {
               color: "#334155",
               fontWeight: 600,
               cursor: "pointer",
+              flex: "1 1 auto",
+              maxWidth: "100%",
             }}
           >
             <option value="all">All Supermarkets</option>
