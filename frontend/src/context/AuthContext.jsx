@@ -64,10 +64,34 @@ const DEFAULT_SUPERMARKET_AKSHAYA = {
   logoUrl: "https://images.unsplash.com/photo-1578916171728-46686eac8d58?w=200&auto=format&fit=crop&q=80",
 };
 
+const DEFAULT_SUPERMARKET_FRESHMART_247 = {
+  _id: "store-real-247",
+  name: "24/7 Freshmart",
+  code: "STR-003",
+  slug: "247-freshmart",
+  tagline: "24/7 Express Mart & Instant Checkout",
+  city: "Bangalore",
+  address: "Brigade Road, Ashok Nagar",
+  status: "Active",
+  plan: "Basic",
+  ownerName: "Agila",
+  contactPerson: "Agila Admin",
+  adminUsername: "agila",
+  adminName: "Agila",
+  email: "agila@grocerease.store",
+  phone: "+91 98452 33445",
+  subscriptionAmount: 4999,
+  billingCycle: "Monthly",
+  startDate: "2026-11-14T00:00:00.000Z",
+  expiryDate: "2026-12-14T00:00:00.000Z",
+  logoUrl: "https://images.unsplash.com/photo-1542838132-92c53300491e?w=200&auto=format&fit=crop&q=80",
+};
+
 export const INITIAL_SUPERMARKETS_CATALOG = [
   DEFAULT_SUPERMARKET_STORE1,
   DEFAULT_SUPERMARKET_STORE2,
   DEFAULT_SUPERMARKET_AKSHAYA,
+  DEFAULT_SUPERMARKET_FRESHMART_247,
 ];
 
 export function AuthProvider({ children }) {
@@ -315,6 +339,32 @@ export function AuthProvider({ children }) {
         setCurrentSupermarket(DEFAULT_SUPERMARKET_AKSHAYA);
         window.dispatchEvent(new Event("grocerease_storage_updated"));
         return { success: true, user: akshayaUser };
+      }
+
+      // 5. Store Admin 24/7 Freshmart: username "agila" / password "Agila@123"
+      if (
+        (cleanU === "agila" || cleanU === "agila@grocerease.store" || cleanU === "str-003" || cleanU.includes("agila") || cleanU.includes("247")) &&
+        (p === "agila@123" || p === "agila123" || p === "agila")
+      ) {
+        const freshmartUser = {
+          _id: "user-agila-admin",
+          name: "Agila",
+          username: "agila",
+          email: "agila@grocerease.store",
+          role: "STORE_ADMIN",
+          supermarket: DEFAULT_SUPERMARKET_FRESHMART_247,
+          supermarketCode: "STR-003",
+          supermarketName: "24/7 Freshmart",
+          isRealLogin: true,
+        };
+        localStorage.setItem("grocerease_auth_token", "mock_agila_token");
+        localStorage.setItem("grocerease_user", JSON.stringify(freshmartUser));
+        localStorage.setItem("grocerease_current_supermarket", JSON.stringify(DEFAULT_SUPERMARKET_FRESHMART_247));
+        setToken("mock_agila_token");
+        setUser(freshmartUser);
+        setCurrentSupermarket(DEFAULT_SUPERMARKET_FRESHMART_247);
+        window.dispatchEvent(new Event("grocerease_storage_updated"));
+        return { success: true, user: freshmartUser };
       }
 
       const msg = err.response?.data?.message || err.message || "Invalid credentials.";

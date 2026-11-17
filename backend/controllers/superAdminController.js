@@ -115,15 +115,6 @@ async function seedProductsForSupermarket(supermarket) {
 // 1. GET /api/super-admin/supermarkets - List all supermarkets with sales & operational metrics
 exports.getAllSupermarkets = async (req, res) => {
   try {
-    // Purge legacy dummy mock orders
-    await Order.deleteMany({
-      $or: [
-        { orderNumber: { $in: ["ORD-948102-1001", "ORD-772109-2001", "ORD-289409", "ORD-289410", "ORD-STR001-1001", "ORD-STR002-2001"] } },
-        { "customer.name": { $in: ["Kavitha R", "Vikram Mehta", "Arun Kumar", "Priya Sharma", "Neha Patel", "Rahul Verma"] } },
-        { totalAmount: { $in: [510, 9450] } },
-      ],
-    });
-
     const supermarkets = await Supermarket.find().sort({ createdAt: -1 });
 
     // Aggregate metrics per supermarket in parallel
@@ -1349,11 +1340,15 @@ async function resolveSupermarketId(input) {
   if (!store) {
     if (str.includes("001") || str.includes("grocerease")) {
       store = await Supermarket.findOne({ code: "STR-001" });
-    } else if (str.includes("002") || str.includes("freshmart")) {
+    } else if (str.includes("002") || str.includes("freshmart") && !str.includes("24")) {
       store = await Supermarket.findOne({ code: "STR-002" });
     } else if (str.includes("akshaya") || str.includes("7087")) {
       store = await Supermarket.findOne({
         $or: [{ code: "SM-7087" }, { name: /akshaya/i }, { slug: "akshaya" }],
+      });
+    } else if (str.includes("003") || str.includes("24") || str.includes("agila")) {
+      store = await Supermarket.findOne({
+        $or: [{ code: "STR-003" }, { code: "SM-247" }, { name: /24\/7/i }, { adminUsername: "agila" }],
       });
     }
   }
@@ -1720,15 +1715,19 @@ exports.getSupermarketDetails = async (req, res) => {
       });
     }
 
-    // Support fallback / mock IDs (store-real-001, store-real-002, store-real-akshaya, etc.)
+    // Support fallback / mock IDs (store-real-001, store-real-002, store-real-akshaya, store-real-247, etc.)
     if (!supermarket) {
       if (cleanId.includes("001") || cleanId.includes("grocerease")) {
         supermarket = await Supermarket.findOne({ code: "STR-001" });
-      } else if (cleanId.includes("002") || cleanId.includes("freshmart")) {
+      } else if (cleanId.includes("002") || (cleanId.includes("freshmart") && !cleanId.includes("24"))) {
         supermarket = await Supermarket.findOne({ code: "STR-002" });
       } else if (cleanId.includes("akshaya") || cleanId.includes("7087")) {
         supermarket = await Supermarket.findOne({
           $or: [{ code: "SM-7087" }, { name: /akshaya/i }, { slug: "akshaya" }],
+        });
+      } else if (cleanId.includes("003") || cleanId.includes("24") || cleanId.includes("agila")) {
+        supermarket = await Supermarket.findOne({
+          $or: [{ code: "STR-003" }, { code: "SM-247" }, { name: /24\/7/i }, { adminUsername: "agila" }],
         });
       }
     }

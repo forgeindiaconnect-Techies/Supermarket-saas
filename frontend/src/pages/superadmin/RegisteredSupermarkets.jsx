@@ -108,11 +108,13 @@ export default function RegisteredSupermarkets() {
       const match = allKnown.find(
         (s) =>
           String(s._id) === String(storeId) ||
-          String(s.code).toUpperCase() === String(storeId).toUpperCase() ||
+          String(s.code || "").toUpperCase() === String(storeId).toUpperCase() ||
           String(s.slug || "").toLowerCase() === String(storeId).toLowerCase() ||
-          (String(storeId).includes("001") && String(s.code).includes("001")) ||
-          (String(storeId).includes("002") && String(s.code).includes("002")) ||
-          (String(storeId).includes("akshaya") && (String(s.code).includes("7087") || String(s.name).toLowerCase().includes("akshaya")))
+          (String(storeId).includes("001") && String(s.code || "").includes("001")) ||
+          (String(storeId).includes("002") && String(s.code || "").includes("002")) ||
+          (String(storeId).includes("akshaya") && (String(s.code || "").includes("7087") || String(s.name || "").toLowerCase().includes("akshaya"))) ||
+          ((String(storeId).includes("003") || String(storeId).includes("agila") || String(storeId).includes("24")) &&
+            (String(s.code || "").includes("003") || String(s.adminUsername || "").toLowerCase() === "agila" || String(s.name || "").includes("24/7")))
       ) || allKnown[0];
 
       if (match) {

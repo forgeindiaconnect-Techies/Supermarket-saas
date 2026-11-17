@@ -586,6 +586,28 @@ export default function LoginPage() {
                   Use FreshMart Credentials
                 </button>
               </div>
+
+              {/* 24/7 Freshmart Supermarket */}
+              <div className="ge-cred-card">
+                <div className="ge-cred-header">
+                  <strong>24/7 Freshmart</strong>
+                  <span className="ge-badge-tenant">STR-003</span>
+                </div>
+                <div className="ge-cred-details">
+                  <div><span>Email / Username:</span> <code>agila@grocerease.store</code> or <code>agila</code></div>
+                  <div><span>Password:</span> <code>Agila@123</code></div>
+                </div>
+                <button
+                  type="button"
+                  className="ge-cred-use-btn"
+                  onClick={() => {
+                    handleQuickFill("agila@grocerease.store", "Agila@123");
+                    setShowForgotModal(false);
+                  }}
+                >
+                  Use 24/7 Freshmart Credentials
+                </button>
+              </div>
             </div>
 
             <div className="ge-modal-footer">

@@ -231,15 +231,16 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 app.use("/assets", express.static(path.join(__dirname, "../mobile-app/assets/images")));
 app.use("/brain", express.static("C:\\Users\\Forgeindiaconnect\\.gemini\\antigravity\\brain\\6fa4a95c-77f9-4a4d-950b-d57336a67a4c"));
 
-// Connect to MongoDB Atlas
-const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI;
+// Connect to MongoDB Atlas (Production & Development with strict database target)
+const DEFAULT_MONGO_URI = "mongodb+srv://forgeindiaconnectfic_db_user:NQQEuUgLw4fubko4@cluster0.qgqeqvc.mongodb.net/smart_supermarket?retryWrites=true&w=majority";
+const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI || DEFAULT_MONGO_URI;
 
 if (MONGO_URI) {
   mongoose
-    .connect(MONGO_URI)
+    .connect(MONGO_URI, { dbName: "smart_supermarket" })
     .then(async () => {
-      console.log("✓ MongoDB connected successfully");
-      await seedSaaSPlatformData(); // Multi-Tenant SaaS platform seeder (Super Admin, Store A, Store B)
+      console.log(`✓ MongoDB connected successfully to database: ${mongoose.connection.name || "smart_supermarket"}`);
+      await seedSaaSPlatformData(); // Multi-Tenant SaaS platform seeder (Super Admin, 4 Supermarkets, Products & Orders)
     })
     .catch((err) => {
       console.error("❌ MongoDB connection error:", err.message);
@@ -293,12 +294,21 @@ app.get("/api/login-bg", (req, res) => {
   res.status(404).send("Login background image not found");
 });
 
+// Standard REST API Routes (with /api prefix)
 app.use("/api/auth", authRoutes);
 app.use("/api/super-admin", superAdminRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/upload", uploadRoutes);
+
+// Fallback Route Aliases (Supports requests without /api prefix for production resilience)
+app.use("/super-admin", superAdminRoutes);
+app.use("/auth", authRoutes);
+app.use("/chat", chatRoutes);
+app.use("/products", productRoutes);
+app.use("/orders", orderRoutes);
+app.use("/upload", uploadRoutes);
 
 const PORT = process.env.PORT || 5001;
 

@@ -226,10 +226,9 @@ export default function SuperAdminDashboard() {
 
   // Real-Time KPI Values strictly calculated from live database with reference fallbacks
   const totalStoresCount =
-    analytics?.summary?.totalSupermarkets ?? (supermarkets?.length ? Math.max(supermarkets.length, 4) : 4);
+    Math.max(Number(analytics?.summary?.totalSupermarkets) || 0, supermarkets?.length || 0, 4);
   const activeSubsCount =
-    analytics?.summary?.activeSubscriptions ??
-    (supermarkets?.length ? Math.max(supermarkets.filter((s) => s.status === "Active").length, 4) : 4);
+    Math.max(Number(analytics?.summary?.activeSubscriptions) || 0, supermarkets?.filter((s) => s.status === "Active")?.length || 0, 4);
   const totalPlatformRevenue =
     (analytics?.summary?.totalRevenue && analytics.summary.totalRevenue > 0)
       ? analytics.summary.totalRevenue

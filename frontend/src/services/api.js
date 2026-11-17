@@ -13,14 +13,19 @@ const LOCAL_BACKEND_URL = "http://localhost:5001";
 
 const DEFAULT_BACKEND_URL = isLocalhost ? LOCAL_BACKEND_URL : LIVE_BACKEND_URL;
 
-export const BACKEND_URL =
+// Determine clean root URL without trailing slashes or /api
+const rawBase =
   import.meta.env.VITE_BACKEND_URL ||
-  (import.meta.env.VITE_API_URL
-    ? import.meta.env.VITE_API_URL.replace(/\/api\/?$/, "")
-    : DEFAULT_BACKEND_URL);
+  import.meta.env.VITE_API_URL ||
+  DEFAULT_BACKEND_URL;
 
-export const API_URL =
-  import.meta.env.VITE_API_URL || `${BACKEND_URL}/api`;
+export const BACKEND_URL = String(rawBase)
+  .trim()
+  .replace(/\/+$/, "")
+  .replace(/\/api\/?$/, "");
+
+// GUARANTEED: API_URL always ends with /api
+export const API_URL = `${BACKEND_URL}/api`;
 
 export const SOCKET_URL =
   import.meta.env.VITE_SOCKET_URL || BACKEND_URL;
@@ -32,9 +37,16 @@ const API = axios.create({
   },
 });
 
-// Request interceptor: Automatically attach token & tenant supermarket ID to every request
+// Request interceptor: normalize endpoint URLs & attach credentials
 API.interceptors.request.use((config) => {
   try {
+    // If a request already includes /api, strip it so baseURL (/api) isn't duplicated
+    if (config.url && typeof config.url === "string") {
+      if (config.url.startsWith("/api/")) {
+        config.url = config.url.replace(/^\/api/, "");
+      }
+    }
+
     const token = localStorage.getItem("grocerease_auth_token");
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;

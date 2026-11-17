@@ -54,9 +54,9 @@ export default function SuperAdminLayout() {
     settings: false,
   });
 
-  const [unreadNotifCount, setUnreadNotifCount] = useState(3);
+  const [unreadNotifCount, setUnreadNotifCount] = useState(8);
   const [notifications, setNotifications] = useState([]);
-  const [connectedStoreCount, setConnectedStoreCount] = useState(3);
+  const [connectedStoreCount, setConnectedStoreCount] = useState(4);
 
   // Fetch registered supermarkets count for sidebar status card
   useEffect(() => {
