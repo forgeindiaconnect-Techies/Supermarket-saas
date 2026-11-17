@@ -50,6 +50,17 @@ const TIER_FILTERS = [
   "Regular Members",
 ];
 
+// Universal phone formatter: guarantees standard '+91 XXXXXXXXXX' without duplicated '+91 +91'
+const formatPhone = (phone) => {
+  if (!phone) return "";
+  const cleaned = String(phone).trim();
+  const digits = cleaned.replace(/\D/g, "");
+  if (digits.length >= 10) {
+    return `+91 ${digits.slice(-10)}`;
+  }
+  return digits ? `+91 ${digits}` : cleaned;
+};
+
 export default function CustomersManagement() {
   const [searchParams] = useSearchParams();
   const [orders, setOrders] = useState([]);
@@ -807,7 +818,7 @@ export default function CustomersManagement() {
                             }}
                           >
                             <Phone size={12} color="#64748B" />
-                            {c.phone}
+                            {c.phone ? formatPhone(c.phone) : "Not provided"}
                           </span>
                           {c.address ? (
                             <span style={{ fontSize: "11px", color: "#64748B" }} title={c.address}>
@@ -1087,7 +1098,9 @@ export default function CustomersManagement() {
                   <span style={{ color: "#64748B", display: "block", fontSize: "11px", textTransform: "uppercase" }}>
                     Mobile Number
                   </span>
-                  <strong style={{ color: "#0F172A" }}>{activeCustomer.phone}</strong>
+                  <strong style={{ color: "#0F172A" }}>
+                    {activeCustomer.phone ? formatPhone(activeCustomer.phone) : "Not provided"}
+                  </strong>
                 </div>
 
                 <div>

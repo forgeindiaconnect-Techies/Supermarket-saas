@@ -41,6 +41,17 @@ import API from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import "./SuperAdmin.css";
 
+// Universal phone formatter: guarantees standard '+91 XXXXXXXXXX' without duplicated '+91 +91'
+const formatPhone = (phone) => {
+  if (!phone) return "";
+  const cleaned = String(phone).trim();
+  const digits = cleaned.replace(/\D/g, "");
+  if (digits.length >= 10) {
+    return `+91 ${digits.slice(-10)}`;
+  }
+  return digits ? `+91 ${digits}` : cleaned;
+};
+
 export default function RegisteredSupermarkets() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1101,20 +1112,20 @@ export default function RegisteredSupermarkets() {
                 </div>
 
                 {/* Products Table matching Image 1 */}
-                <div className="sa-table-responsive" style={{ width: "100%", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-                  <table className="sa-data-table" style={{ width: "100%", minWidth: "1060px", tableLayout: "fixed", borderCollapse: "collapse" }}>
+                <div className="sa-table-responsive" style={{ width: "100%", maxWidth: "100%", overflowX: "auto", display: "block", WebkitOverflowScrolling: "touch" }}>
+                  <table className="sa-data-table" style={{ width: "max-content", minWidth: "1080px", borderCollapse: "collapse" }}>
                     <thead>
                       <tr>
-                        <th style={{ width: "40px", textAlign: "center" }}>#</th>
-                        <th style={{ width: "240px" }}>Product Name</th>
-                        <th style={{ width: "140px" }}>Category</th>
-                        <th style={{ width: "125px" }}>Barcode</th>
-                        <th style={{ width: "90px", textAlign: "right" }}>Unit Price</th>
-                        <th style={{ width: "100px", textAlign: "center" }}>Sold Quantity</th>
-                        <th style={{ width: "105px", textAlign: "center" }}>Available Stock</th>
-                        <th style={{ width: "110px", textAlign: "center" }}>Remaining Stock</th>
-                        <th style={{ width: "100px", textAlign: "center" }}>Stock Status</th>
-                        <th style={{ width: "110px", textAlign: "right" }}>Total Revenue</th>
+                        <th style={{ minWidth: "46px", width: "46px", textAlign: "center", whiteSpace: "nowrap" }}>#</th>
+                        <th style={{ minWidth: "220px", width: "220px", whiteSpace: "nowrap" }}>Product Name</th>
+                        <th style={{ minWidth: "140px", width: "140px", whiteSpace: "nowrap" }}>Category</th>
+                        <th style={{ minWidth: "130px", width: "130px", whiteSpace: "nowrap" }}>Barcode</th>
+                        <th style={{ minWidth: "95px", width: "95px", textAlign: "right", whiteSpace: "nowrap" }}>Unit Price</th>
+                        <th style={{ minWidth: "110px", width: "110px", textAlign: "center", whiteSpace: "nowrap" }}>Sold Quantity</th>
+                        <th style={{ minWidth: "120px", width: "120px", textAlign: "center", whiteSpace: "nowrap" }}>Available Stock</th>
+                        <th style={{ minWidth: "120px", width: "120px", textAlign: "center", whiteSpace: "nowrap" }}>Remaining Stock</th>
+                        <th style={{ minWidth: "110px", width: "110px", textAlign: "center", whiteSpace: "nowrap" }}>Stock Status</th>
+                        <th style={{ minWidth: "120px", width: "120px", textAlign: "right", whiteSpace: "nowrap" }}>Total Revenue</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1330,17 +1341,17 @@ export default function RegisteredSupermarkets() {
                 </span>
               </div>
 
-              <div className="sa-table-responsive">
-                <table className="sa-data-table">
+              <div className="sa-table-responsive" style={{ width: "100%", maxWidth: "100%", overflowX: "auto", display: "block", WebkitOverflowScrolling: "touch" }}>
+                <table className="sa-data-table" style={{ width: "max-content", minWidth: "820px", borderCollapse: "collapse" }}>
                   <thead>
                     <tr>
-                      <th>Order #</th>
-                      <th>Customer Details</th>
-                      <th>Items Count</th>
-                      <th>Total Amount</th>
-                      <th>Payment Method</th>
-                      <th>Status</th>
-                      <th style={{ textAlign: "right" }}>Date &amp; Time</th>
+                      <th style={{ minWidth: "120px", whiteSpace: "nowrap" }}>Order #</th>
+                      <th style={{ minWidth: "170px", whiteSpace: "nowrap" }}>Customer Details</th>
+                      <th style={{ minWidth: "110px", whiteSpace: "nowrap" }}>Items Count</th>
+                      <th style={{ minWidth: "110px", whiteSpace: "nowrap" }}>Total Amount</th>
+                      <th style={{ minWidth: "130px", whiteSpace: "nowrap" }}>Payment Method</th>
+                      <th style={{ minWidth: "110px", whiteSpace: "nowrap" }}>Status</th>
+                      <th style={{ minWidth: "160px", textAlign: "right", whiteSpace: "nowrap" }}>Date &amp; Time</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1380,7 +1391,7 @@ export default function RegisteredSupermarkets() {
                                 {ord.customerName}
                               </strong>
                               {ord.customerPhone && (
-                                <small style={{ color: "#64748b" }}>{ord.customerPhone}</small>
+                                <small style={{ color: "#64748b" }}>{formatPhone(ord.customerPhone)}</small>
                               )}
                             </div>
                           </td>

@@ -254,18 +254,7 @@ export default function SuperAdminSettings() {
   };
 
   return (
-    <div
-      style={{
-        maxWidth: "1280px",
-        margin: "0 auto",
-        padding: "1.25rem 1.5rem 3rem 1.5rem",
-        backgroundColor: "#c5e4d2",
-        borderRadius: "20px",
-        border: "1.5px solid #93d4af",
-        boxShadow: "0 6px 24px rgba(16, 185, 129, 0.08)",
-        minHeight: "calc(100vh - 110px)",
-      }}
-    >
+    <div className="sa-settings-page-wrapper">
       {/* Toast Notification */}
       {toast.show && (
         <div
@@ -297,21 +286,7 @@ export default function SuperAdminSettings() {
       )}
 
       {/* 1. Header with Breadcrumb - Enclosed White Card Box (Forest Green SaaS Theme) */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: "1rem",
-          background: "#ffffff",
-          padding: "1.25rem 1.75rem",
-          borderRadius: "16px",
-          border: "1.5px solid #86efac",
-          boxShadow: "0 4px 14px rgba(16, 185, 129, 0.08)",
-          marginBottom: "1.75rem",
-        }}
-      >
+      <div className="sa-settings-header-card">
         <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
           <div
             style={{
@@ -363,28 +338,9 @@ export default function SuperAdminSettings() {
       </div>
 
       {/* 2. Main Two-Column Profile Grid */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(300px, 340px) 1fr",
-          gap: "1.75rem",
-          alignItems: "start",
-        }}
-      >
+      <div className="sa-profile-grid-container">
         {/* Left Column: Profile Overview Card (Forest Green SaaS Theme) */}
-        <div
-          style={{
-            background: "#ffffff",
-            borderRadius: "20px",
-            border: "1.5px solid #a7f3d0",
-            padding: "2.25rem 1.75rem",
-            boxShadow: "0 8px 24px rgba(16, 185, 129, 0.08)",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            textAlign: "center",
-          }}
-        >
+        <div className="sa-profile-overview-col">
           {/* Avatar with SA and Camera icon badge */}
           <div style={{ position: "relative", marginBottom: "1.25rem" }}>
             <div
@@ -573,15 +529,7 @@ export default function SuperAdminSettings() {
         </div>
 
         {/* Right Column: Edit Profile Form */}
-        <div
-          style={{
-            background: "#ffffff",
-            borderRadius: "20px",
-            border: "1.5px solid #bbf7d0",
-            padding: "2.25rem",
-            boxShadow: "0 8px 28px rgba(16, 185, 129, 0.08)",
-          }}
-        >
+        <div className="sa-profile-form-col">
           {/* Header */}
           <div
             style={{
@@ -1100,15 +1048,7 @@ export default function SuperAdminSettings() {
             </div>
 
             {/* Bottom Actions: Save Changes and Cancel (Forest Green Theme) */}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                gap: "1rem",
-                marginTop: "1.5rem",
-              }}
-            >
+            <div className="sa-profile-btn-row">
               <button
                 type="submit"
                 disabled={saving}

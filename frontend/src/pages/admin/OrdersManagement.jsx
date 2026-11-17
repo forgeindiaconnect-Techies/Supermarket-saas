@@ -55,6 +55,17 @@ const DATE_PERIODS = [
   { value: "month", label: "This Month (30 Days)" },
 ];
 
+// Universal phone formatter: guarantees standard '+91 XXXXXXXXXX' without duplicated '+91 +91'
+const formatPhone = (phone) => {
+  if (!phone) return "";
+  const cleaned = String(phone).trim();
+  const digits = cleaned.replace(/\D/g, "");
+  if (digits.length >= 10) {
+    return `+91 ${digits.slice(-10)}`;
+  }
+  return digits ? `+91 ${digits}` : cleaned;
+};
+
 export default function OrdersManagement() {
   const [searchParams] = useSearchParams();
   const { user, isSuperAdmin, currentSupermarket } = useAuth();
@@ -905,7 +916,7 @@ export default function OrdersManagement() {
                           </strong>
                           {ord.customer?.phone && (
                             <span style={{ fontSize: "11px", color: "#64748B", display: "flex", alignItems: "center", gap: "4px", whiteSpace: "nowrap" }}>
-                              <Phone size={11} /> +91 {ord.customer.phone}
+                              <Phone size={11} /> {formatPhone(ord.customer.phone)}
                             </span>
                           )}
                           {ord.customer?.address && (
@@ -1135,7 +1146,7 @@ export default function OrdersManagement() {
               {selectedOrder.customer?.phone && (
                 <div className="om-receipt-row">
                   <span>Mobile Number:</span>
-                  <span>+91 {String(selectedOrder.customer.phone).replace(/\D/g, "")}</span>
+                  <span>{formatPhone(selectedOrder.customer.phone)}</span>
                 </div>
               )}
               {selectedOrder.customer?.address && (

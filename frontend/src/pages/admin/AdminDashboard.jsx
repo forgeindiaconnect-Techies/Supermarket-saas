@@ -41,6 +41,17 @@ try {
   blueShoppingBagImg = "/blue-shopping-bag-3d.jpg";
 }
 
+// Universal phone formatter: guarantees standard '+91 XXXXXXXXXX' without duplicated '+91 +91'
+const formatPhone = (phone) => {
+  if (!phone) return "";
+  const cleaned = String(phone).trim();
+  const digits = cleaned.replace(/\D/g, "");
+  if (digits.length >= 10) {
+    return `+91 ${digits.slice(-10)}`;
+  }
+  return digits ? `+91 ${digits}` : cleaned;
+};
+
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const { user, currentSupermarket } = useAuth();
@@ -244,7 +255,7 @@ export default function AdminDashboard() {
         const items = ord.orderItems || ord.items || [];
         const count = items.reduce((sum, it) => sum + (it.quantity || 1), 0);
         const name = (ord.customer?.name || ord.user?.name || ord.shippingAddress?.fullName || ord.customerName || "Customer").trim();
-        const phone = (ord.customer?.phone || ord.user?.phone || ord.shippingAddress?.phone || ord.customerPhone || "").trim();
+        const phone = formatPhone(ord.customer?.phone || ord.user?.phone || ord.shippingAddress?.phone || ord.customerPhone || "");
         const address = (ord.customer?.address || ord.shippingAddress?.address || "").trim();
         const dateStr = ord.createdAt
           ? new Date(ord.createdAt).toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "numeric" }) + " • " + new Date(ord.createdAt).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })
@@ -273,7 +284,7 @@ export default function AdminDashboard() {
     const map = new Map();
     orders.forEach((ord) => {
       const name = (ord.customer?.name || ord.user?.name || ord.customerName || "").trim();
-      const phone = (ord.customer?.phone || ord.user?.phone || "").trim();
+      const phone = formatPhone(ord.customer?.phone || ord.user?.phone || "");
       const address = (ord.customer?.address || "").trim();
       const key = phone || name.toLowerCase();
       if (!key) return;
@@ -486,13 +497,13 @@ export default function AdminDashboard() {
         </div>
       </section>
 
-      <div className="db-main-grid"><div className="db-col-left"><div className="db-card" id="sales-analytics-section"><div className="db-card-header"><div className="db-card-title-group"><div className="db-card-icon-pill blue"><TrendingUp size={19} strokeWidth={2.4} /></div><div><h3 className="db-card-title">Sales Analytics</h3><p className="db-card-subtitle">Your business performance at a glance</p></div></div><div className="db-period-pills">{["7D", "1M", "3M", "6M", "1Y"].map((period) => (<button key={period} type="button" className="db-period-btn" onClick={() => setChartPeriod(period)}>{period}</button>))}</div></div><div className="db-chart-container"><div className="db-chart-peak-badge"><span role="img" aria-label="trophy">🏆</span><span>{splineChartData.peakValue}</span></div><svg viewBox="0 0 480 170" className="db-chart-svg" preserveAspectRatio="none"><defs><linearGradient id="salesSplineGrad" x1="0" y1="0" x2="0" y2="100%"><stop offset="0%" stopColor="#1455D9" stopOpacity="0.22" /><stop offset="60%" stopColor="#2563EB" stopOpacity="0.06" /><stop offset="100%" stopColor="#1455D9" stopOpacity="0.00" /></linearGradient></defs><line x1="35" y1="35" x2="455" y2="35" className="db-chart-grid-line" /><line x1="35" y1="65" x2="455" y2="65" className="db-chart-grid-line" /><line x1="35" y1="95" x2="455" y2="95" className="db-chart-grid-line" /><line x1="35" y1="125" x2="455" y2="125" className="db-chart-grid-line" /><line x1="35" y1="155" x2="455" y2="155" stroke="#E2E8F0" strokeWidth="1" /><text x="28" y="38" textAnchor="end" fontSize="10" fill="#94A3B8" fontWeight="600" fontFamily="sans-serif">1K</text><text x="28" y="68" textAnchor="end" fontSize="10" fill="#94A3B8" fontWeight="600" fontFamily="sans-serif">750</text><text x="28" y="98" textAnchor="end" fontSize="10" fill="#94A3B8" fontWeight="600" fontFamily="sans-serif">500</text><text x="28" y="128" textAnchor="end" fontSize="10" fill="#94A3B8" fontWeight="600" fontFamily="sans-serif">250</text><text x="28" y="158" textAnchor="end" fontSize="10" fill="#94A3B8" fontWeight="600" fontFamily="sans-serif">0</text><path d={splineChartData.areaD} fill="url(#salesSplineGrad)" /><path d={splineChartData.pathD} className="db-chart-spline-line" />{splineChartData.points.map((pt, idx) => (<circle key={idx} cx={pt.x} cy={pt.y} className="db-chart-dot" />))}{splineChartData.labels.map((lbl, idx) => { const xPos = splineChartData.points[idx]?.x || 35 + idx * 100; return (<text key={idx} x={xPos} y="167" textAnchor="middle" fontSize="9.5" fill="#94A3B8" fontWeight="600" fontFamily="sans-serif">{lbl}</text>); })}</svg></div></div>
+      <div className="db-main-grid"><div className="db-col-left"><div className="db-card" id="sales-analytics-section"><div className="db-card-header"><div className="db-card-title-group"><div className="db-card-icon-pill blue"><TrendingUp size={19} color="#2563EB" strokeWidth={2.4} /></div><div><h3 className="db-card-title">Sales Analytics</h3><p className="db-card-subtitle">Your business performance at a glance</p></div></div><div className="db-period-pills">{["7D", "1M", "3M", "6M", "1Y"].map((period) => (<button key={period} type="button" className="db-period-btn" onClick={() => setChartPeriod(period)}>{period}</button>))}</div></div><div className="db-chart-container"><div className="db-chart-peak-badge"><span role="img" aria-label="trophy">🏆</span><span>{splineChartData.peakValue}</span></div><svg viewBox="0 0 480 170" className="db-chart-svg" preserveAspectRatio="none"><defs><linearGradient id="salesSplineGrad" x1="0" y1="0" x2="0" y2="100%"><stop offset="0%" stopColor="#1455D9" stopOpacity="0.22" /><stop offset="60%" stopColor="#2563EB" stopOpacity="0.06" /><stop offset="100%" stopColor="#1455D9" stopOpacity="0.00" /></linearGradient></defs><line x1="35" y1="35" x2="455" y2="35" className="db-chart-grid-line" /><line x1="35" y1="65" x2="455" y2="65" className="db-chart-grid-line" /><line x1="35" y1="95" x2="455" y2="95" className="db-chart-grid-line" /><line x1="35" y1="125" x2="455" y2="125" className="db-chart-grid-line" /><line x1="35" y1="155" x2="455" y2="155" stroke="#E2E8F0" strokeWidth="1" /><text x="28" y="38" textAnchor="end" fontSize="10" fill="#94A3B8" fontWeight="600" fontFamily="sans-serif">1K</text><text x="28" y="68" textAnchor="end" fontSize="10" fill="#94A3B8" fontWeight="600" fontFamily="sans-serif">750</text><text x="28" y="98" textAnchor="end" fontSize="10" fill="#94A3B8" fontWeight="600" fontFamily="sans-serif">500</text><text x="28" y="128" textAnchor="end" fontSize="10" fill="#94A3B8" fontWeight="600" fontFamily="sans-serif">250</text><text x="28" y="158" textAnchor="end" fontSize="10" fill="#94A3B8" fontWeight="600" fontFamily="sans-serif">0</text><path d={splineChartData.areaD} fill="url(#salesSplineGrad)" /><path d={splineChartData.pathD} className="db-chart-spline-line" />{splineChartData.points.map((pt, idx) => (<circle key={idx} cx={pt.x} cy={pt.y} className="db-chart-dot" />))}{splineChartData.labels.map((lbl, idx) => { const xPos = splineChartData.points[idx]?.x || 35 + idx * 100; return (<text key={idx} x={xPos} y="167" textAnchor="middle" fontSize="9.5" fill="#94A3B8" fontWeight="600" fontFamily="sans-serif">{lbl}</text>); })}</svg></div></div>
 
           <div className="db-card">
             <div className="db-card-header">
               <div className="db-card-title-group">
                 <div className="db-card-icon-pill blue">
-                  <ShoppingCart size={18} strokeWidth={2.4} />
+                  <ShoppingCart size={18} color="#2563EB" strokeWidth={2.4} />
                 </div>
                 <div>
                   <h3 className="db-card-title">Recent Orders</h3>
@@ -551,7 +562,7 @@ export default function AdminDashboard() {
                             </span>
                             {ord.customerPhone ? (
                               <span style={{ fontSize: "11px", color: "#2563EB", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "3px" }}>
-                                📱 +91 {ord.customerPhone}
+                                📱 {formatPhone(ord.customerPhone)}
                               </span>
                             ) : (
                               <span style={{ fontSize: "10.5px", color: "#94A3B8" }}>No mobile</span>
@@ -609,7 +620,7 @@ export default function AdminDashboard() {
             <div className="db-card-header" style={{ marginBottom: "12px" }}>
               <div className="db-card-title-group">
                 <div className="db-card-icon-pill amber">
-                  <Zap size={18} color="#FFFFFF" strokeWidth={2.4} />
+                  <Zap size={18} color="#D97706" strokeWidth={2.4} />
                 </div>
                 <div>
                   <h3 className="db-card-title">Quick Actions</h3>
@@ -678,7 +689,7 @@ export default function AdminDashboard() {
             <div className="db-card-header" style={{ marginBottom: "12px" }}>
               <div className="db-card-title-group">
                 <div className="db-card-icon-pill amber">
-                  <AlertTriangle size={18} color="#FFFFFF" strokeWidth={2.4} />
+                  <AlertTriangle size={18} color="#D97706" strokeWidth={2.4} />
                 </div>
                 <div>
                   <h3 className="db-card-title">Inventory Alerts</h3>
@@ -773,7 +784,7 @@ export default function AdminDashboard() {
             <div className="db-card-header">
               <div className="db-card-title-group">
                 <div className="db-card-icon-pill blue">
-                  <BarChart2 size={18} color="#FFFFFF" strokeWidth={2.4} />
+                  <BarChart2 size={18} color="#2563EB" strokeWidth={2.4} />
                 </div>
                 <div>
                   <h3 className="db-card-title">Business Insights</h3>
@@ -863,7 +874,7 @@ export default function AdminDashboard() {
             <div className="db-card-header" style={{ marginBottom: "12px" }}>
               <div className="db-card-title-group">
                 <div className="db-card-icon-pill green">
-                  <Users size={18} color="#FFFFFF" strokeWidth={2.4} />
+                  <Users size={18} color="#059669" strokeWidth={2.4} />
                 </div>
                 <div>
                   <h3 className="db-card-title">Registered Customers</h3>
@@ -924,7 +935,7 @@ export default function AdminDashboard() {
                         </span>
                         {cust.phone ? (
                           <span style={{ fontSize: "11.5px", color: "#2563EB", fontWeight: 700, display: "flex", alignItems: "center", gap: "3px" }}>
-                            📱 +91 {cust.phone}
+                            📱 {formatPhone(cust.phone)}
                           </span>
                         ) : (
                           <span style={{ fontSize: "11px", color: "#94A3B8" }}>No mobile</span>
@@ -1115,7 +1126,7 @@ export default function AdminDashboard() {
                   </span>
                   {selectedOrder.customerPhone ? (
                     <span style={{ fontSize: "11.5px", fontWeight: "700", color: "#1D4ED8", display: "block", marginTop: "2px" }}>
-                      📱 +91 {selectedOrder.customerPhone}
+                      📱 {formatPhone(selectedOrder.customerPhone)}
                     </span>
                   ) : null}
                   {selectedOrder.customerAddress ? (

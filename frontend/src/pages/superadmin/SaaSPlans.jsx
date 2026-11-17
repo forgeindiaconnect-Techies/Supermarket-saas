@@ -679,36 +679,57 @@ GrocerEase Platform Super Admin Operations`
           <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
             <span className="sa-badge active">SaaS Billing & Subscriptions</span>
             <span style={{ fontSize: "12px", color: "#64748b" }}>
-              {activeTab === "create"
+              {editingPlanId
+                ? "Plan Modification Mode"
+                : activeTab === "create"
                 ? "Tier Configuration & Feature Entitlements"
                 : "Multi-Tenant Licensing & Automated Expiry Tracking"}
             </span>
           </div>
           <h1>
-            {activeTab === "create"
+            {editingPlanId
+              ? "Edit Subscription Plan"
+              : activeTab === "create"
               ? "Create Subscription Plan"
               : "Manage Subscription Plans & Supermarket Licensing"}
           </h1>
           <p>
-            {activeTab === "create"
+            {editingPlanId
+              ? `Update pricing tiers, billing cycles, supermarket branch quotas, and hardware features for ${planFormData.name || "this plan"}.`
+              : activeTab === "create"
               ? "Create and configure new subscription tiers, custom pricing models, and hardware feature entitlements for supermarkets."
               : "Monitor every supermarket's assigned plan, real-time expiry countdowns, red expiry warnings, and direct renewal outreach."}
           </p>
         </div>
 
         <div className="sa-page-header-actions">
-          <button
-            type="button"
-            className="sa-btn-secondary"
-            onClick={() => {
-              fetchPlans();
-              if (activeTab === "manage") fetchSupermarkets();
-            }}
-            title="Refresh database records"
-          >
-            <RefreshCw size={15} className={loadingStores || loading ? "spin-icon" : ""} />
-            <span>Refresh</span>
-          </button>
+          {activeTab === "manage" ? (
+            <button
+              type="button"
+              className="sa-btn-secondary"
+              onClick={() => {
+                fetchPlans();
+                fetchSupermarkets();
+              }}
+              title="Refresh database records"
+            >
+              <RefreshCw size={15} className={loadingStores || loading ? "spin-icon" : ""} />
+              <span>Refresh</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="sa-btn-secondary"
+              onClick={() => {
+                setEditingPlanId(null);
+                navigate("/super-admin/plans");
+              }}
+              title="View all subscription plans"
+            >
+              <Layers size={14} />
+              <span>View All Plans</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -1343,30 +1364,66 @@ GrocerEase Platform Super Admin Operations`
       {activeTab === "create" && (
         <div>
           <div className="sa-create-plan-card">
-            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "1.25rem", borderBottom: "1px solid #e2e8f0", paddingBottom: "1rem" }}>
+            {/* If in edit mode, display active editing banner with quick cancel */}
+            {editingPlanId && (
               <div
                 style={{
-                  width: "42px",
-                  height: "42px",
-                  borderRadius: "10px",
-                  background: "#dcfce7",
-                  color: "#16a34a",
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "center",
+                  justifyContent: "space-between",
+                  background: "#fef3c7",
+                  border: "1px solid #fde68a",
+                  padding: "10px 16px",
+                  borderRadius: "10px",
+                  marginBottom: "1.25rem",
+                  flexWrap: "wrap",
+                  gap: "8px",
                 }}
               >
-                <PlusCircle size={22} strokeWidth={2.4} />
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#92400e", fontWeight: 700, fontSize: "13px" }}>
+                  <Edit2 size={15} />
+                  <span>Editing Plan: <strong>{planFormData.name || editingPlanId}</strong></span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingPlanId(null);
+                    setPlanFormData({
+                      name: "",
+                      tierCode: "CUSTOM",
+                      price: 9999,
+                      billingCycle: "Monthly",
+                      durationDays: 30,
+                      trialDays: 0,
+                      branchesCount: 1,
+                      description: "",
+                      featuresList: [
+                        "Barcode & QR High-Speed Scanning",
+                        "Real-time POS Billing & Invoicing",
+                        "Automated Turnstile QR Integration",
+                        "Real-time Inventory & Low-Stock Alerts",
+                        "Email & Chat Support",
+                      ],
+                      maxProducts: 2500,
+                      maxTurnstiles: 2,
+                      maxStaffUsers: 15,
+                      isPopular: false,
+                    });
+                  }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#b45309",
+                    cursor: "pointer",
+                    fontWeight: 750,
+                    fontSize: "12px",
+                    textDecoration: "underline",
+                  }}
+                >
+                  Cancel Editing
+                </button>
               </div>
-              <div>
-                <h2 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 800, color: "#172b24" }}>
-                  {editingPlanId ? "Edit Subscription Plan" : "Create New Subscription Plan"}
-                </h2>
-                <p style={{ margin: "2px 0 0 0", fontSize: "0.82rem", color: "#64748b" }}>
-                  Define pricing tiers, supermarket branch allotments, and autonomous checkout features
-                </p>
-              </div>
-            </div>
+            )}
 
             <form onSubmit={handleCreatePlanSubmit}>
               {/* Row 1: Plan Name, Tier Code & Billing Cycle */}

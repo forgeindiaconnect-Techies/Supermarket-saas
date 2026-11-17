@@ -318,28 +318,6 @@ export default function SuperAdminNotifications() {
 
         {/* Action Buttons */}
         <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-          <button
-            type="button"
-            onClick={fetchNotifications}
-            disabled={loading}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "6px",
-              background: "#ffffff",
-              color: "#064e3b",
-              border: "1.5px solid #a7f3d0",
-              padding: "8px 14px",
-              borderRadius: "10px",
-              fontSize: "0.84rem",
-              fontWeight: 700,
-              cursor: "pointer",
-            }}
-          >
-            <RefreshCw size={14} className={loading ? "spin" : ""} />
-            <span>Refresh</span>
-          </button>
-
           {unreadCount > 0 && (
             <button
               type="button"

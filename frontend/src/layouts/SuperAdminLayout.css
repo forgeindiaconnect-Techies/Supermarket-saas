@@ -1674,38 +1674,6 @@
   }
 }
 
-/* Super Admin Mobile Floating Quick Chat Button */
-.sa-mobile-floating-chat {
-  display: none;
-}
-
-@media (max-width: 768px) {
-  .sa-mobile-floating-chat {
-    display: flex !important;
-    align-items: center;
-    justify-content: center;
-    position: fixed;
-    bottom: 22px;
-    right: 18px;
-    width: 52px;
-    height: 52px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-    color: #ffffff !important;
-    box-shadow: 0 6px 20px rgba(5, 150, 105, 0.45), 0 2px 6px rgba(0, 0, 0, 0.15);
-    z-index: 9990;
-    cursor: pointer;
-    border: 2px solid #ffffff;
-    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
-    text-decoration: none;
-    -webkit-tap-highlight-color: transparent;
-  }
-
-  .sa-mobile-floating-chat:active {
-    transform: scale(0.92);
-  }
-}
-
 /* =========================================================================
    Mobile View Responsive Fixes for Notifications & Profile Dropdowns
    ========================================================================= */

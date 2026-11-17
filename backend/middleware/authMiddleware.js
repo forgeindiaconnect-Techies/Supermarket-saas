@@ -27,6 +27,9 @@ async function authMiddleware(req, res, next) {
     } else {
       const decoded = jwt.verify(token, JWT_SECRET);
       user = await User.findById(decoded.id).select("-password").populate("supermarket");
+      if (!user && decoded?.role === "SUPER_ADMIN") {
+        user = await User.findOne({ role: "SUPER_ADMIN" }).select("-password");
+      }
     }
 
     if (user && user.status === "Active") {
