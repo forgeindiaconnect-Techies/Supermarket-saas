@@ -13,6 +13,7 @@ const {
   getCartActivity,
   getReports,
   getNotifications,
+  deleteOrder,
 } = require("../controllers/orderController");
 
 // Public/Customer routes
@@ -42,8 +43,9 @@ router.get("/reports", getReports);
 // Dedicated isolated notifications query
 router.get("/notifications", getNotifications);
 
-// Orders query
+// Orders query & deletion
 router.get("/", getOrders);
 router.get("/:id", getOrderById);
+router.delete("/:id", deleteOrder);
 
 module.exports = router;

@@ -217,10 +217,18 @@ export function addPersistentProduct(newProduct) {
   return updated;
 }
 
-// Delete product
+// Delete product permanently from local persistent storage
 export function deletePersistentProduct(productId) {
+  if (!productId) return getPersistentProducts();
   const products = getPersistentProducts();
-  const updated = products.filter((p) => p._id !== productId);
+  const target = String(productId).trim();
+  const updated = products.filter(
+    (p) =>
+      p._id !== productId &&
+      p.barcode !== productId &&
+      String(p._id || "").trim() !== target &&
+      String(p.barcode || "").trim() !== target
+  );
   savePersistentProducts(updated);
   return updated;
 }

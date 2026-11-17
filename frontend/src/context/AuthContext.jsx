@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import API from "../services/api";
+import { io } from "socket.io-client";
+import API, { SOCKET_URL } from "../services/api";
 
 const AuthContext = createContext(null);
 
@@ -183,7 +184,7 @@ export function AuthProvider({ children }) {
     try {
       setLoading(true);
       const res = await API.get("/super-admin/supermarkets");
-      if (res.data?.success && Array.isArray(res.data.supermarkets) && res.data.supermarkets.length > 0) {
+      if (res.data?.success && Array.isArray(res.data.supermarkets)) {
         setSupermarkets(res.data.supermarkets);
 
         // If current supermarket ID matches one from DB, sync updated attributes
@@ -191,10 +192,12 @@ export function AuthProvider({ children }) {
         const matched = res.data.supermarkets.find((s) => s._id === activeId || s.code === currentSupermarket?.code);
         if (matched) {
           setCurrentSupermarket(matched);
+        } else if (res.data.supermarkets.length > 0 && !currentSupermarket) {
+          setCurrentSupermarket(res.data.supermarkets[0]);
         }
       }
     } catch (err) {
-      console.warn("Using offline supermarkets catalog:", err.message);
+      console.warn("Supermarkets load notice:", err.message);
     } finally {
       setLoading(false);
     }
@@ -203,6 +206,83 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     loadSupermarkets();
   }, [loadSupermarkets]);
+
+  // Real-time synchronization via Socket.IO for supermarkets & platform stats
+  useEffect(() => {
+    let socket;
+    try {
+      socket = io(SOCKET_URL, {
+        transports: ["websocket", "polling"],
+      });
+
+      socket.on("supermarket:deleted", (data) => {
+        if (!data) return;
+        setSupermarkets((prev) =>
+          prev.filter((s) => s._id !== data.id && s.code !== data.code)
+        );
+        setCurrentSupermarket((prev) => {
+          if (prev && (prev._id === data.id || prev.code === data.code)) {
+            return null;
+          }
+          return prev;
+        });
+        window.dispatchEvent(new Event("grocerease_storage_updated"));
+      });
+
+      socket.on("supermarket:created", (data) => {
+        if (data?.supermarket) {
+          setSupermarkets((prev) => {
+            const exists = prev.some((s) => s._id === data.supermarket._id || s.code === data.supermarket.code);
+            return exists ? prev : [data.supermarket, ...prev];
+          });
+          window.dispatchEvent(new Event("grocerease_storage_updated"));
+        }
+      });
+
+      socket.on("supermarket:updated", (data) => {
+        if (data?.supermarket) {
+          setSupermarkets((prev) =>
+            prev.map((s) => (s._id === data.supermarket._id || s.code === data.supermarket.code ? data.supermarket : s))
+          );
+          setCurrentSupermarket((prev) => {
+            if (prev && (prev._id === data.supermarket._id || prev.code === data.supermarket.code)) {
+              return data.supermarket;
+            }
+            return prev;
+          });
+          window.dispatchEvent(new Event("grocerease_storage_updated"));
+        }
+      });
+
+      socket.on("platform:stats_updated", () => {
+        loadSupermarkets();
+      });
+    } catch (_) {}
+
+    return () => {
+      if (socket) socket.disconnect();
+    };
+  }, [loadSupermarkets]);
+
+  // Delete supermarket permanently from database and update state immediately
+  const deleteSupermarketById = async (id) => {
+    try {
+      const res = await API.delete(`/super-admin/supermarkets/${id}`);
+      if (res.data?.success) {
+        setSupermarkets((prev) => prev.filter((s) => s._id !== id && s.code !== id));
+        setCurrentSupermarket((prev) => {
+          if (prev && (prev._id === id || prev.code === id)) {
+            return null;
+          }
+          return prev;
+        });
+        window.dispatchEvent(new Event("grocerease_storage_updated"));
+      }
+      return res.data;
+    } catch (err) {
+      throw err;
+    }
+  };
 
   // Login handler
   const login = async (username, password) => {
@@ -419,6 +499,7 @@ export function AuthProvider({ children }) {
         logout,
         switchSupermarket,
         loadSupermarkets,
+        deleteSupermarketById,
       }}
     >
       {children}

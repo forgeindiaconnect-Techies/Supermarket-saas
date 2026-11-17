@@ -16,8 +16,10 @@ import {
   CreditCard,
   User,
   Phone,
+  Trash2,
 } from "lucide-react";
-import API from "../../services/api";
+import { io } from "socket.io-client";
+import API, { SOCKET_URL } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import "./SuperAdmin.css";
 
@@ -108,13 +110,13 @@ export default function ConsolidatedOrders() {
       const res = await API.get("/super-admin/orders", {
         params: { supermarketId: selectedStore, search, status: selectedStatus },
       });
-      if (res.data?.success && res.data.orders?.length > 0) {
+      if (res.data?.success && Array.isArray(res.data.orders)) {
         setOrders(
           res.data.orders.map((o) => ({
             _id: o._id,
-            orderId: o.orderId || `ORD-${String(o._id).slice(-6)}`,
-            customerName: o.customerName || "Autonomous Shopper",
-            customerPhone: o.customerPhone || "N/A",
+            orderId: o.orderId || o.orderNumber || `ORD-${String(o._id).slice(-6)}`,
+            customerName: o.customer?.name || o.customerName || "Autonomous Shopper",
+            customerPhone: o.customer?.phone || o.customerPhone || "N/A",
             supermarketName: o.supermarket?.name || o.supermarketName || "Supermarket Store",
             supermarketCode: o.supermarket?.code || o.supermarketCode || "STR-001",
             totalAmount: o.totalAmount || 0,
@@ -128,7 +130,7 @@ export default function ConsolidatedOrders() {
         );
       }
     } catch (_) {
-      // Fallback to demo orders
+      // Fallback
     } finally {
       setLoading(false);
     }
@@ -136,7 +138,41 @@ export default function ConsolidatedOrders() {
 
   useEffect(() => {
     loadOrders();
+
+    let socket;
+    try {
+      socket = io(SOCKET_URL, { transports: ["websocket", "polling"] });
+      const refresh = () => loadOrders();
+      socket.on("order:created", refresh);
+      socket.on("order:updated", refresh);
+      socket.on("order:deleted", (data) => {
+        if (data?.id) {
+          setOrders((prev) => prev.filter((o) => o._id !== data.id && o.orderId !== data.orderNumber));
+        }
+        refresh();
+      });
+      socket.on("new-order", refresh);
+      socket.on("order-status-update", refresh);
+      socket.on("platform:stats_updated", refresh);
+    } catch (_) {}
+
+    return () => {
+      if (socket) socket.disconnect();
+    };
   }, [selectedStore, selectedStatus]);
+
+  const handleDeleteOrder = async (orderId, orderNum) => {
+    if (!window.confirm(`Are you sure you want to PERMANENTLY delete Order #${orderNum} from the database?\n\nThis action cannot be undone.`)) {
+      return;
+    }
+    try {
+      setOrders((prev) => prev.filter((o) => o._id !== orderId && o.orderId !== orderNum));
+      await API.delete(`/orders/${orderId}`);
+      loadOrders();
+    } catch (err) {
+      alert(`Failed to delete order: ${err.response?.data?.message || err.message}`);
+    }
+  };
 
   const filtered = orders.filter((o) => {
     const matchSearch =
@@ -288,15 +324,26 @@ export default function ConsolidatedOrders() {
                       </span>
                     </td>
                     <td>
-                      <button
-                        type="button"
-                        className="sa-btn-secondary"
-                        style={{ padding: "4px 10px", fontSize: "12px" }}
-                        onClick={() => setActiveModalOrder(order)}
-                      >
-                        <Eye size={13} />
-                        <span>Inspect</span>
-                      </button>
+                      <div style={{ display: "inline-flex", gap: "6px" }}>
+                        <button
+                          type="button"
+                          className="sa-btn-secondary"
+                          style={{ padding: "4px 10px", fontSize: "12px" }}
+                          onClick={() => setActiveModalOrder(order)}
+                        >
+                          <Eye size={13} />
+                          <span>Inspect</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="sa-btn-secondary"
+                          style={{ padding: "4px 8px", fontSize: "12px", color: "#dc2626", borderColor: "#fecaca", background: "#fef2f2" }}
+                          onClick={() => handleDeleteOrder(order._id, order.orderId)}
+                          title={`Permanently delete Order #${order.orderId}`}
+                        >
+                          <Trash2 size={13} color="#dc2626" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))

@@ -46,6 +46,16 @@ function syncInitialAssets() {
       fs.copyFileSync(cartCandidate, path.join(publicDir, "check-cart.png"));
     }
 
+    // Sync exact user-provided Landing Page Master Image (media_1794910523383_df6dc5b8.jpg)
+    const landingRefImg = path.join(userUploadedDir, "media_1794910523383_df6dc5b8.jpg");
+    if (fs.existsSync(landingRefImg)) {
+      fs.copyFileSync(landingRefImg, path.join(publicDir, "landing-reference-master.jpg"));
+      fs.copyFileSync(landingRefImg, path.join(assetsDir, "landing-reference-master.jpg"));
+      fs.copyFileSync(landingRefImg, path.join(publicDir, "supermarket-hero-trolley.jpg"));
+      fs.copyFileSync(landingRefImg, path.join(assetsDir, "supermarket-hero-trolley.jpg"));
+      console.log("✓ Synced user landing reference image -> landing-reference-master.jpg");
+    }
+
     // Sync exact user-provided Super Admin Header Banner (pristine panorama from user prompt)
     const exactHeaderBanner = path.join(userUploadedDir, "media_1794807037848_916ec656.jpg");
     if (fs.existsSync(exactHeaderBanner)) {
@@ -284,6 +294,14 @@ app.get("/api/header-banner", (req, res) => {
   const p = path.join(__dirname, "../frontend/public/super-admin-exact-header.png");
   if (fs.existsSync(p)) return res.sendFile(p);
   res.status(404).send("Header banner not found");
+});
+
+app.get(["/api/landing-ref-img", "/landing-ref-img"], (req, res) => {
+  const landingRef = "C:\\Users\\Forgeindiaconnect\\.gemini\\antigravity\\brain\\c9a15307-ca50-4a98-86d7-d740eabbe413\\.user_uploaded\\media_1794910523383_df6dc5b8.jpg";
+  if (fs.existsSync(landingRef)) return res.sendFile(landingRef);
+  const p = path.join(__dirname, "../frontend/public/landing-reference-master.jpg");
+  if (fs.existsSync(p)) return res.sendFile(p);
+  res.status(404).send("Landing reference image not found");
 });
 
 app.get("/api/login-bg", (req, res) => {

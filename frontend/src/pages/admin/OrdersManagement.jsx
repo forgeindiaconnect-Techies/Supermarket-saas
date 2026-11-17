@@ -31,8 +31,10 @@ import {
   Phone,
   AlertCircle,
   ExternalLink,
+  Trash2,
 } from "lucide-react";
-import API from "../../services/api";
+import { io } from "socket.io-client";
+import API, { SOCKET_URL } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import BarcodeSVG from "../../components/BarcodeSVG";
 import ErpPageBanner from "../../components/ErpPageBanner";
@@ -120,10 +122,27 @@ export default function OrdersManagement() {
   useEffect(() => {
     fetchOrders(true);
 
-    // Auto-poll orders every 3.5 seconds so admin sees live customer checkouts & payments immediately
+    // Auto-poll orders every 4 seconds
     const timer = setInterval(() => {
       fetchOrders(false);
-    }, 3500);
+    }, 4000);
+
+    let socket;
+    try {
+      socket = io(SOCKET_URL, { transports: ["websocket", "polling"] });
+      const refresh = () => fetchOrders(false);
+      socket.on("order:created", refresh);
+      socket.on("order:updated", refresh);
+      socket.on("order:deleted", (data) => {
+        if (data?.id) {
+          setOrders((prev) => prev.filter((o) => o._id !== data.id && o.orderNumber !== data.orderNumber));
+        }
+        refresh();
+      });
+      socket.on("new-order", refresh);
+      socket.on("order-status-update", refresh);
+      socket.on("platform:stats_updated", refresh);
+    } catch (_) {}
 
     const handleStorageUpdate = () => {
       fetchOrders(false);
@@ -132,9 +151,25 @@ export default function OrdersManagement() {
 
     return () => {
       clearInterval(timer);
+      if (socket) socket.disconnect();
       window.removeEventListener("grocerease_storage_updated", handleStorageUpdate);
     };
   }, []);
+
+  const handleDeleteOrder = async (orderId, orderNum) => {
+    if (!window.confirm(`Are you sure you want to PERMANENTLY delete Order #${orderNum} from the database?\n\nThis will permanently remove this transaction from sales records and customer history. This action cannot be undone.`)) {
+      return;
+    }
+    try {
+      setOrders((prev) => prev.filter((o) => o._id !== orderId && o.orderNumber !== orderNum));
+      await API.delete(`/orders/${orderId}`);
+      setActionMessage(`✓ Order #${orderNum} permanently deleted.`);
+      setTimeout(() => setActionMessage(""), 3500);
+      fetchOrders(false);
+    } catch (err) {
+      alert(`Failed to delete order: ${err.response?.data?.message || err.message}`);
+    }
+  };
 
   // 1. Super Admin approves customer payment
   const handleApprovePayment = async (orderId, orderNumber) => {
@@ -1092,6 +1127,16 @@ export default function OrdersManagement() {
                             style={{ width: "30px", height: "30px" }}
                           >
                             <Printer size={14} color="#2563EB" />
+                          </button>
+
+                          <button
+                            type="button"
+                            className="pm-action-circle"
+                            onClick={() => handleDeleteOrder(ord._id, ord.orderNumber)}
+                            title={`Permanently delete Order #${ord.orderNumber}`}
+                            style={{ width: "30px", height: "30px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+                          >
+                            <Trash2 size={13} color="#dc2626" />
                           </button>
                         </div>
                       </td>

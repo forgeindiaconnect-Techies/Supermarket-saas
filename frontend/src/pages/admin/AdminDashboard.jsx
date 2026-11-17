@@ -17,7 +17,8 @@ import {
   X,
   Calendar,
 } from "lucide-react";
-import API from "../../services/api";
+import { io } from "socket.io-client";
+import API, { SOCKET_URL } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import {
   getPersistentProducts,
@@ -194,8 +195,47 @@ export default function AdminDashboard() {
   useEffect(() => {
     fetchDashboardData();
     const interval = setInterval(fetchDashboardData, 4000);
-    return () => clearInterval(interval);
-  }, []);
+
+    let socket;
+    try {
+      socket = io(SOCKET_URL, { transports: ["websocket", "polling"] });
+      const currentTenantId = currentSupermarket?._id ? String(currentSupermarket._id) : (user?.supermarket?._id ? String(user.supermarket._id) : (typeof user?.supermarket === "string" ? user.supermarket : null));
+      const currentTenantCode = currentSupermarket?.code || user?.supermarketCode;
+
+      socket.emit("join-tenant", {
+        supermarketId: currentTenantId,
+        supermarketCode: currentTenantCode,
+        role: user?.role,
+      });
+
+      const refresh = () => fetchDashboardData();
+      socket.on("product:created", refresh);
+      socket.on("product:updated", refresh);
+      socket.on("product:deleted", (data) => {
+        if (data?.id) {
+          setProducts((prev) => prev.filter((p) => p._id !== data.id && p.barcode !== data.barcode));
+        }
+        refresh();
+      });
+      socket.on("order:created", refresh);
+      socket.on("order:updated", refresh);
+      socket.on("order:deleted", (data) => {
+        if (data?.id) {
+          setOrders((prev) => prev.filter((o) => o._id !== data.id && o.orderNumber !== data.orderNumber));
+        }
+        refresh();
+      });
+      socket.on("new-order", refresh);
+      socket.on("order-status-update", refresh);
+      socket.on("admin:notification", refresh);
+      socket.on("platform:stats_updated", refresh);
+    } catch (_) {}
+
+    return () => {
+      clearInterval(interval);
+      if (socket) socket.disconnect();
+    };
+  }, [currentSupermarket?._id, currentSupermarket?.code, user?.role, user?.supermarket]);
 
   // Real-time Low Stock items from live database products
   const lowStockItems = useMemo(() => {
@@ -784,7 +824,7 @@ export default function AdminDashboard() {
             <div className="db-card-header">
               <div className="db-card-title-group">
                 <div className="db-card-icon-pill blue">
-                  <BarChart2 size={18} color="#2563EB" strokeWidth={2.4} />
+                  <BarChart2 size={19} color="#FFFFFF" strokeWidth={2.6} />
                 </div>
                 <div>
                   <h3 className="db-card-title">Business Insights</h3>
@@ -874,7 +914,7 @@ export default function AdminDashboard() {
             <div className="db-card-header" style={{ marginBottom: "12px" }}>
               <div className="db-card-title-group">
                 <div className="db-card-icon-pill green">
-                  <Users size={18} color="#059669" strokeWidth={2.4} />
+                  <Users size={19} color="#FFFFFF" strokeWidth={2.6} />
                 </div>
                 <div>
                   <h3 className="db-card-title">Registered Customers</h3>

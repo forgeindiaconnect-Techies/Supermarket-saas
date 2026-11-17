@@ -5,6 +5,7 @@ const Order = require("../models/Order");
 const CartActivity = require("../models/CartActivity");
 const ChatMessage = require("../models/ChatMessage");
 const PlatformNotification = require("../models/PlatformNotification");
+const DeletedRecord = require("../models/DeletedRecord");
 
 async function seedSaaSPlatformData() {
   try {
@@ -28,6 +29,29 @@ async function seedSaaSPlatformData() {
       superAdmin.email = "superadmin@grocerease.com";
       superAdmin.password = "Admin@123";
       await superAdmin.save();
+    }
+
+    // =========================================================================
+    // PERMANENT DELETION PROTECTION GUARD:
+    // If the database has already been initialized, DO NOT recreate any
+    // supermarkets, products, or orders that the user has deleted!
+    // =========================================================================
+    let seedMarker = await DeletedRecord.findOne({ identifier: "SYSTEM_INITIAL_SEED_COMPLETED" });
+    if (!seedMarker) {
+      const existingStoresCount = await Supermarket.countDocuments();
+      if (existingStoresCount > 0) {
+        await DeletedRecord.create({
+          entityType: "SYSTEM",
+          identifier: "SYSTEM_INITIAL_SEED_COMPLETED",
+          name: "Existing Database Detected - Seed Marked Complete",
+        });
+        seedMarker = true;
+      }
+    }
+
+    if (seedMarker) {
+      console.log("✓ System initial seed is already complete. Preserving permanent deletions.");
+      return;
     }
 
     // =========================================================================
@@ -872,6 +896,13 @@ async function seedSaaSPlatformData() {
       await PlatformNotification.insertMany(platformNotifs);
       console.log("✓ Seeded 8 platform notifications (matching localhost badge 8).");
     }
+
+    // Mark initial seed as complete so it is never re-run
+    await DeletedRecord.create({
+      entityType: "SYSTEM",
+      identifier: "SYSTEM_INITIAL_SEED_COMPLETED",
+      name: "Initial System Seed Complete",
+    });
 
     console.log("✓ Multi-Tenant SaaS platform seeding complete:");
     console.log("  - Super Admin: admin / Admin@123");

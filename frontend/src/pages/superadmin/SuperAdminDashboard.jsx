@@ -207,9 +207,23 @@ export default function SuperAdminDashboard() {
     });
 
     socket.emit("join-tenant", { role: "SUPER_ADMIN", supermarketCode: "ALL" });
-    socket.on("new-order", () => fetchAnalytics());
-    socket.on("admin:notification", () => fetchAnalytics());
-    socket.on("order-status-update", () => fetchAnalytics());
+    const refreshAll = () => {
+      fetchAnalytics();
+      if (loadSupermarkets) loadSupermarkets();
+    };
+    socket.on("new-order", refreshAll);
+    socket.on("admin:notification", refreshAll);
+    socket.on("order-status-update", refreshAll);
+    socket.on("order:created", refreshAll);
+    socket.on("order:updated", refreshAll);
+    socket.on("order:deleted", refreshAll);
+    socket.on("supermarket:created", refreshAll);
+    socket.on("supermarket:updated", refreshAll);
+    socket.on("supermarket:deleted", refreshAll);
+    socket.on("product:created", refreshAll);
+    socket.on("product:updated", refreshAll);
+    socket.on("product:deleted", refreshAll);
+    socket.on("platform:stats_updated", refreshAll);
 
     return () => {
       clearInterval(interval);
@@ -224,27 +238,39 @@ export default function SuperAdminDashboard() {
     navigate(`/super-admin/registered-supermarkets?store=${storeId}`);
   };
 
-  // Real-Time KPI Values strictly calculated from live database with reference fallbacks
+  // Real-Time KPI Values strictly calculated from live database
   const totalStoresCount =
-    Math.max(Number(analytics?.summary?.totalSupermarkets) || 0, supermarkets?.length || 0, 4);
+    analytics?.summary?.totalSupermarkets !== undefined
+      ? Number(analytics.summary.totalSupermarkets)
+      : (supermarkets?.length || 0);
+
   const activeSubsCount =
-    Math.max(Number(analytics?.summary?.activeSubscriptions) || 0, supermarkets?.filter((s) => s.status === "Active")?.length || 0, 4);
+    analytics?.summary?.activeSubscriptions !== undefined
+      ? Number(analytics.summary.activeSubscriptions)
+      : (supermarkets?.filter((s) => s.status === "Active")?.length || 0);
+
   const totalPlatformRevenue =
-    (analytics?.summary?.totalRevenue && analytics.summary.totalRevenue > 0)
-      ? analytics.summary.totalRevenue
-      : (analytics?.summary?.totalStoreSales && analytics.summary.totalStoreSales > 0)
-      ? analytics.summary.totalStoreSales
-      : 76066;
+    analytics?.summary?.totalRevenue !== undefined
+      ? Number(analytics.summary.totalRevenue)
+      : (analytics?.summary?.totalStoreSales || 0);
+
   const rawGrowth = analytics?.summary?.platformGrowth;
-  const platformGrowthRate = (rawGrowth && rawGrowth > 0) ? (rawGrowth > 100 ? 95 : rawGrowth) : 95;
+  const platformGrowthRate = (rawGrowth !== undefined && rawGrowth !== null) ? (rawGrowth > 100 ? 95 : rawGrowth) : 95;
+
   const totalProductsCount =
-    (analytics?.summary?.totalProductsCount && analytics.summary.totalProductsCount > 0)
-      ? analytics.summary.totalProductsCount
-      : 20;
+    analytics?.summary?.totalProductsCount !== undefined
+      ? Number(analytics.summary.totalProductsCount)
+      : 0;
+
   const totalPosTurnstiles =
-    analytics?.summary?.totalPosTurnstilesOnline ?? (totalStoresCount * 4);
+    analytics?.summary?.totalPosTurnstilesOnline !== undefined
+      ? Number(analytics.summary.totalPosTurnstilesOnline)
+      : (totalStoresCount * 4);
+
   const newStoresThisMonth =
-    analytics?.summary?.newStoresThisMonth ?? 4;
+    analytics?.summary?.newStoresThisMonth !== undefined
+      ? Number(analytics.summary.newStoresThisMonth)
+      : totalStoresCount;
 
   // Real-Time Dynamic Sales Chart Series Calculation
   const rawChartData = salesRange === "7d" ? analytics?.chart7d : analytics?.chart30d;

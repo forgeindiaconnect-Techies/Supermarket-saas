@@ -36,8 +36,10 @@ import {
   ArrowUpRight,
   Trophy,
   Check,
+  Trash2,
 } from "lucide-react";
-import API from "../../services/api";
+import { io } from "socket.io-client";
+import API, { SOCKET_URL } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import "./SuperAdmin.css";
 
@@ -228,11 +230,61 @@ export default function RegisteredSupermarkets() {
     }
   }, [selectedStoreId, fetchSupermarketDetails]);
 
-  // Initial load
+  // Initial load & real-time Socket.IO synchronization
   useEffect(() => {
     fetchLiveSupermarkets();
     if (loadSupermarkets) loadSupermarkets();
-  }, [fetchLiveSupermarkets, loadSupermarkets]);
+
+    let socket;
+    try {
+      socket = io(SOCKET_URL, { transports: ["websocket", "polling"] });
+      const refresh = () => {
+        fetchLiveSupermarkets();
+        if (loadSupermarkets) loadSupermarkets();
+        if (selectedStoreId) fetchSupermarketDetails(selectedStoreId);
+      };
+      socket.on("supermarket:deleted", (data) => {
+        setLiveStores((prev) => prev.filter((s) => s._id !== data?.id && s.code !== data?.code));
+        if (selectedStoreId && (selectedStoreId === data?.id || selectedStoreId === data?.code)) {
+          setSelectedStoreId(null);
+          setDetailData(null);
+        }
+        refresh();
+      });
+      socket.on("supermarket:created", refresh);
+      socket.on("supermarket:updated", refresh);
+      socket.on("platform:stats_updated", refresh);
+      socket.on("order:created", refresh);
+      socket.on("order:deleted", refresh);
+      socket.on("product:created", refresh);
+      socket.on("product:deleted", refresh);
+    } catch (_) {}
+
+    return () => {
+      if (socket) socket.disconnect();
+    };
+  }, [fetchLiveSupermarkets, loadSupermarkets, selectedStoreId, fetchSupermarketDetails]);
+
+  // Permanently delete a supermarket
+  const handleDeleteStore = async (store) => {
+    if (!window.confirm(`Are you sure you want to PERMANENTLY delete "${store.name}" (${store.code})?\n\nThis will remove the supermarket, all associated admin credentials, catalog products, and order history from the database. This action cannot be undone.`)) {
+      return;
+    }
+    try {
+      const storeId = store._id || store.code;
+      await API.delete(`/super-admin/supermarkets/${storeId}`);
+      setLiveStores((prev) => prev.filter((s) => s._id !== store._id && s.code !== store.code));
+      if (selectedStoreId === store._id || selectedStoreId === store.code) {
+        setSelectedStoreId(null);
+        setDetailData(null);
+        setSearchParams({});
+      }
+      if (loadSupermarkets) await loadSupermarkets();
+      await fetchLiveSupermarkets();
+    } catch (err) {
+      alert(`Failed to delete supermarket: ${err.response?.data?.message || err.message}`);
+    }
+  };
 
   // Effective Supermarkets array prioritizing live DB records
   const effectiveStores = liveStores.length > 0 ? liveStores : authSupermarkets;
@@ -522,6 +574,17 @@ export default function RegisteredSupermarkets() {
                   >
                     <Download size={14} />
                     <span>Export CSV</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="sa-btn-hero-export"
+                    style={{ background: "#fef2f2", color: "#dc2626", borderColor: "#fecaca" }}
+                    onClick={() => handleDeleteStore(store)}
+                    title={`Permanently delete ${store.name}`}
+                  >
+                    <Trash2 size={14} />
+                    <span>Delete Supermarket</span>
                   </button>
                 </div>
               </div>
@@ -1720,8 +1783,8 @@ export default function RegisteredSupermarkets() {
                       </span>
                     </td>
 
-                    <td style={{ textAlign: "center", width: "160px", minWidth: "150px", paddingRight: "20px", whiteSpace: "nowrap" }}>
-                      {/* Prominent View Details Button (No redirect to store admin) */}
+                    <td style={{ textAlign: "center", width: "190px", minWidth: "180px", paddingRight: "20px", whiteSpace: "nowrap" }}>
+                      {/* Prominent View Details Button */}
                       <button
                         type="button"
                         className="sa-btn-view-details"
@@ -1745,6 +1808,34 @@ export default function RegisteredSupermarkets() {
                       >
                         <Eye size={14} />
                         <span>View Details</span>
+                      </button>
+
+                      {/* Permanent Delete Button */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteStore(store);
+                        }}
+                        title={`Permanently delete ${store.name}`}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "4px",
+                          padding: "6px 10px",
+                          borderRadius: "8px",
+                          background: "#fef2f2",
+                          color: "#dc2626",
+                          fontWeight: "750",
+                          fontSize: "12px",
+                          border: "1px solid #fecaca",
+                          cursor: "pointer",
+                          marginLeft: "6px",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        <Trash2 size={13} color="#dc2626" />
+                        <span>Delete</span>
                       </button>
                     </td>
                   </tr>

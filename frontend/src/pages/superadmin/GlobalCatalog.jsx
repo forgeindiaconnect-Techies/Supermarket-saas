@@ -13,8 +13,10 @@ import {
   ShieldCheck,
   RefreshCw,
   PlusCircle,
+  Trash2,
 } from "lucide-react";
-import API from "../../services/api";
+import { io } from "socket.io-client";
+import API, { SOCKET_URL } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import "./SuperAdmin.css";
 
@@ -125,7 +127,7 @@ export default function GlobalCatalog() {
       const res = await API.get("/super-admin/catalog", {
         params: { supermarketId: selectedStore, search, category: selectedCategory },
       });
-      if (res.data?.success && res.data.products?.length > 0) {
+      if (res.data?.success && Array.isArray(res.data.products)) {
         setCatalog(
           res.data.products.map((p) => ({
             _id: p._id,
@@ -135,8 +137,8 @@ export default function GlobalCatalog() {
             barcode: p.barcode,
             price: p.price,
             costPrice: p.costPrice || Math.round(p.price * 0.75),
-            supermarketName: p.supermarket?.name || "GrocerEase Store",
-            supermarketCode: p.supermarket?.code || "STR-001",
+            supermarketName: p.supermarket?.name || p.supermarketName || "GrocerEase Store",
+            supermarketCode: p.supermarket?.code || p.supermarketCode || "STR-001",
             city: p.supermarket?.city || "Bangalore",
             stock: p.stock,
             status: p.stock > 10 ? "In Stock" : p.stock > 0 ? "Low Stock" : "Out of Stock",
@@ -145,7 +147,7 @@ export default function GlobalCatalog() {
         );
       }
     } catch (_) {
-      // Fallback to rich demo catalog
+      // Fallback
     } finally {
       setLoading(false);
     }
@@ -153,7 +155,41 @@ export default function GlobalCatalog() {
 
   useEffect(() => {
     loadCatalog();
+
+    let socket;
+    try {
+      socket = io(SOCKET_URL, { transports: ["websocket", "polling"] });
+      const refresh = () => loadCatalog();
+      socket.on("product:created", refresh);
+      socket.on("product:updated", refresh);
+      socket.on("product:deleted", (data) => {
+        if (data?.id || data?.barcode) {
+          setCatalog((prev) => prev.filter((p) => p._id !== data.id && p.barcode !== data.barcode));
+        }
+        refresh();
+      });
+      socket.on("platform:stats_updated", refresh);
+    } catch (_) {}
+
+    return () => {
+      if (socket) socket.disconnect();
+    };
   }, [selectedStore, selectedCategory]);
+
+  const handleDeleteProduct = async (product) => {
+    if (!window.confirm(`Are you sure you want to PERMANENTLY delete product "${product.name}" (${product.barcode || product._id})?\n\nThis will permanently remove it from ${product.supermarketName} in the database.`)) {
+      return;
+    }
+    try {
+      setCatalog((prev) => prev.filter((p) => p._id !== product._id && p.barcode !== product.barcode));
+      const isMongoId = product._id && /^[0-9a-fA-F]{24}$/.test(product._id);
+      const identifier = isMongoId ? product._id : (product.barcode || product._id);
+      await API.delete(`/products/${identifier}`, { data: { barcode: product.barcode } });
+      loadCatalog();
+    } catch (err) {
+      alert(`Failed to delete product: ${err.response?.data?.message || err.message}`);
+    }
+  };
 
   const filtered = catalog.filter((item) => {
     const matchSearch =
@@ -249,12 +285,13 @@ export default function GlobalCatalog() {
                 <th>Cost Price (₹)</th>
                 <th>Store Stock</th>
                 <th>Status</th>
+                <th style={{ textAlign: "center" }}>Action</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} style={{ textAlign: "center", padding: "2.5rem", color: "#64748b" }}>
+                  <td colSpan={9} style={{ textAlign: "center", padding: "2.5rem", color: "#64748b" }}>
                     No products matching your search criteria.
                   </td>
                 </tr>
@@ -340,6 +377,29 @@ export default function GlobalCatalog() {
                       >
                         {item.status}
                       </span>
+                    </td>
+                    <td style={{ textAlign: "center" }}>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteProduct(item)}
+                        title={`Permanently delete "${item.name}"`}
+                        style={{
+                          background: "#fef2f2",
+                          border: "1px solid #fecaca",
+                          color: "#dc2626",
+                          padding: "5px 8px",
+                          borderRadius: "6px",
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "4px",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                        }}
+                      >
+                        <Trash2 size={13} color="#dc2626" />
+                        <span>Delete</span>
+                      </button>
                     </td>
                   </tr>
                 ))

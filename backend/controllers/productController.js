@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const Product = require("../models/Product");
 const Supermarket = require("../models/Supermarket");
+const DeletedRecord = require("../models/DeletedRecord");
 const { getDefaultSupermarket } = require("../middleware/tenantMiddleware");
 const { emitTenantNotification } = require("../utils/notificationEmitter");
 
@@ -351,7 +352,19 @@ exports.getProductByBarcode = async (req, res) => {
       }
     }
 
-    // 4. Fallback: If not in DB, check if it matches initial store product templates (e.g. 2001-2006 prefix)
+    // 4. Check if this product was explicitly deleted by the user - NEVER resurrect deleted products!
+    const wasDeleted = await DeletedRecord.findOne({
+      entityType: "PRODUCT",
+      identifier: { $in: candidates },
+    });
+    if (wasDeleted) {
+      return res.status(404).json({
+        success: false,
+        message: "This product was permanently deleted from inventory.",
+      });
+    }
+
+    // 5. Fallback: If not in DB and never deleted, check if it matches initial store product templates (e.g. 2001-2006 prefix)
     if (!product) {
       const matchedTemplate = INITIAL_STORE_PRODUCTS_TEMPLATE.find((tpl) =>
         cleanBarcode.startsWith(tpl.barcodePrefix)
@@ -834,62 +847,85 @@ exports.updateProductStock = async (req, res) => {
   }
 };
 
-// Soft-delete a product (preserves its database record)
+// Permanently delete a product from MongoDB Atlas
 exports.deleteProduct = async (req, res) => {
   try {
     const { id } = req.params;
     let query = null;
-    if (mongoose.Types.ObjectId.isValid(id)) {
-      query = { _id: id, isActive: true };
+    if (mongoose.Types.ObjectId.isValid(id) && /^[0-9a-fA-F]{24}$/.test(id)) {
+      query = { _id: id };
     } else {
       const candidates = getBarcodeVariants(id);
-      query = { barcode: { $in: candidates }, isActive: true };
+      query = { barcode: { $in: candidates } };
     }
     if (req.supermarketId) {
       query.supermarket = req.supermarketId;
     }
 
-    let product = await Product.findOneAndUpdate(
-      query,
-      { $set: { isActive: false } },
-      { new: true }
-    );
+    let product = await Product.findOneAndDelete(query);
 
     if (!product && req.body?.barcode) {
       const candidates = getBarcodeVariants(req.body.barcode);
-      const fallbackQuery = { barcode: { $in: candidates }, isActive: true };
+      const fallbackQuery = { barcode: { $in: candidates } };
       if (req.supermarketId) {
         fallbackQuery.supermarket = req.supermarketId;
       }
-      product = await Product.findOneAndUpdate(
-        fallbackQuery,
-        { $set: { isActive: false } },
-        { new: true }
-      );
+      product = await Product.findOneAndDelete(fallbackQuery);
     }
 
     if (!product) {
       return res.status(404).json({
         success: false,
-        message: "Product not found",
+        message: "Product not found or already permanently deleted",
       });
     }
 
+    // Record in DeletedRecord to prevent ANY seeder or template from resurrecting it
+    try {
+      await DeletedRecord.create({
+        entityType: "PRODUCT",
+        identifier: product.barcode || String(product._id),
+        secondaryIdentifier: String(product._id),
+        name: product.name,
+        metadata: {
+          supermarket: product.supermarket,
+          supermarketCode: product.supermarketCode,
+          category: product.category,
+          price: product.price,
+        },
+      });
+    } catch (_) {}
+
+    // Broadcast real-time deletion event to all dashboards & clients
     try {
       const io = req.app?.get("io");
       if (io) {
-        io.emit("product:deleted", { id, barcode: req.body?.barcode });
+        io.emit("product:deleted", {
+          id: String(product._id),
+          barcode: product.barcode,
+          supermarketId: product.supermarket ? String(product.supermarket) : null,
+          supermarketCode: product.supermarketCode,
+        });
+        io.emit("platform:stats_updated", {
+          type: "PRODUCT_DELETED",
+          id: String(product._id),
+          barcode: product.barcode,
+        });
+        console.log(`[Socket.IO] Broadcasted product:deleted for "${product.name}" (${product.barcode || product._id})`);
       }
     } catch (_) {}
 
     return res.status(200).json({
       success: true,
-      message: "Product removed from active inventory",
+      message: `Product "${product.name}" permanently deleted from database.`,
+      deletedId: String(product._id),
+      barcode: product.barcode,
     });
   } catch (error) {
+    console.error("Delete product error:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to delete product",
+      message: "Failed to delete product.",
       error: error.message,
     });
   }

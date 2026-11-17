@@ -1206,3 +1206,78 @@ exports.getReports = async (req, res) => {
   }
 };
 
+// DELETE /api/orders/:id - Permanently delete an order from database
+exports.deleteOrder = async (req, res) => {
+  try {
+    const { id } = req.params;
+    let query = null;
+
+    if (mongoose.Types.ObjectId.isValid(id) && /^[0-9a-fA-F]{24}$/.test(id)) {
+      query = { _id: id };
+    } else {
+      query = { $or: [{ orderNumber: id }, { exitBarcode: id }] };
+    }
+
+    if (req.supermarketId) {
+      query.supermarket = req.supermarketId;
+    }
+
+    const order = await Order.findOneAndDelete(query);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found or already permanently deleted.",
+      });
+    }
+
+    // Record in DeletedRecord
+    try {
+      const DeletedRecord = require("../models/DeletedRecord");
+      await DeletedRecord.create({
+        entityType: "ORDER",
+        identifier: order.orderNumber || String(order._id),
+        secondaryIdentifier: String(order._id),
+        name: `Order #${order.orderNumber || id}`,
+        metadata: {
+          totalAmount: order.totalAmount,
+          supermarket: order.supermarket,
+          supermarketCode: order.supermarketCode,
+          customerName: order.customer?.name,
+        },
+      });
+    } catch (_) {}
+
+    // Broadcast real-time deletion
+    try {
+      const io = req.app?.get("io");
+      if (io) {
+        io.emit("order:deleted", {
+          id: String(order._id),
+          orderNumber: order.orderNumber,
+          supermarketId: order.supermarket ? String(order.supermarket) : null,
+          supermarketCode: order.supermarketCode,
+        });
+        io.emit("platform:stats_updated", {
+          type: "ORDER_DELETED",
+          id: String(order._id),
+        });
+      }
+    } catch (_) {}
+
+    return res.status(200).json({
+      success: true,
+      message: `Order #${order.orderNumber || id} permanently deleted from database.`,
+      deletedId: String(order._id),
+      orderNumber: order.orderNumber,
+    });
+  } catch (error) {
+    console.error("Delete order error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete order.",
+      error: error.message,
+    });
+  }
+};
+
+

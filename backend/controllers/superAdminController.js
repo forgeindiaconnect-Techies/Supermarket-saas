@@ -6,6 +6,7 @@ const Order = require("../models/Order");
 const SubscriptionPlan = require("../models/SubscriptionPlan");
 const EmailLog = require("../models/EmailLog");
 const PlatformNotification = require("../models/PlatformNotification");
+const DeletedRecord = require("../models/DeletedRecord");
 const { clearTenantCache } = require("../middleware/tenantMiddleware");
 const {
   sendSubscriptionRenewalEmail,
@@ -470,6 +471,15 @@ exports.createSupermarket = async (req, res) => {
       console.warn("Notice: Failed to initialize supermarket welcome chat:", chatErr.message);
     }
 
+    // 14. Real-time broadcast to all clients & dashboards
+    try {
+      const io = req.app?.get("io");
+      if (io) {
+        io.emit("supermarket:created", { supermarket: newSupermarket });
+        io.emit("platform:stats_updated", { type: "SUPERMARKET_CREATED", supermarket: newSupermarket });
+      }
+    } catch (_) {}
+
     return res.status(201).json({
       success: true,
       message: `Supermarket "${newSupermarket.name}" registered successfully! Tenant ID: ${newSupermarket.code}${welcomeEmailResult ? ` | Welcome email dispatched to ${storeEmail}.` : ""}`,
@@ -608,6 +618,14 @@ exports.updateSupermarket = async (req, res) => {
 
     clearTenantCache();
 
+    try {
+      const io = req.app?.get("io");
+      if (io) {
+        io.emit("supermarket:updated", { supermarket });
+        io.emit("platform:stats_updated", { type: "SUPERMARKET_UPDATED", supermarket });
+      }
+    } catch (_) {}
+
     return res.status(200).json({
       success: true,
       message: `Supermarket "${supermarket.name}" updated successfully.`,
@@ -623,32 +641,121 @@ exports.updateSupermarket = async (req, res) => {
   }
 };
 
-// 4. DELETE /api/super-admin/supermarkets/:id - Delete supermarket
+// 4. DELETE /api/super-admin/supermarkets/:id - Permanently delete supermarket and all its records
 exports.deleteSupermarket = async (req, res) => {
   try {
     const { id } = req.params;
-    const supermarket = await Supermarket.findById(id);
+    let supermarket = null;
+
+    if (mongoose.Types.ObjectId.isValid(id) && /^[0-9a-fA-F]{24}$/.test(id)) {
+      supermarket = await Supermarket.findById(id);
+    }
     if (!supermarket) {
-      return res.status(404).json({
-        success: false,
-        message: "Supermarket not found.",
+      supermarket = await Supermarket.findOne({
+        $or: [{ code: id }, { slug: id }, { adminUsername: id }],
       });
     }
 
-    // Delete associated store users
-    await User.deleteMany({ supermarket: supermarket._id });
-    // Soft-delete products
-    await Product.updateMany({ supermarket: supermarket._id }, { isActive: false });
-    // Remove supermarket
-    await Supermarket.findByIdAndDelete(id);
+    if (!supermarket) {
+      return res.status(404).json({
+        success: false,
+        message: "Supermarket not found or already permanently deleted.",
+      });
+    }
+
+    const sId = supermarket._id;
+    const sCode = supermarket.code;
+    const sName = supermarket.name;
+
+    // 1. Permanently delete all store admin and staff users from MongoDB
+    await User.deleteMany({
+      $or: [
+        { supermarket: sId },
+        { supermarketCode: sCode },
+        { username: supermarket.adminUsername },
+      ],
+    });
+
+    // 2. Permanently delete all catalog products (HARD delete from MongoDB)
+    await Product.deleteMany({
+      $or: [{ supermarket: sId }, { supermarketCode: sCode }],
+    });
+
+    // 3. Permanently delete all orders
+    await Order.deleteMany({
+      $or: [{ supermarket: sId }, { supermarketCode: sCode }],
+    });
+
+    // 4. Permanently delete cart activities, chats, and platform notifications
+    try {
+      const CartActivity = require("../models/CartActivity");
+      await CartActivity.deleteMany({
+        $or: [{ supermarket: sId }, { supermarketCode: sCode }],
+      });
+    } catch (_) {}
+
+    try {
+      const ChatMessage = require("../models/ChatMessage");
+      await ChatMessage.deleteMany({
+        $or: [{ supermarket: sId }, { supermarketCode: sCode }],
+      });
+    } catch (_) {}
+
+    try {
+      await PlatformNotification.deleteMany({
+        $or: [{ supermarket: sId }, { supermarketCode: sCode }],
+      });
+    } catch (_) {}
+
+    // 5. Permanently remove the Supermarket document itself from MongoDB
+    await Supermarket.findByIdAndDelete(sId);
+
+    // 6. Record in DeletedRecord collection to guarantee it is NEVER resurrected by any seeder or fallback
+    try {
+      await DeletedRecord.create({
+        entityType: "SUPERMARKET",
+        identifier: sCode,
+        secondaryIdentifier: String(sId),
+        name: sName,
+        metadata: {
+          adminUsername: supermarket.adminUsername,
+          plan: supermarket.plan,
+          city: supermarket.city,
+        },
+      });
+    } catch (_) {}
 
     clearTenantCache();
 
+    // 7. Real-Time Socket.IO Broadcast to all active clients and dashboards
+    try {
+      const io = req.app?.get("io");
+      if (io) {
+        io.emit("supermarket:deleted", {
+          id: String(sId),
+          code: sCode,
+          name: sName,
+        });
+        io.emit("platform:stats_updated", {
+          type: "SUPERMARKET_DELETED",
+          id: String(sId),
+          code: sCode,
+          name: sName,
+        });
+        console.log(`[Socket.IO] Broadcasted supermarket:deleted for "${sName}" (${sCode})`);
+      }
+    } catch (socketErr) {
+      console.warn("Socket broadcast notice:", socketErr.message);
+    }
+
     return res.status(200).json({
       success: true,
-      message: `Supermarket "${supermarket.name}" and its credentials were deleted.`,
+      message: `Supermarket "${sName}" (${sCode}) and all its associated data were permanently deleted.`,
+      deletedId: String(sId),
+      deletedCode: sCode,
     });
   } catch (error) {
+    console.error("Delete supermarket error:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to delete supermarket.",
@@ -1042,6 +1149,15 @@ exports.createSubscriptionPlan = async (req, res) => {
       isPopular: !!isPopular,
       status: "Active",
     });
+    // 14. Real-time broadcast to all clients & dashboards
+    try {
+      const io = req.app?.get("io");
+      if (io) {
+        io.emit("supermarket:created", { supermarket: newSupermarket });
+        io.emit("platform:stats_updated", { type: "SUPERMARKET_CREATED", supermarket: newSupermarket });
+      }
+    } catch (_) {}
+
     return res.status(201).json({ success: true, message: `Plan "${plan.name}" created successfully.`, plan });
   } catch (error) {
     return res.status(500).json({ success: false, message: "Failed to create subscription plan.", error: error.message });

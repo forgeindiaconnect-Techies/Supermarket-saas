@@ -23,7 +23,8 @@ import {
   Download,
 } from "lucide-react";
 import JsBarcode from "jsbarcode";
-import API from "../../services/api";
+import { io } from "socket.io-client";
+import API, { SOCKET_URL } from "../../services/api";
 import BarcodeSVG from "../../components/BarcodeSVG";
 import ErpPageBanner from "../../components/ErpPageBanner";
 import bannerCartImg from "../../assets/banner-cart.png";
@@ -135,10 +136,27 @@ export default function ProductManagement() {
   useEffect(() => {
     fetchProducts();
 
-    // Auto-poll every 3.5s so live orders, payments, and inventory stay updated in real time
+    // Auto-poll every 4s so live orders, payments, and inventory stay updated in real time
     const pollInterval = setInterval(() => {
       fetchProducts();
-    }, 3500);
+    }, 4000);
+
+    let socket;
+    try {
+      socket = io(SOCKET_URL, { transports: ["websocket", "polling"] });
+      const refresh = () => fetchProducts();
+      socket.on("product:created", refresh);
+      socket.on("product:updated", refresh);
+      socket.on("product:deleted", (data) => {
+        if (data?.id || data?.barcode) {
+          deletePersistentProduct(data.id);
+          if (data.barcode) deletePersistentProduct(data.barcode);
+          setProducts((prev) => prev.filter((p) => p._id !== data.id && p.barcode !== data.barcode));
+        }
+        refresh();
+      });
+      socket.on("platform:stats_updated", refresh);
+    } catch (_) {}
 
     // Listen to real-time storage events across tabs & components
     const handleStorageUpdate = () => {
@@ -148,6 +166,7 @@ export default function ProductManagement() {
 
     return () => {
       clearInterval(pollInterval);
+      if (socket) socket.disconnect();
       window.removeEventListener("grocerease_storage_updated", handleStorageUpdate);
     };
   }, []);
@@ -280,7 +299,7 @@ export default function ProductManagement() {
   };
 
   const handleDelete = async (id, name, barcode) => {
-    if (!window.confirm(`Are you sure you want to delete "${name}" from inventory?`)) {
+    if (!window.confirm(`Are you sure you want to PERMANENTLY delete "${name}" from the database?\n\nThis will remove this product and barcode permanently. It will not reappear after page refresh or server restart.`)) {
       return;
     }
     // Delete from persistent storage immediately
@@ -297,6 +316,8 @@ export default function ProductManagement() {
     } catch (err) {
       console.warn("Backend delete sync:", err.message);
     }
+
+    fetchProducts();
   };
 
   const handleDownloadBarcode = (product) => {

@@ -936,34 +936,66 @@
 
 .db-card-icon-pill.amber,
 .db-card-icon-pill.yellow {
-  background: #FFFBEB !important;
-  color: #D97706 !important;
-  border: 1.5px solid #FDE68A !important;
+  background: #D97706 !important;
+  color: #FFFFFF !important;
+  border: none !important;
+  box-shadow: 0 3px 8px rgba(217, 119, 6, 0.35) !important;
+}
+
+.db-card-icon-pill.amber svg,
+.db-card-icon-pill.yellow svg {
+  stroke: #FFFFFF !important;
+  color: #FFFFFF !important;
 }
 
 .db-card-icon-pill.blue {
-  background: #EFF6FF !important;
-  color: #2563EB !important;
-  border: 1.5px solid #BFDBFE !important;
+  background: #2563EB !important;
+  color: #FFFFFF !important;
+  border: none !important;
+  box-shadow: 0 3px 8px rgba(37, 99, 235, 0.35) !important;
+}
+
+.db-card-icon-pill.blue svg {
+  stroke: #FFFFFF !important;
+  color: #FFFFFF !important;
 }
 
 .db-card-icon-pill.red,
 .db-card-icon-pill.rose {
-  background: #FEF2F2 !important;
-  color: #DC2626 !important;
-  border: 1.5px solid #FECACA !important;
+  background: #E11D48 !important;
+  color: #FFFFFF !important;
+  border: none !important;
+  box-shadow: 0 3px 8px rgba(225, 29, 72, 0.35) !important;
+}
+
+.db-card-icon-pill.red svg,
+.db-card-icon-pill.rose svg {
+  stroke: #FFFFFF !important;
+  color: #FFFFFF !important;
 }
 
 .db-card-icon-pill.green {
-  background: #ECFDF5 !important;
-  color: #059669 !important;
-  border: 1.5px solid #A7F3D0 !important;
+  background: #059669 !important;
+  color: #FFFFFF !important;
+  border: none !important;
+  box-shadow: 0 3px 8px rgba(5, 150, 105, 0.35) !important;
+}
+
+.db-card-icon-pill.green svg {
+  stroke: #FFFFFF !important;
+  color: #FFFFFF !important;
 }
 
 .db-card-icon-pill.purple {
-  background: #FAF5FF !important;
-  color: #7C3AED !important;
-  border: 1.5px solid #E9D5FF !important;
+  background: #7C3AED !important;
+  color: #FFFFFF !important;
+  border: none !important;
+  box-shadow: 0 3px 8px rgba(124, 58, 237, 0.35) !important;
+}
+
+.db-card-icon-pill.purple svg {
+  stroke: #FFFFFF !important;
+  color: #FFFFFF !important;
 }
 
 /* Richer, Brighter KPI Metric Cards */
@@ -1144,34 +1176,66 @@
 
 .db-card-icon-pill.amber,
 .db-card-icon-pill.yellow {
-  background: #FFFBEB !important;
-  color: #D97706 !important;
-  border: 1.5px solid #FDE68A !important;
+  background: #D97706 !important;
+  color: #FFFFFF !important;
+  border: none !important;
+  box-shadow: 0 3px 8px rgba(217, 119, 6, 0.35) !important;
+}
+
+.db-card-icon-pill.amber svg,
+.db-card-icon-pill.yellow svg {
+  stroke: #FFFFFF !important;
+  color: #FFFFFF !important;
 }
 
 .db-card-icon-pill.blue {
-  background: #EFF6FF !important;
-  color: #2563EB !important;
-  border: 1.5px solid #BFDBFE !important;
+  background: #2563EB !important;
+  color: #FFFFFF !important;
+  border: none !important;
+  box-shadow: 0 3px 8px rgba(37, 99, 235, 0.35) !important;
+}
+
+.db-card-icon-pill.blue svg {
+  stroke: #FFFFFF !important;
+  color: #FFFFFF !important;
 }
 
 .db-card-icon-pill.red,
 .db-card-icon-pill.rose {
-  background: #FEF2F2 !important;
-  color: #DC2626 !important;
-  border: 1.5px solid #FECACA !important;
+  background: #E11D48 !important;
+  color: #FFFFFF !important;
+  border: none !important;
+  box-shadow: 0 3px 8px rgba(225, 29, 72, 0.35) !important;
+}
+
+.db-card-icon-pill.red svg,
+.db-card-icon-pill.rose svg {
+  stroke: #FFFFFF !important;
+  color: #FFFFFF !important;
 }
 
 .db-card-icon-pill.green {
-  background: #ECFDF5 !important;
-  color: #059669 !important;
-  border: 1.5px solid #A7F3D0 !important;
+  background: #059669 !important;
+  color: #FFFFFF !important;
+  border: none !important;
+  box-shadow: 0 3px 8px rgba(5, 150, 105, 0.35) !important;
+}
+
+.db-card-icon-pill.green svg {
+  stroke: #FFFFFF !important;
+  color: #FFFFFF !important;
 }
 
 .db-card-icon-pill.purple {
-  background: #FAF5FF !important;
-  color: #7C3AED !important;
-  border: 1.5px solid #E9D5FF !important;
+  background: #7C3AED !important;
+  color: #FFFFFF !important;
+  border: none !important;
+  box-shadow: 0 3px 8px rgba(124, 58, 237, 0.35) !important;
+}
+
+.db-card-icon-pill.purple svg {
+  stroke: #FFFFFF !important;
+  color: #FFFFFF !important;
 }
 
 /* Quick Action Tiles - Saturated Pastel Fills matching Reference Mockup */
