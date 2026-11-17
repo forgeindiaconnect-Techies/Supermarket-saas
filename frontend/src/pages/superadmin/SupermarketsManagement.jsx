@@ -193,7 +193,10 @@ export default function SupermarketsManagement() {
 
   // View supermarket details in Registered Supermarkets (without redirecting to store admin)
   const handleViewDetails = (store) => {
-    navigate(`/super-admin/registered-supermarkets?store=${store._id || store.code}`);
+    const storeId =
+      store.code ||
+      (store._id && !String(store._id).startsWith("store-real-") ? store._id : store.slug || store._id);
+    navigate(`/super-admin/registered-supermarkets?store=${storeId}`);
   };
 
   // Handle Add Supermarket
