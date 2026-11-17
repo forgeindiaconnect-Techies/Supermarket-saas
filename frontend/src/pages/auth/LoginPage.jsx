@@ -25,6 +25,7 @@ import {
   Leaf,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
+import { API_URL } from "../../services/api";
 // Stylesheet for GrocerEase Supermarket Login Portal
 import "./LoginPage.css";
 
@@ -98,8 +99,8 @@ export default function LoginPage() {
         alt="GrocerEase Supermarket Scene"
         className="ge-bg-image"
         onError={() => {
-          if (bgSrc !== "http://localhost:5001/api/login-bg") {
-            setBgSrc("http://localhost:5001/api/login-bg");
+          if (bgSrc !== `${API_URL}/login-bg`) {
+            setBgSrc(`${API_URL}/login-bg`);
           }
         }}
       />

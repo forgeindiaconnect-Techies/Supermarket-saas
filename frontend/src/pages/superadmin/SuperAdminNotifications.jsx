@@ -21,7 +21,7 @@ import {
   Eye,
   Store,
 } from "lucide-react";
-import API from "../../services/api";
+import API, { SOCKET_URL } from "../../services/api";
 import { io } from "socket.io-client";
 import "./SuperAdmin.css";
 
@@ -60,7 +60,7 @@ export default function SuperAdminNotifications() {
     fetchNotifications();
 
     // Real-time Socket.IO listener for instant updates without manual refresh
-    const socket = io("http://localhost:5001", {
+    const socket = io(SOCKET_URL, {
       transports: ["websocket", "polling"],
       query: { role: "SUPER_ADMIN" },
       auth: {

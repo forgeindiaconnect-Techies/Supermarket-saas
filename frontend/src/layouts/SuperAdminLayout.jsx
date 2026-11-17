@@ -29,7 +29,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { io } from "socket.io-client";
-import API from "../services/api";
+import API, { SOCKET_URL } from "../services/api";
 import "./SuperAdminLayout.css";
 
 export default function SuperAdminLayout() {
@@ -184,11 +184,7 @@ export default function SuperAdminLayout() {
 
     fetchCentralNotifs();
 
-    const socketUrl = import.meta.env.VITE_API_URL
-      ? import.meta.env.VITE_API_URL.replace(/\/api\/?$/, "")
-      : "http://localhost:5001";
-
-    const socket = io(socketUrl, {
+    const socket = io(SOCKET_URL, {
       transports: ["websocket", "polling"],
       query: { role: "SUPER_ADMIN" },
       auth: {

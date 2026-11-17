@@ -15,7 +15,7 @@ import {
   Crown,
 } from "lucide-react";
 import { io } from "socket.io-client";
-import API from "../../services/api";
+import API, { SOCKET_URL } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import "./ProductManagement.css";
 
@@ -78,7 +78,7 @@ export default function StoreChat() {
     fetchChatHistory();
 
     // 2. Setup Socket.IO for real-time private chat
-    const socket = io("http://localhost:5001", {
+    const socket = io(SOCKET_URL, {
       transports: ["websocket", "polling"],
       auth: {
         role: "STORE_ADMIN",
