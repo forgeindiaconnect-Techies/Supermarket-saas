@@ -20,102 +20,11 @@ import API, { SOCKET_URL } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import "./SuperAdmin.css";
 
-const DEMO_CATALOG = [
-  {
-    _id: "cat-1",
-    name: "Fresh Red Apples (Washington)",
-    brand: "Fresh Orchard",
-    category: "Fruits & Vegetables",
-    barcode: "2001849201948",
-    price: 180,
-    costPrice: 130,
-    supermarketName: "GrocerEase Flagship - Indiranagar",
-    supermarketCode: "STR-001",
-    city: "Bangalore",
-    stock: 65,
-    status: "In Stock",
-    imageUrl: "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=120&auto=format&fit=crop&q=80",
-  },
-  {
-    _id: "cat-2",
-    name: "Fresh Red Apples (Washington)",
-    brand: "Fresh Orchard",
-    category: "Fruits & Vegetables",
-    barcode: "2001739104829",
-    price: 180,
-    costPrice: 130,
-    supermarketName: "FreshMart Supermarket - Koramangala",
-    supermarketCode: "STR-002",
-    city: "Bangalore",
-    stock: 40,
-    status: "In Stock",
-    imageUrl: "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=120&auto=format&fit=crop&q=80",
-  },
-  {
-    _id: "cat-3",
-    name: "Chocolate",
-    brand: "Zero Sugar",
-    category: "Beverages",
-    barcode: "2002948102948",
-    price: 352,
-    costPrice: 280,
-    supermarketName: "GrocerEase Flagship - Indiranagar",
-    supermarketCode: "STR-001",
-    city: "Bangalore",
-    stock: 25,
-    status: "In Stock",
-    imageUrl: "https://images.unsplash.com/photo-1549007994-cb92caebd54b?w=120&auto=format&fit=crop&q=80",
-  },
-  {
-    _id: "cat-4",
-    name: "Lays Potato Chips",
-    brand: "Lays",
-    category: "Snacks",
-    barcode: "2003849102948",
-    price: 20,
-    costPrice: 14,
-    supermarketName: "FreshMart Supermarket - Koramangala",
-    supermarketCode: "STR-002",
-    city: "Bangalore",
-    stock: 50,
-    status: "In Stock",
-    imageUrl: "https://images.unsplash.com/photo-1566478989037-eec170784d0b?w=120&auto=format&fit=crop&q=80",
-  },
-  {
-    _id: "cat-5",
-    name: "Dove Daily Shampoo 180ml",
-    brand: "Dove",
-    category: "Household",
-    barcode: "2004849102948",
-    price: 250,
-    costPrice: 195,
-    supermarketName: "GrocerEase Flagship - Indiranagar",
-    supermarketCode: "STR-001",
-    city: "Bangalore",
-    stock: 30,
-    status: "In Stock",
-    imageUrl: "https://images.unsplash.com/photo-1535585209827-a15fcdbc4c2d?w=120&auto=format&fit=crop&q=80",
-  },
-  {
-    _id: "cat-6",
-    name: "Royal Basmati Rice 5kg",
-    brand: "Royal Heritage",
-    category: "Groceries",
-    barcode: "2005849102948",
-    price: 650,
-    costPrice: 520,
-    supermarketName: "FreshMart Supermarket - Koramangala",
-    supermarketCode: "STR-002",
-    city: "Bangalore",
-    stock: 40,
-    status: "In Stock",
-    imageUrl: "https://images.unsplash.com/photo-1586201375761-83865001e31c?w=120&auto=format&fit=crop&q=80",
-  },
-];
+const DEMO_CATALOG = [];
 
 export default function GlobalCatalog() {
   const { supermarkets } = useAuth();
-  const [catalog, setCatalog] = useState(DEMO_CATALOG);
+  const [catalog, setCatalog] = useState([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedStore, setSelectedStore] = useState("all");
@@ -145,9 +54,11 @@ export default function GlobalCatalog() {
             imageUrl: p.imageUrl || "https://images.unsplash.com/photo-1542838132-92c53300491e?w=120&auto=format&fit=crop&q=80",
           }))
         );
+      } else {
+        setCatalog([]);
       }
     } catch (_) {
-      // Fallback
+      setCatalog([]);
     } finally {
       setLoading(false);
     }

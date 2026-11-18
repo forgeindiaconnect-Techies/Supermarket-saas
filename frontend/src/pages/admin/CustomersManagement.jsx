@@ -135,6 +135,13 @@ export default function CustomersManagement() {
     };
   }, []);
 
+  // Helper to extract clean 10-digit phone digits for consistent deduplication
+  const getCleanPhoneDigits = (phone) => {
+    if (!phone) return "";
+    const digits = String(phone).replace(/\D/g, "");
+    return digits.length >= 10 ? digits.slice(-10) : digits;
+  };
+
   // Derive genuine customer accounts purely from MongoDB Orders and Cart Activities
   const customers = useMemo(() => {
     const customerMap = new Map();
@@ -144,16 +151,31 @@ export default function CustomersManagement() {
       const rawName = (order.customer?.name || "").trim() || "Guest Shopper";
       const rawPhone = (order.customer?.phone || "").trim();
       const rawEmail = (order.customer?.email || "").trim();
+      const cleanPhone = getCleanPhoneDigits(rawPhone);
 
-      // Formulate unique customer identity key (phone, email, or clean name)
-      const identityKey = rawPhone || rawEmail || rawName.toLowerCase();
+      // Unique canonical key prioritizing 10-digit clean phone
+      const identityKey = cleanPhone && cleanPhone.length === 10
+        ? `phone_${cleanPhone}`
+        : (rawEmail ? `email_${rawEmail.toLowerCase()}` : `name_${rawName.toLowerCase()}`);
 
       let customer = customerMap.get(identityKey);
+      if (!customer && cleanPhone && cleanPhone.length === 10) {
+        customer = customerMap.get(`phone_${cleanPhone}`);
+      }
+      if (!customer && rawName && !["guest shopper", "mobile shopper", "shopper"].includes(rawName.toLowerCase())) {
+        for (const c of customerMap.values()) {
+          if (c.name.trim().toLowerCase() === rawName.toLowerCase()) {
+            customer = c;
+            break;
+          }
+        }
+      }
+
       if (!customer) {
         // Derive clean customer ID
         let idSuffix = "";
-        if (rawPhone && rawPhone.length >= 4) {
-          idSuffix = rawPhone.replace(/\D/g, "").slice(-4);
+        if (cleanPhone && cleanPhone.length >= 4) {
+          idSuffix = cleanPhone.slice(-4);
         } else if (order.orderNumber) {
           idSuffix = order.orderNumber.replace(/\D/g, "").slice(-4);
         } else {
@@ -165,7 +187,7 @@ export default function CustomersManagement() {
           id: custId,
           key: identityKey,
           name: rawName,
-          phone: rawPhone || "Not provided",
+          phone: cleanPhone && cleanPhone.length === 10 ? `+91 ${cleanPhone}` : (rawPhone || "Not provided"),
           email: rawEmail || "",
           address: (order.customer?.address || "").trim(),
           registrationDate: new Date(order.createdAt || Date.now()),
@@ -177,9 +199,18 @@ export default function CustomersManagement() {
           recentCartItems: [],
         };
         customerMap.set(identityKey, customer);
+        if (cleanPhone && cleanPhone.length === 10) {
+          customerMap.set(`phone_${cleanPhone}`, customer);
+        }
       } else {
         if (!customer.address && order.customer?.address) {
           customer.address = (order.customer.address || "").trim();
+        }
+        if (rawName && (!customer.name || customer.name === "Guest Shopper" || customer.name === "Mobile Shopper")) {
+          customer.name = rawName;
+        }
+        if (cleanPhone && cleanPhone.length === 10 && (!customer.phone || customer.phone === "Not provided")) {
+          customer.phone = `+91 ${cleanPhone}`;
         }
       }
 
@@ -224,39 +255,87 @@ export default function CustomersManagement() {
       customer.paymentMethodsUsed[pm] = (customer.paymentMethodsUsed[pm] || 0) + 1;
     });
 
-    // 2. Incorporate cart activity sessions (live shoppers who may be shopping now)
+    // 2. Incorporate cart activity sessions - deduplicate strictly against registered & order customers
     cartActivities.forEach((act) => {
-      const rawName = (act.customerName || "").trim() || "Mobile Shopper";
+      const rawName = (act.customerName || "").trim();
       const rawSession = (act.sessionId || "").trim();
-      const identityKey = rawSession || rawName.toLowerCase();
+      const cleanPhone = getCleanPhoneDigits(rawSession);
+      const isGeneric = !rawName || ["guest shopper", "mobile shopper", "shopper"].includes(rawName.toLowerCase());
 
-      let customer = customerMap.get(identityKey);
-      if (!customer) {
-        const idSuffix = rawSession.replace(/\D/g, "").slice(-4) || "8801";
+      // If it's an anonymous temporary cart session without phone/email and has 0 orders, do not duplicate into directory
+      if (isGeneric && (!cleanPhone || cleanPhone.length < 10)) {
+        return;
+      }
+
+      // Check if this shopper already exists in customerMap by phone, key, or name
+      let customer = cleanPhone && cleanPhone.length === 10 ? customerMap.get(`phone_${cleanPhone}`) : null;
+      if (!customer && !isGeneric) {
+        for (const c of customerMap.values()) {
+          if (c.name.trim().toLowerCase() === rawName.toLowerCase()) {
+            customer = c;
+            break;
+          }
+          if (cleanPhone && cleanPhone.length === 10 && getCleanPhoneDigits(c.phone) === cleanPhone) {
+            customer = c;
+            break;
+          }
+        }
+      }
+
+      if (customer) {
+        // Merge cart items with existing verified customer account
+        if (act.productName && !customer.recentCartItems.includes(act.productName)) {
+          customer.recentCartItems.push(act.productName);
+        }
+        if (cleanPhone && cleanPhone.length === 10 && (!customer.phone || customer.phone === "Not provided")) {
+          customer.phone = `+91 ${cleanPhone}`;
+        }
+      } else {
+        // Genuine new shopper not yet in orders (e.g. newly registered mobile user currently browsing)
+        const idSuffix = cleanPhone && cleanPhone.length >= 4
+          ? cleanPhone.slice(-4)
+          : (rawSession.replace(/\D/g, "").slice(-4) || "8801");
+        const key = cleanPhone && cleanPhone.length === 10 ? `phone_${cleanPhone}` : `name_${rawName.toLowerCase()}`;
+
         customer = {
           id: `CUST-${idSuffix.padStart(4, "0")}`,
-          key: identityKey,
-          name: rawName,
-          phone: rawSession.startsWith("+") || /^\d+$/.test(rawSession) ? rawSession : "Not provided",
+          key,
+          name: rawName || "Shopper",
+          phone: cleanPhone && cleanPhone.length === 10 ? `+91 ${cleanPhone}` : (rawSession.startsWith("+") || /^\d+$/.test(rawSession) ? rawSession : "Not provided"),
           email: "",
+          address: "",
           registrationDate: new Date(act.createdAt || Date.now()),
           latestOrderDate: new Date(act.createdAt || Date.now()),
           orders: [],
           totalOrders: 0,
           totalSpent: 0,
           paymentMethodsUsed: {},
-          recentCartItems: [],
+          recentCartItems: act.productName ? [act.productName] : [],
         };
-        customerMap.set(identityKey, customer);
-      }
-
-      if (act.productName && !customer.recentCartItems.includes(act.productName)) {
-        customer.recentCartItems.push(act.productName);
+        customerMap.set(key, customer);
+        if (cleanPhone && cleanPhone.length === 10) {
+          customerMap.set(`phone_${cleanPhone}`, customer);
+        }
       }
     });
 
+    // Deduplicate entries by unique customer ID to guarantee 0 duplicates in table output
+    const uniqueMap = new Map();
+    for (const c of customerMap.values()) {
+      const uniqueKey = getCleanPhoneDigits(c.phone) || c.id || c.name.toLowerCase();
+      if (!uniqueMap.has(uniqueKey)) {
+        uniqueMap.set(uniqueKey, c);
+      } else {
+        // Merge into the entry that has orders
+        const existing = uniqueMap.get(uniqueKey);
+        if (c.orders.length > existing.orders.length) {
+          uniqueMap.set(uniqueKey, c);
+        }
+      }
+    }
+
     // 3. Finalize customer metrics, sorting, membership tier, and status overrides
-    return Array.from(customerMap.values()).map((c) => {
+    return Array.from(uniqueMap.values()).map((c) => {
       // Sort orders descending
       c.orders.sort((a, b) => b.date - a.date);
 

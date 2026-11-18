@@ -55,9 +55,9 @@ export default function SuperAdminLayout() {
     settings: false,
   });
 
-  const [unreadNotifCount, setUnreadNotifCount] = useState(8);
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
   const [notifications, setNotifications] = useState([]);
-  const [connectedStoreCount, setConnectedStoreCount] = useState(4);
+  const [connectedStoreCount, setConnectedStoreCount] = useState(0);
 
   // Fetch registered supermarkets count for sidebar status card
   useEffect(() => {
@@ -618,9 +618,11 @@ export default function SuperAdminLayout() {
                     <path d="M12 2.5a2 2 0 0 0-2 2v.4C7.8 5.6 6 8.1 6 11.5c0 4-1.2 5.5-2.2 6.5h16.4c-1-1-2.2-2.5-2.2-6.5 0-3.4-1.8-5.9-4-6.6v-.4a2 2 0 0 0-2-2z" />
                     <circle cx="12" cy="19.5" r="1.6" fill="#0f172a" stroke="none" />
                   </svg>
-                  <span className="sa-hotspot-bell-badge">
-                    {unreadNotifCount > 0 ? unreadNotifCount : (notifications.length > 0 ? notifications.length : 3)}
-                  </span>
+                  {unreadNotifCount > 0 && (
+                    <span className="sa-hotspot-bell-badge">
+                      {unreadNotifCount}
+                    </span>
+                  )}
                 </button>
 
                 {/* Notifications Dropdown Menu */}

@@ -49,7 +49,7 @@ const emailLogSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["SENT", "FAILED", "PENDING"],
+      enum: ["SENT", "FAILED", "PENDING", "OUTBOX"],
       default: "PENDING",
       index: true,
     },

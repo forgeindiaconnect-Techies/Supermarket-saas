@@ -22,6 +22,8 @@ import {
   RefreshCw,
   Sparkles,
   Mail,
+  Globe,
+  Sliders,
 } from "lucide-react";
 import { io } from "socket.io-client";
 import API, { SOCKET_URL } from "../../services/api";
@@ -49,6 +51,43 @@ export default function SupermarketsManagement() {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [selectedStoreForDelete, setSelectedStoreForDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Availability Modal States (Super Admin Online/Offline configuration)
+  const [isAvailabilityModalOpen, setIsAvailabilityModalOpen] = useState(false);
+  const [selectedStoreForAvailability, setSelectedStoreForAvailability] = useState(null);
+  const [onlineAvailForm, setOnlineAvailForm] = useState(true);
+  const [offlineAvailForm, setOfflineAvailForm] = useState(true);
+  const [savingAvailability, setSavingAvailability] = useState(false);
+
+  const handleOpenAvailabilityModal = (store) => {
+    setSelectedStoreForAvailability(store);
+    setOnlineAvailForm(store.onlineAvailable !== null && store.onlineAvailable !== undefined ? Boolean(store.onlineAvailable) : true);
+    setOfflineAvailForm(store.offlineAvailable !== null && store.offlineAvailable !== undefined ? Boolean(store.offlineAvailable) : true);
+    setIsAvailabilityModalOpen(true);
+  };
+
+  const handleSaveAvailability = async (e) => {
+    if (e) e.preventDefault();
+    if (!selectedStoreForAvailability) return;
+    try {
+      setSavingAvailability(true);
+      const res = await API.put(`/super-admin/supermarkets/${selectedStoreForAvailability._id}/availability`, {
+        onlineAvailable: onlineAvailForm,
+        offlineAvailable: offlineAvailForm,
+      });
+      if (res.data?.success) {
+        showToast(`✓ Availability updated for "${selectedStoreForAvailability.name}": Online is ${onlineAvailForm ? 'Available' : 'Not Available'}, Offline is ${offlineAvailForm ? 'Available' : 'Not Available'}`);
+        setIsAvailabilityModalOpen(false);
+        await loadSupermarkets();
+      } else {
+        showToast(`⚠️ ${res.data?.message || 'Failed to update availability.'}`);
+      }
+    } catch (err) {
+      showToast(`⚠️ Update error: ${err.response?.data?.message || err.message}`);
+    } finally {
+      setSavingAvailability(false);
+    }
+  };
 
   // Real-time synchronization via Socket.IO
   useEffect(() => {
@@ -178,6 +217,8 @@ export default function SupermarketsManagement() {
     adminUsername: "",
     adminPassword: "StoreAdmin@123",
     plan: "Enterprise",
+    onlineAvailable: true,
+    offlineAvailable: true,
   });
   const [formError, setFormError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -249,6 +290,8 @@ export default function SupermarketsManagement() {
           adminUsername: "",
           adminPassword: "StoreAdmin@123",
           plan: "Enterprise",
+          onlineAvailable: true,
+          offlineAvailable: true,
         });
         await loadSupermarkets();
       } else {
@@ -322,6 +365,24 @@ export default function SupermarketsManagement() {
     }
   };
 
+  const handleClearDemoData = async () => {
+    if (!window.confirm("Are you sure you want to remove all initial demo supermarkets and start with a completely empty, clean database?")) {
+      return;
+    }
+    try {
+      setLoading(true);
+      const res = await API.post("/super-admin/clear-demo-data");
+      if (res.data?.success) {
+        showToast("✓ All demo supermarkets cleared. Database is 100% clean!");
+        if (loadSupermarkets) await loadSupermarkets();
+      }
+    } catch (err) {
+      showToast(`Failed to clear demo data: ${err.response?.data?.message || err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Filtered Supermarkets
   const filteredStores = supermarkets.filter((s) => {
     const matchSearch =
@@ -370,7 +431,7 @@ export default function SupermarketsManagement() {
           </p>
         </div>
 
-        <div className="sa-page-header-actions">
+        <div className="sa-page-header-actions" style={{ display: "flex", gap: "10px", alignItems: "center" }}>
           <button
             type="button"
             className="sa-btn-primary"
@@ -585,6 +646,74 @@ export default function SupermarketsManagement() {
                         {store.adminName || "Store Manager"}
                       </span>
                     </div>
+                  </div>
+
+                  {/* Purchase Channels Availability (Fixed & Controlled by Super Admin) */}
+                  <div
+                    style={{
+                      margin: "8px 0 2px 0",
+                      padding: "8px 10px",
+                      borderRadius: "8px",
+                      background: "#f8fafc",
+                      border: "1px solid #e2e8f0",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: "8px",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                      <span style={{ fontSize: "11px", fontWeight: 700, color: "#475569" }}>Channels:</span>
+                      <span
+                        style={{
+                          padding: "2px 7px",
+                          borderRadius: "4px",
+                          fontSize: "10.5px",
+                          fontWeight: 700,
+                          backgroundColor: store.onlineAvailable === true ? "#dcfce7" : store.onlineAvailable === false ? "#fee2e2" : "#f1f5f9",
+                          color: store.onlineAvailable === true ? "#15803d" : store.onlineAvailable === false ? "#b91c1c" : "#64748b",
+                          border: `1px solid ${store.onlineAvailable === true ? "#86efac" : store.onlineAvailable === false ? "#fca5a5" : "#cbd5e1"}`,
+                        }}
+                      >
+                        Online: {store.onlineAvailable === true ? "Available" : store.onlineAvailable === false ? "Not Available" : "Not Configured"}
+                      </span>
+                      <span
+                        style={{
+                          padding: "2px 7px",
+                          borderRadius: "4px",
+                          fontSize: "10.5px",
+                          fontWeight: 700,
+                          backgroundColor: store.offlineAvailable === true ? "#dcfce7" : store.offlineAvailable === false ? "#fee2e2" : "#f1f5f9",
+                          color: store.offlineAvailable === true ? "#15803d" : store.offlineAvailable === false ? "#b91c1c" : "#64748b",
+                          border: `1px solid ${store.offlineAvailable === true ? "#86efac" : store.offlineAvailable === false ? "#fca5a5" : "#cbd5e1"}`,
+                        }}
+                      >
+                        Offline: {store.offlineAvailable === true ? "Available" : store.offlineAvailable === false ? "Not Available" : "Not Configured"}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleOpenAvailabilityModal(store)}
+                      style={{
+                        background: "#ffffff",
+                        border: "1px solid #cbd5e1",
+                        borderRadius: "6px",
+                        padding: "3px 8px",
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        color: "#1e293b",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "4px",
+                        flexShrink: 0,
+                      }}
+                      title="Super Admin: Toggle Online / Offline Availability"
+                    >
+                      <Sliders size={11} color="#0284c7" />
+                      <span>Configure</span>
+                    </button>
                   </div>
 
                   {/* Card Actions - Fully Aligned 2-Tier Layout */}
@@ -833,6 +962,85 @@ export default function SupermarketsManagement() {
                     />
                   </div>
                 </div>
+
+                {/* Section 3: Super Admin Purchase Mode Availability Configuration */}
+                <div style={{ marginTop: "14px", padding: "14px", background: "#f8fafc", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
+                  <label className="sa-form-label" style={{ marginBottom: "6px", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <Sliders size={14} color="#16a34a" />
+                    <span>Purchase Mode Availability (Configured by Super Admin)</span>
+                  </label>
+                  <p style={{ margin: "0 0 10px 0", fontSize: "12px", color: "#64748b" }}>
+                    Select which purchase modes are enabled for this supermarket. You can choose either one or both options.
+                  </p>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                    {/* Online Button */}
+                    <button
+                      type="button"
+                      onClick={() => setFormValues((p) => ({ ...p, onlineAvailable: !p.onlineAvailable }))}
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: "8px",
+                        border: formValues.onlineAvailable ? "2px solid #16a34a" : "1.5px solid #cbd5e1",
+                        background: formValues.onlineAvailable ? "#f0fdf4" : "#ffffff",
+                        color: formValues.onlineAvailable ? "#15803d" : "#64748b",
+                        fontWeight: 700,
+                        fontSize: "13px",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                      }}
+                    >
+                      <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <Globe size={16} /> Online
+                      </span>
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          padding: "2px 6px",
+                          borderRadius: "4px",
+                          background: formValues.onlineAvailable ? "#dcfce7" : "#f1f5f9",
+                        }}
+                      >
+                        {formValues.onlineAvailable ? "Enabled" : "Disabled"}
+                      </span>
+                    </button>
+
+                    {/* Offline Button */}
+                    <button
+                      type="button"
+                      onClick={() => setFormValues((p) => ({ ...p, offlineAvailable: !p.offlineAvailable }))}
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: "8px",
+                        border: formValues.offlineAvailable ? "2px solid #16a34a" : "1.5px solid #cbd5e1",
+                        background: formValues.offlineAvailable ? "#f0fdf4" : "#ffffff",
+                        color: formValues.offlineAvailable ? "#15803d" : "#64748b",
+                        fontWeight: 700,
+                        fontSize: "13px",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                      }}
+                    >
+                      <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <Building2 size={16} /> Offline
+                      </span>
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          padding: "2px 6px",
+                          borderRadius: "4px",
+                          background: formValues.offlineAvailable ? "#dcfce7" : "#f1f5f9",
+                        }}
+                      >
+                        {formValues.offlineAvailable ? "Enabled" : "Disabled"}
+                      </span>
+                    </button>
+                  </div>
+                </div>
               </div>
 
               <div className="sa-modal-footer">
@@ -910,6 +1118,189 @@ export default function SupermarketsManagement() {
                 </button>
                 <button type="submit" className="sa-btn-primary">
                   Update Password
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* SUPER ADMIN AVAILABILITY CONFIGURATION MODAL (ONLINE & OFFLINE)           */}
+      {/* ========================================================================= */}
+      {isAvailabilityModalOpen && selectedStoreForAvailability && (
+        <div className="sa-modal-overlay" onClick={() => setIsAvailabilityModalOpen(false)}>
+          <div className="sa-modal-card" style={{ maxWidth: "480px" }} onClick={(e) => e.stopPropagation()}>
+            <div className="sa-modal-header">
+              <div>
+                <h3 style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <Sliders size={18} color="#16a34a" />
+                  <span>Configure Purchase Channels</span>
+                </h3>
+                <p>For "{selectedStoreForAvailability.name}" ({selectedStoreForAvailability.code})</p>
+              </div>
+              <button
+                type="button"
+                className="sa-modal-close-btn"
+                onClick={() => setIsAvailabilityModalOpen(false)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveAvailability}>
+              <div className="sa-modal-body">
+                <p style={{ margin: 0, fontSize: "13px", color: "#475569", lineHeight: 1.5 }}>
+                  The Super Admin determines which channels are available for this supermarket. Store Admins cannot enable options that you disable.
+                </p>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginTop: "12px" }}>
+                  {/* Online Channel Toggle */}
+                  <div
+                    onClick={() => setOnlineAvailForm((p) => !p)}
+                    style={{
+                      padding: "14px",
+                      borderRadius: "10px",
+                      border: onlineAvailForm ? "2px solid #16a34a" : "1.5px solid #cbd5e1",
+                      background: onlineAvailForm ? "#f0fdf4" : "#ffffff",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                      <div
+                        style={{
+                          width: "36px",
+                          height: "36px",
+                          borderRadius: "8px",
+                          background: onlineAvailForm ? "#dcfce7" : "#f1f5f9",
+                          color: onlineAvailForm ? "#15803d" : "#64748b",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <Globe size={18} />
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: "14px", color: "#0f172a" }}>
+                          Online Purchase Mode
+                        </div>
+                        <div style={{ fontSize: "12px", color: "#64748b" }}>
+                          Catalog browsing, digital carts &amp; self-checkout
+                        </div>
+                      </div>
+                    </div>
+                    <span
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: "20px",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        background: onlineAvailForm ? "#dcfce7" : "#fee2e2",
+                        color: onlineAvailForm ? "#15803d" : "#b91c1c",
+                        border: `1px solid ${onlineAvailForm ? "#86efac" : "#fca5a5"}`,
+                      }}
+                    >
+                      {onlineAvailForm ? "Available" : "Not Available"}
+                    </span>
+                  </div>
+
+                  {/* Offline Channel Toggle */}
+                  <div
+                    onClick={() => setOfflineAvailForm((p) => !p)}
+                    style={{
+                      padding: "14px",
+                      borderRadius: "10px",
+                      border: offlineAvailForm ? "2px solid #16a34a" : "1.5px solid #cbd5e1",
+                      background: offlineAvailForm ? "#f0fdf4" : "#ffffff",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                      <div
+                        style={{
+                          width: "36px",
+                          height: "36px",
+                          borderRadius: "8px",
+                          background: offlineAvailForm ? "#dcfce7" : "#f1f5f9",
+                          color: offlineAvailForm ? "#15803d" : "#64748b",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <Building2 size={18} />
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: "14px", color: "#0f172a" }}>
+                          Offline Purchase Mode
+                        </div>
+                        <div style={{ fontSize: "12px", color: "#64748b" }}>
+                          In-store shopping, POS billing &amp; turnstile clearance
+                        </div>
+                      </div>
+                    </div>
+                    <span
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: "20px",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        background: offlineAvailForm ? "#dcfce7" : "#fee2e2",
+                        color: offlineAvailForm ? "#15803d" : "#b91c1c",
+                        border: `1px solid ${offlineAvailForm ? "#86efac" : "#fca5a5"}`,
+                      }}
+                    >
+                      {offlineAvailForm ? "Available" : "Not Available"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Scenario Summary Box */}
+                <div
+                  style={{
+                    marginTop: "14px",
+                    padding: "10px 14px",
+                    borderRadius: "8px",
+                    background: "#f1f5f9",
+                    border: "1px solid #cbd5e1",
+                    fontSize: "12px",
+                    color: "#334155",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <span>Resulting Store Policy:</span>
+                  <strong style={{ color: onlineAvailForm && offlineAvailForm ? "#15803d" : (onlineAvailForm ? "#1d4ed8" : (offlineAvailForm ? "#7e22ce" : "#b91c1c")) }}>
+                    {onlineAvailForm && offlineAvailForm && "Scenario A – Both Online & Offline Available"}
+                    {onlineAvailForm && !offlineAvailForm && "Scenario B – Only Online Available"}
+                    {!onlineAvailForm && offlineAvailForm && "Scenario C – Only Offline Available"}
+                    {!onlineAvailForm && !offlineAvailForm && "Both Channels Disabled"}
+                  </strong>
+                </div>
+              </div>
+
+              <div className="sa-modal-footer">
+                <button
+                  type="button"
+                  className="sa-btn-secondary"
+                  onClick={() => setIsAvailabilityModalOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="sa-btn-primary"
+                  disabled={savingAvailability}
+                >
+                  {savingAvailability ? "Saving Configuration..." : "Save Availability Configuration"}
                 </button>
               </div>
             </form>

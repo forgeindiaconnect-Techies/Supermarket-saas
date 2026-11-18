@@ -144,13 +144,17 @@ const uploadRoutes = require("./routes/uploadRoutes");
 const authRoutes = require("./routes/authRoutes");
 const superAdminRoutes = require("./routes/superAdminRoutes");
 const chatRoutes = require("./routes/chatRoutes");
+const supermarketRoutes = require("./routes/supermarketRoutes");
 const { authMiddleware } = require("./middleware/authMiddleware");
 const { tenantMiddleware } = require("./middleware/tenantMiddleware");
-const { seedSaaSPlatformData } = require("./utils/saasSeeder");
+const { seedSaaSPlatformData, ensureSuperAdminUser } = require("./utils/saasSeeder");
 const { checkCloudinaryConnection } = require("./config/cloudinary");
 const { verifySmtpConnection } = require("./utils/mailer");
 const Product = require("./models/Product");
 const Supermarket = require("./models/Supermarket");
+const User = require("./models/User");
+const Order = require("./models/Order");
+const PlatformNotification = require("./models/PlatformNotification");
 
 // Seed initial products if DB is empty so real-time CRUD and stock updates persist permanently
 async function seedInitialProductsIfEmpty() {
@@ -242,15 +246,87 @@ app.use("/assets", express.static(path.join(__dirname, "../mobile-app/assets/ima
 app.use("/brain", express.static("C:\\Users\\Forgeindiaconnect\\.gemini\\antigravity\\brain\\6fa4a95c-77f9-4a4d-950b-d57336a67a4c"));
 
 // Connect to MongoDB Atlas (Production & Development with strict database target)
-const DEFAULT_MONGO_URI = "mongodb+srv://forgeindiaconnectfic_db_user:NQQEuUgLw4fubko4@cluster0.qgqeqvc.mongodb.net/smart_supermarket?retryWrites=true&w=majority";
+const DEFAULT_MONGO_URI = "mongodb+srv://forgeindiaconnectfic_db_user:c3cJ8MN3ihvmDEhZ@cluster0.nbawuro.mongodb.net/smart_supermarket?retryWrites=true&w=majority";
 const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI || DEFAULT_MONGO_URI;
 
 if (MONGO_URI) {
+  // If MONGO_URI contains an explicit database name in its path, preserve it; otherwise default to smart_supermarket
+  let targetDbName = process.env.MONGO_DB_NAME;
+  if (!targetDbName) {
+    try {
+      const match = MONGO_URI.match(/mongodb(?:\+srv)?:\/\/[^/]+\/([^?]+)/);
+      if (match && match[1] && match[1].trim()) {
+        targetDbName = match[1].trim();
+      }
+    } catch (_) {}
+  }
+  const connectOptions = targetDbName ? { dbName: targetDbName } : { dbName: "smart_supermarket" };
+
   mongoose
-    .connect(MONGO_URI, { dbName: "smart_supermarket" })
+    .connect(MONGO_URI, connectOptions)
     .then(async () => {
-      console.log(`✓ MongoDB connected successfully to database: ${mongoose.connection.name || "smart_supermarket"}`);
-      await seedSaaSPlatformData(); // Multi-Tenant SaaS platform seeder (Super Admin, 4 Supermarkets, Products & Orders)
+      console.log(`✓ MongoDB connected successfully to database: ${mongoose.connection.name || targetDbName || "smart_supermarket"}`);
+      // Strictly guarantee the authorized Super Admin account exists
+      await ensureSuperAdminUser();
+
+      if (process.env.SEED_INITIAL_DATA === "true") {
+        await seedSaaSPlatformData(); // Multi-Tenant SaaS platform seeder (Super Admin, 4 Supermarkets, Products & Orders)
+      } else {
+        console.log("ℹ️  Clean database mode active (SEED_INITIAL_DATA=false).");
+        try {
+          const DeletedRecord = require("./models/DeletedRecord");
+          const alreadyInitialized = await DeletedRecord.findOne({ identifier: "FRESH_DATABASE_INITIALIZED_CLEAN_V2" });
+          
+          if (!alreadyInitialized) {
+            console.log("ℹ️  Running one-time initial database cleanup for fresh environment...");
+            const demoCodes = ["STR-001", "STR-002", "SM-7087", "STR-003"];
+            const demoStores = await Supermarket.find({ code: { $in: demoCodes } });
+            const demoIds = demoStores.map((s) => s._id);
+
+            if (demoStores.length > 0 || demoIds.length > 0) {
+              await Supermarket.deleteMany({
+                $or: [{ _id: { $in: demoIds } }, { code: { $in: demoCodes } }],
+              });
+            }
+
+            await Product.deleteMany({
+              $or: [{ supermarket: { $in: demoIds } }, { supermarketCode: { $in: demoCodes } }],
+            });
+            await Order.deleteMany({
+              $or: [
+                { supermarket: { $in: demoIds } },
+                { supermarketCode: { $in: demoCodes } },
+                { orderId: { $in: ["ORD-7087-001", "ORD-001-002", "ORD-002-003", "ORD-003-004"] } },
+              ],
+            });
+            await User.deleteMany({
+              $or: [{ supermarket: { $in: demoIds } }, { username: { $in: ["agila_demo"] } }],
+            });
+
+            try {
+              const CartActivity = require("./models/CartActivity");
+              const ChatMessage = require("./models/ChatMessage");
+              await CartActivity.deleteMany({
+                $or: [{ supermarket: { $in: demoIds } }, { supermarketCode: { $in: demoCodes } }],
+              });
+              await ChatMessage.deleteMany({
+                $or: [{ supermarket: { $in: demoIds } }, { supermarketCode: { $in: demoCodes } }],
+              });
+            } catch (_) {}
+
+            // Set one-time marker so user-created supermarkets and notifications are never deleted on restart
+            await DeletedRecord.create({
+              identifier: "FRESH_DATABASE_INITIALIZED_CLEAN_V2",
+              details: { initializedAt: new Date() },
+            });
+            console.log("✓ One-time database initialization complete. Future restarts will preserve all user-created records.");
+          } else {
+            console.log("✓ Real database records and notifications preserved across server restart.");
+          }
+        } catch (purgeErr) {
+          console.warn("Notice during clean DB check:", purgeErr.message);
+        }
+      }
     })
     .catch((err) => {
       console.error("❌ MongoDB connection error:", err.message);
@@ -314,6 +390,7 @@ app.get("/api/login-bg", (req, res) => {
 
 // Standard REST API Routes (with /api prefix)
 app.use("/api/auth", authRoutes);
+app.use("/api/supermarkets", supermarketRoutes);
 app.use("/api/super-admin", superAdminRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/products", productRoutes);
@@ -321,6 +398,7 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/upload", uploadRoutes);
 
 // Fallback Route Aliases (Supports requests without /api prefix for production resilience)
+app.use("/supermarkets", supermarketRoutes);
 app.use("/super-admin", superAdminRoutes);
 app.use("/auth", authRoutes);
 app.use("/chat", chatRoutes);

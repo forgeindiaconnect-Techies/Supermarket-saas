@@ -27,68 +27,7 @@ import { useAuth } from "../../context/AuthContext";
 import "./SuperAdmin.css";
 
 // Fallback seed matrix for product-wise sales breakdown per supermarket
-const DEFAULT_PRODUCT_SALES = [
-  {
-    supermarketId: "store-real-003",
-    supermarketName: "Akshaya Supermarket",
-    supermarketCode: "SM-7087",
-    productName: "Power Provisions Soup Cp Chck Veg Bw Brth - CS of 6/ 1.25 OZ",
-    category: "Food Items > Soups & Broths",
-    barcode: "810033280054",
-    imageUrl: "https://images.unsplash.com/photo-1547592166-23ac45744acd?w=120&auto=format&fit=crop&q=80",
-    unitsSold: 2,
-    totalRevenue: 1000,
-    ordersCount: 2,
-  },
-  {
-    supermarketId: "store-real-003",
-    supermarketName: "Akshaya Supermarket",
-    supermarketCode: "SM-7087",
-    productName: "Mens Wear",
-    category: "Groceries",
-    barcode: "2002124937529",
-    imageUrl: "",
-    unitsSold: 2,
-    totalRevenue: 19998,
-    ordersCount: 2,
-  },
-  {
-    supermarketId: "store-real-001",
-    supermarketName: "GrocerEase Flagship - Indiranagar",
-    supermarketCode: "STR-001",
-    productName: "Fresh Red Apples (Washington)",
-    category: "Fruits & Vegetables",
-    barcode: "2001849201948",
-    imageUrl: "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=120&auto=format&fit=crop&q=80",
-    unitsSold: 50,
-    totalRevenue: 9000,
-    ordersCount: 8,
-  },
-  {
-    supermarketId: "store-real-002",
-    supermarketName: "FreshMart Supermarket - Koramangala",
-    supermarketCode: "STR-002",
-    productName: "Fresh Red Apples (Washington)",
-    category: "Fruits & Vegetables",
-    barcode: "2001739104829",
-    imageUrl: "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=120&auto=format&fit=crop&q=80",
-    unitsSold: 24,
-    totalRevenue: 4320,
-    ordersCount: 4,
-  },
-  {
-    supermarketId: "store-real-001",
-    supermarketName: "GrocerEase Flagship - Indiranagar",
-    supermarketCode: "STR-001",
-    productName: "Chocolate Cadbury Dairy Milk",
-    category: "Beverages",
-    barcode: "2002948102948",
-    imageUrl: "https://images.unsplash.com/photo-1549007994-cb92caebd54b?w=120&auto=format&fit=crop&q=80",
-    unitsSold: 18,
-    totalRevenue: 6336,
-    ordersCount: 6,
-  },
-];
+const DEFAULT_PRODUCT_SALES = [];
 
 export default function PlatformReports() {
   const { supermarkets } = useAuth();
@@ -112,15 +51,15 @@ export default function PlatformReports() {
       }
       if (productRes.data?.success) {
         const salesList = productRes.data.productSales || productRes.data.sales || [];
-        if (Array.isArray(salesList) && salesList.length > 0) {
+        if (Array.isArray(salesList)) {
           setProductSales(salesList);
         } else {
-          setProductSales(DEFAULT_PRODUCT_SALES);
+          setProductSales([]);
         }
       }
     } catch (err) {
       console.warn("Analytics fetch error:", err.message);
-      setProductSales(DEFAULT_PRODUCT_SALES);
+      setProductSales([]);
     } finally {
       setLoading(false);
     }
@@ -135,15 +74,15 @@ export default function PlatformReports() {
   const safeGrowth =
     Number.isFinite(rawGrowth) && rawGrowth > 0 && rawGrowth <= 100
       ? rawGrowth
-      : 24;
+      : 0;
 
   const summary = analytics?.summary || {
-    totalRevenue: 71067,
-    subscriptionRevenue: 49999,
-    totalStoreSales: 21068,
-    totalOrders: 6,
-    totalSupermarkets: supermarkets.length || 3,
-    activeSupermarkets: supermarkets.filter((s) => s.status === "Active").length || 3,
+    totalRevenue: 0,
+    subscriptionRevenue: 0,
+    totalStoreSales: 0,
+    totalOrders: 0,
+    totalSupermarkets: supermarkets.length || 0,
+    activeSupermarkets: supermarkets.filter((s) => s.status === "Active").length || 0,
     platformGrowth: safeGrowth,
   };
 

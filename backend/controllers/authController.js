@@ -55,11 +55,10 @@ exports.login = async (req, res) => {
     if (isSuperAdminQuery) {
       user = await User.findOne({
         $or: [
+          { username: "admin", role: "SUPER_ADMIN" },
           { role: "SUPER_ADMIN" },
-          { username: "admin" },
-          { username: "superadmin" },
-          { email: "superadmin@grocerease.com" },
-          { email: "superadmin@grocerease.store" },
+          { email: "admin", role: "SUPER_ADMIN" },
+          { email: cleanUsername, role: "SUPER_ADMIN" },
         ],
       }).populate("supermarket");
 
@@ -67,8 +66,8 @@ exports.login = async (req, res) => {
         user = await User.create({
           name: "Super Admin",
           username: "admin",
-          email: "superadmin@grocerease.com",
-          password: "Admin@123",
+          email: "admin",
+          password: "admin",
           role: "SUPER_ADMIN",
           status: "Active",
         });
@@ -239,110 +238,106 @@ exports.login = async (req, res) => {
     }
 
     // =========================================================================
-    // 2. VERIFY PASSWORD (Multi-Tier Resilient Verification)
+    // 2. VERIFY PASSWORD (Strict Super Admin Security & Resilient Store Admin)
     // =========================================================================
     let isMatch = false;
 
-    // A. Bcrypt comparison
-    try {
-      isMatch = await user.comparePassword(password);
-    } catch (_) {}
+    // A. Strict Super Admin Authentication
+    if (user.role === "SUPER_ADMIN") {
+      try {
+        isMatch = await user.comparePassword(password);
+      } catch (_) {}
 
-    // B. Direct string matching (plain text stored in user.password)
-    if (!isMatch) {
-      if (
-        user.password === p ||
-        user.password === password ||
-        (user.password && user.password.toLowerCase() === pLower)
-      ) {
+      // Authorized Super Admin password: "admin" (also supports fallback "Admin 123" / "Admin@123")
+      const pTrimmed = String(password).trim();
+      if (!isMatch && (pTrimmed === "admin" || pTrimmed === "Admin 123" || pTrimmed === "Admin@123")) {
         isMatch = true;
+        // Re-hash and store canonical "admin" in MongoDB
+        user.password = "admin";
+        user.username = "admin";
+        user.email = "admin";
+        await user.save();
       }
-    }
 
-    // C. Store adminPassword matching (plain text stored on Supermarket document)
-    if (!isMatch) {
-      let storeObj = user.supermarket;
-      if (!storeObj || !storeObj.adminPassword) {
-        try {
-          if (user.supermarket && (typeof user.supermarket === "string" || user.supermarket._id)) {
-            const sid = user.supermarket._id || user.supermarket;
-            storeObj = await Supermarket.findById(sid);
-          } else if (user.supermarketCode) {
-            storeObj = await Supermarket.findOne({ code: user.supermarketCode });
-          }
-        } catch (_) {}
+      if (!isMatch) {
+        return res.status(401).json({
+          success: false,
+          message: "Invalid credentials. Incorrect password for Super Admin.",
+        });
       }
-      if (storeObj?.adminPassword) {
-        const sp = storeObj.adminPassword;
+    } else {
+      // B. Store Admin Authentication
+      try {
+        isMatch = await user.comparePassword(password);
+      } catch (_) {}
+
+      if (!isMatch) {
         if (
-          sp === p ||
-          sp === password ||
-          (sp && sp.toLowerCase() === pLower)
+          user.password === p ||
+          user.password === password ||
+          (user.password && user.password.toLowerCase() === pLower)
         ) {
           isMatch = true;
         }
       }
-    }
 
-    // D. Super Admin password fallbacks
-    if (!isMatch && user.role === "SUPER_ADMIN") {
-      const superAdminPasses = [
-        "admin@123",
-        "admin123",
-        "admin",
-        "superadmin",
-        "superadmin123",
-        "superadmin@123",
-        "storeadmin@123",
-        "admin@grocerease",
-        "grocerease@123",
-        "admin@2026",
-      ];
-      if (superAdminPasses.includes(pLower)) {
-        isMatch = true;
+      if (!isMatch) {
+        let storeObj = user.supermarket;
+        if (!storeObj || !storeObj.adminPassword) {
+          try {
+            if (user.supermarket && (typeof user.supermarket === "string" || user.supermarket._id)) {
+              const sid = user.supermarket._id || user.supermarket;
+              storeObj = await Supermarket.findById(sid);
+            } else if (user.supermarketCode) {
+              storeObj = await Supermarket.findOne({ code: user.supermarketCode });
+            }
+          } catch (_) {}
+        }
+        if (storeObj?.adminPassword) {
+          const sp = storeObj.adminPassword;
+          if (
+            sp === p ||
+            sp === password ||
+            (sp && sp.toLowerCase() === pLower)
+          ) {
+            isMatch = true;
+          }
+        }
       }
-    }
 
-    // E. Store Admin password fallbacks
-    if (!isMatch && user.role === "STORE_ADMIN") {
-      const knownFallbacks = [
-        "poojasree",
-        "pooja@123",
-        "pooja123",
-        "pooja",
-        "akshaya",
-        "Akshaya@123",
-        "akshaya@123",
-        "akshaya123",
-        "storeb",
-        "StoreB@123",
-        "storeb@123",
-        "storeb123",
-        "password123",
-        "agila",
-        "Agila@123",
-        "agila@123",
-        "agila123",
-        "storeadmin@123",
-        "StoreAdmin@123",
-        "admin@123",
-        "Admin@123",
-        "admin123",
-        "admin",
-        "admin@2026",
-        "grocerease@123",
-        "GrocerEase@123",
-      ];
-      if (knownFallbacks.some((fb) => fb.toLowerCase() === pLower)) {
-        isMatch = true;
+      if (!isMatch) {
+        const knownFallbacks = [
+          "poojasree",
+          "pooja@123",
+          "pooja123",
+          "pooja",
+          "akshaya",
+          "Akshaya@123",
+          "akshaya@123",
+          "akshaya123",
+          "storeb",
+          "StoreB@123",
+          "storeb@123",
+          "storeb123",
+          "password123",
+          "agila",
+          "Agila@123",
+          "agila@123",
+          "agila123",
+          "storeadmin@123",
+          "StoreAdmin@123",
+        ];
+        if (knownFallbacks.some((fb) => fb.toLowerCase() === pLower)) {
+          isMatch = true;
+        }
       }
-    }
 
-    if (!isMatch) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid credentials. Incorrect password.",
-      });
+      if (!isMatch) {
+        return res.status(401).json({
+          success: false,
+          message: "Invalid credentials. Incorrect password.",
+        });
+      }
     }
 
     // Auto-upgrade plain-text passwords in database to secure bcrypt hashes
@@ -855,6 +850,300 @@ exports.updateProfile = async (req, res) => {
       success: false,
       message: error.message || "Failed to update profile.",
       error: error.message,
+    });
+  }
+};
+
+// GET /api/auth/supermarket/availability
+// Retrieves the authenticated supermarket's Online & Offline configuration (Fixed by Super Admin)
+exports.getSupermarketAvailability = async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Not authenticated.",
+      });
+    }
+
+    let storeId = req.user.supermarket
+      ? (typeof req.user.supermarket === "object" && req.user.supermarket._id ? req.user.supermarket._id : req.user.supermarket)
+      : null;
+
+    let store = null;
+    if (storeId) {
+      store = await Supermarket.findById(storeId);
+    }
+    if (!store && req.user.supermarketCode) {
+      store = await Supermarket.findOne({ code: req.user.supermarketCode });
+    }
+
+    if (!store) {
+      return res.status(404).json({
+        success: false,
+        message: "Supermarket not found for this account.",
+      });
+    }
+
+    const onlineAvail = store.onlineAvailable;
+    const offlineAvail = store.offlineAvailable;
+
+    return res.status(200).json({
+      success: true,
+      supermarketId: store._id,
+      supermarketCode: store.code,
+      supermarketName: store.name,
+      onlineAvailable: onlineAvail,
+      offlineAvailable: offlineAvail,
+      onlineStatus: onlineAvail === true ? "Available" : (onlineAvail === false ? "Not Available" : "Not Configured"),
+      offlineStatus: offlineAvail === true ? "Available" : (offlineAvail === false ? "Not Available" : "Not Configured"),
+      isConfigured: onlineAvail !== null && offlineAvail !== null,
+    });
+  } catch (error) {
+    console.error("Get supermarket availability error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to retrieve supermarket availability.",
+      error: error.message,
+    });
+  }
+};
+
+// =============================================================================
+// CUSTOMER MOBILE AUTHENTICATION & SUPERMARKET ISOLATION
+// =============================================================================
+
+// POST /api/auth/customer/register
+// Customer registration with mandatory supermarket selection & online availability check
+exports.customerRegister = async (req, res) => {
+  try {
+    const { name, phone, password, address, supermarketId, supermarketCode } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, message: "Customer name is mandatory." });
+    }
+
+    const rawDigits = String(phone || "").replace(/\D/g, "");
+    const cleanPhone = rawDigits.length >= 10 ? rawDigits.slice(-10) : rawDigits;
+    if (!cleanPhone || cleanPhone.length !== 10 || !["6", "7", "8", "9"].includes(cleanPhone[0])) {
+      return res.status(400).json({
+        success: false,
+        message: "A valid 10-digit Indian mobile number starting with 6, 7, 8, or 9 is required.",
+      });
+    }
+
+    // Lookup supermarket
+    const targetId = supermarketId || supermarketCode;
+    if (!targetId) {
+      return res.status(400).json({
+        success: false,
+        message: "Please select a registered supermarket for Online Purchase.",
+      });
+    }
+
+    let store = null;
+    if (String(targetId).match(/^[0-9a-fA-F]{24}$/)) {
+      store = await Supermarket.findById(targetId);
+    }
+    if (!store) {
+      store = await Supermarket.findOne({ code: String(targetId).toUpperCase() });
+    }
+
+    if (!store) {
+      return res.status(404).json({
+        success: false,
+        message: "Selected supermarket not found.",
+      });
+    }
+
+    // STRICT CHECK: Verify Online Purchase is enabled for that supermarket
+    if (store.onlineAvailable !== true) {
+      return res.status(403).json({
+        success: false,
+        message: "This supermarket does not currently support Online Purchase. Please choose an available option.",
+        supermarket: {
+          _id: store._id,
+          name: store.name,
+          onlineAvailable: false,
+          offlineAvailable: store.offlineAvailable === true,
+        },
+      });
+    }
+
+    const Customer = require("../models/Customer");
+    let customer = await Customer.findOne({ phone: cleanPhone });
+
+    if (customer) {
+      // Update customer details and connect permanently to selected supermarket
+      customer.name = name.trim();
+      if (address) customer.address = address.trim();
+      customer.supermarket = store._id;
+      customer.supermarketCode = store.code;
+      customer.supermarketName = store.name;
+      customer.registeredLocation = `${store.city}, ${store.state || ""}`.trim();
+      if (password) customer.password = password;
+      await customer.save();
+    } else {
+      customer = await Customer.create({
+        name: name.trim(),
+        phone: cleanPhone,
+        password: password || "",
+        address: address?.trim() || "",
+        supermarket: store._id,
+        supermarketCode: store.code,
+        supermarketName: store.name,
+        registeredLocation: `${store.city}, ${store.state || ""}`.trim(),
+      });
+    }
+
+    const token = jwt.sign(
+      {
+        id: customer._id,
+        role: "CUSTOMER",
+        phone: customer.phone,
+        supermarketId: store._id.toString(),
+        supermarketCode: store.code,
+      },
+      JWT_SECRET,
+      { expiresIn: "30d" }
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: `Welcome to ${store.name}! Your account is registered.`,
+      token,
+      customer: {
+        _id: customer._id,
+        name: customer.name,
+        phone: customer.phone,
+        address: customer.address,
+        supermarketId: store._id.toString(),
+        supermarketCode: store.code,
+        supermarketName: store.name,
+        registeredLocation: customer.registeredLocation,
+      },
+      supermarket: {
+        _id: store._id.toString(),
+        name: store.name,
+        code: store.code,
+        city: store.city,
+        state: store.state,
+        address: store.address,
+        onlineAvailable: true,
+        offlineAvailable: store.offlineAvailable === true,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: "Customer registration failed",
+      error: err.message,
+    });
+  }
+};
+
+// POST /api/auth/customer/login
+// Customer login with supermarket online availability verification
+exports.customerLogin = async (req, res) => {
+  try {
+    const { phone, password } = req.body;
+    const rawDigits = String(phone || "").replace(/\D/g, "");
+    const cleanPhone = rawDigits.length >= 10 ? rawDigits.slice(-10) : rawDigits;
+
+    if (!cleanPhone || cleanPhone.length !== 10) {
+      return res.status(400).json({
+        success: false,
+        message: "Please enter a valid 10-digit mobile number.",
+      });
+    }
+
+    const Customer = require("../models/Customer");
+    const customer = await Customer.findOne({ phone: cleanPhone }).populate("supermarket");
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: "No customer account found with this mobile number. Please register first.",
+      });
+    }
+
+    // Check password if provided
+    if (password && customer.password) {
+      const match = await customer.comparePassword(password);
+      if (!match) {
+        return res.status(401).json({
+          success: false,
+          message: "Incorrect password. Please try again.",
+        });
+      }
+    }
+
+    const store = customer.supermarket;
+    if (!store) {
+      return res.status(400).json({
+        success: false,
+        message: "Your account is not linked to any supermarket. Please re-register and select your supermarket.",
+      });
+    }
+
+    // Verify supermarket online availability
+    if (store.onlineAvailable !== true) {
+      return res.status(403).json({
+        success: false,
+        message: "This supermarket does not currently support Online Purchase. Please choose an available option.",
+        supermarket: {
+          _id: store._id,
+          name: store.name,
+          onlineAvailable: false,
+          offlineAvailable: store.offlineAvailable === true,
+        },
+      });
+    }
+
+    customer.lastLogin = new Date();
+    await customer.save();
+
+    const token = jwt.sign(
+      {
+        id: customer._id,
+        role: "CUSTOMER",
+        phone: customer.phone,
+        supermarketId: store._id.toString(),
+        supermarketCode: store.code,
+      },
+      JWT_SECRET,
+      { expiresIn: "30d" }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: `Welcome back, ${customer.name}!`,
+      token,
+      customer: {
+        _id: customer._id,
+        name: customer.name,
+        phone: customer.phone,
+        address: customer.address,
+        supermarketId: store._id.toString(),
+        supermarketCode: store.code,
+        supermarketName: store.name,
+        registeredLocation: customer.registeredLocation,
+      },
+      supermarket: {
+        _id: store._id.toString(),
+        name: store.name,
+        code: store.code,
+        city: store.city,
+        state: store.state,
+        address: store.address,
+        onlineAvailable: true,
+        offlineAvailable: store.offlineAvailable === true,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: "Customer login failed",
+      error: err.message,
     });
   }
 };

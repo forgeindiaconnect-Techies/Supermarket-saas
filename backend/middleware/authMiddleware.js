@@ -13,26 +13,24 @@ async function authMiddleware(req, res, next) {
     }
 
     const token = authHeader.split(" ")[1];
-    if (!token) return next();
-
-    let user = null;
-    if (token === "mock_pooja_token") {
-      user = await User.findOne({ username: "pooja" }).select("-password").populate("supermarket");
-    } else if (token === "mock_storeb_token") {
-      user = await User.findOne({ username: "storeb" }).select("-password").populate("supermarket");
-    } else if (token === "mock_akshaya_token") {
-      user = await User.findOne({ username: "akshaya" }).select("-password").populate("supermarket");
-    } else if (token === "mock_super_admin_token") {
-      user = await User.findOne({ role: "SUPER_ADMIN" }).select("-password");
-    } else {
-      const decoded = jwt.verify(token, JWT_SECRET);
-      user = await User.findById(decoded.id).select("-password").populate("supermarket");
-      if (!user && decoded?.role === "SUPER_ADMIN") {
-        user = await User.findOne({ role: "SUPER_ADMIN" }).select("-password");
-      }
+    if (!token || token.startsWith("mock_")) {
+      return next(); // Reject all mock/forged tokens
     }
 
+    // Strictly verify JWT signature
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (!decoded || !decoded.id) {
+      return next();
+    }
+
+    const user = await User.findById(decoded.id).select("-password").populate("supermarket");
+
     if (user && user.status === "Active") {
+      // Validate that token role matches current database role to prevent role escalation
+      if (decoded.role && user.role !== decoded.role) {
+        return next();
+      }
+
       req.user = user;
       if (user.supermarket) {
         req.supermarketId = user.supermarket._id.toString();
@@ -43,7 +41,7 @@ async function authMiddleware(req, res, next) {
 
     next();
   } catch (error) {
-    // If token invalid/expired, proceed as guest rather than hard-failing
+    // If token is invalid or expired, request remains unauthenticated
     next();
   }
 }
@@ -59,12 +57,18 @@ function requireAuth(req, res, next) {
   next();
 }
 
-// Require Super Admin
+// Require Super Admin strictly
 function requireSuperAdmin(req, res, next) {
-  if (!req.user || req.user.role !== "SUPER_ADMIN") {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      message: "Access denied. Authentication required. Please log in as Super Admin.",
+    });
+  }
+  if (req.user.role !== "SUPER_ADMIN") {
     return res.status(403).json({
       success: false,
-      message: "Access denied. Super Admin privileges required.",
+      message: "Access denied. Super Admin privileges required. Supermarket Admins are not authorized to access this dashboard or API.",
     });
   }
   next();

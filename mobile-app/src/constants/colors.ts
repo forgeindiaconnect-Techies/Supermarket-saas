@@ -10,7 +10,9 @@ export const Theme = {
   goldLight: "#FBD577",
   goldDark: "#D99B16",
   dark: "#1E293B", // Dark charcoal text
+  text: "#1E293B", // Standard text
   gray: "#64748B",
+  muted: "#64748B", // Muted / secondary text
   grayLight: "#94A3B8",
   border: "#E9D8FD",
   cardBorder: "#F1E8FB",

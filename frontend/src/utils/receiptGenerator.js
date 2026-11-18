@@ -30,7 +30,8 @@ export function buildSupermarketReceiptHtml(order) {
   const payStatus = order.paymentStatus || "Completed";
 
   const customerName = order.customer?.name || "Customer Shopper";
-  const customerPhone = order.customer?.phone ? String(order.customer.phone).replace(/\D/g, "") : "";
+  const rawPhoneDigits = order.customer?.phone ? String(order.customer.phone).replace(/\D/g, "") : "";
+  const customerPhone = rawPhoneDigits.length >= 10 ? `+91 ${rawPhoneDigits.slice(-10)}` : (rawPhoneDigits ? `+91 ${rawPhoneDigits}` : "");
   const customerAddress = order.customer?.address || "";
 
   const totalQty = items.reduce((sum, item) => sum + (item.quantity || 1), 0);
@@ -289,7 +290,7 @@ export function buildSupermarketReceiptHtml(order) {
 
             ${customerPhone ? `
             <div class="meta-label">Mobile Number:</div>
-            <div class="meta-value">+91 ${customerPhone}</div>
+            <div class="meta-value">${customerPhone}</div>
             ` : ""}
 
             ${customerAddress ? `

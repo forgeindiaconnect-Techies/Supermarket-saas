@@ -4,96 +4,7 @@ import API, { SOCKET_URL } from "../services/api";
 
 const AuthContext = createContext(null);
 
-const DEFAULT_SUPERMARKET_STORE1 = {
-  _id: "store-real-001",
-  name: "GrocerEase Supermarket",
-  code: "STR-001",
-  tagline: "Autonomous Smart Retail & High-Speed Clearance",
-  city: "Bangalore",
-  status: "Active",
-  plan: "Enterprise",
-  adminUsername: "pooja",
-  adminName: "Pooja V",
-  email: "poojasree@gmail.com",
-  phone: "+91 98450 12345",
-  subscriptionAmount: 34999,
-  billingCycle: "Monthly",
-  startDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
-  expiryDate: new Date(Date.now() + 20 * 24 * 60 * 60 * 1000).toISOString(),
-  logoUrl: "https://images.unsplash.com/photo-1542838132-92c53300491e?w=200&auto=format&fit=crop&q=80",
-};
-
-const DEFAULT_SUPERMARKET_STORE2 = {
-  _id: "store-real-002",
-  name: "FreshMart Supermarket",
-  code: "STR-002",
-  tagline: "Farm Fresh Groceries & Express Clearance",
-  city: "Bangalore",
-  status: "Active",
-  plan: "Standard Business",
-  adminUsername: "storeb",
-  adminName: "Rohan Gupta",
-  email: "storeb@freshmart.store",
-  phone: "+91 98451 98765",
-  subscriptionAmount: 9999,
-  billingCycle: "Monthly",
-  startDate: new Date(Date.now() - 29 * 24 * 60 * 60 * 1000).toISOString(),
-  expiryDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // EXPIRES TOMORROW
-  logoUrl: "https://images.unsplash.com/photo-1578916171728-46686eac8d58?w=200&auto=format&fit=crop&q=80",
-};
-
-const DEFAULT_SUPERMARKET_AKSHAYA = {
-  _id: "store-real-akshaya",
-  name: "Akshaya",
-  code: "SM-7087",
-  slug: "akshaya",
-  tagline: "Smart Supermarket & Instant Gate Clearance",
-  city: "Bangalore",
-  address: "Begur",
-  status: "Active",
-  plan: "Basic",
-  ownerName: "Akshaya",
-  contactPerson: "Akshaya Admin",
-  adminUsername: "akshaya",
-  adminName: "Akshaya Admin",
-  email: "akshaya@gmail.com",
-  phone: "+91 6789098765",
-  subscriptionAmount: 4999,
-  billingCycle: "Monthly",
-  startDate: "2026-11-14T00:00:00.000Z",
-  expiryDate: "2026-12-14T00:00:00.000Z",
-  logoUrl: "https://images.unsplash.com/photo-1578916171728-46686eac8d58?w=200&auto=format&fit=crop&q=80",
-};
-
-const DEFAULT_SUPERMARKET_FRESHMART_247 = {
-  _id: "store-real-247",
-  name: "24/7 Freshmart",
-  code: "STR-003",
-  slug: "247-freshmart",
-  tagline: "24/7 Express Mart & Instant Checkout",
-  city: "Bangalore",
-  address: "Brigade Road, Ashok Nagar",
-  status: "Active",
-  plan: "Basic",
-  ownerName: "Agila",
-  contactPerson: "Agila Admin",
-  adminUsername: "agila",
-  adminName: "Agila",
-  email: "agila@grocerease.store",
-  phone: "+91 98452 33445",
-  subscriptionAmount: 4999,
-  billingCycle: "Monthly",
-  startDate: "2026-11-14T00:00:00.000Z",
-  expiryDate: "2026-12-14T00:00:00.000Z",
-  logoUrl: "https://images.unsplash.com/photo-1542838132-92c53300491e?w=200&auto=format&fit=crop&q=80",
-};
-
-export const INITIAL_SUPERMARKETS_CATALOG = [
-  DEFAULT_SUPERMARKET_STORE1,
-  DEFAULT_SUPERMARKET_STORE2,
-  DEFAULT_SUPERMARKET_AKSHAYA,
-  DEFAULT_SUPERMARKET_FRESHMART_247,
-];
+export const INITIAL_SUPERMARKETS_CATALOG = [];
 
 export function AuthProvider({ children }) {
   // 1. Initial State from localStorage (Strictly requires real authentication; no auto-logged-in mock fallback)
@@ -101,7 +12,7 @@ export function AuthProvider({ children }) {
     try {
       const savedToken = localStorage.getItem("grocerease_auth_token");
       // Clean up legacy auto-assigned mock tokens
-      if (!savedToken || savedToken === "mock_jwt_token_2026") {
+      if (!savedToken || savedToken.startsWith("mock_")) {
         localStorage.removeItem("grocerease_auth_token");
         return null;
       }
@@ -114,7 +25,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
     try {
       const savedToken = localStorage.getItem("grocerease_auth_token");
-      if (!savedToken || savedToken === "mock_jwt_token_2026") {
+      if (!savedToken || savedToken.startsWith("mock_")) {
         localStorage.removeItem("grocerease_auth_token");
         localStorage.removeItem("grocerease_user");
         return null;
@@ -122,8 +33,8 @@ export function AuthProvider({ children }) {
       const savedUser = localStorage.getItem("grocerease_user");
       if (savedUser) {
         const parsed = JSON.parse(savedUser);
-        // If it was the legacy auto-created fake user with mock_jwt_token_2026, clear it
-        if (parsed?._id === "user-pooja-admin-1" && !parsed?.isRealLogin) {
+        if (parsed?.role === "SUPER_ADMIN" && !savedToken.startsWith("eyJ")) {
+          localStorage.removeItem("grocerease_auth_token");
           localStorage.removeItem("grocerease_user");
           return null;
         }
@@ -138,10 +49,10 @@ export function AuthProvider({ children }) {
       const saved = localStorage.getItem("grocerease_current_supermarket");
       if (saved) return JSON.parse(saved);
     } catch (_) {}
-    return DEFAULT_SUPERMARKET_STORE1;
+    return null;
   });
 
-  const [supermarkets, setSupermarkets] = useState(INITIAL_SUPERMARKETS_CATALOG);
+  const [supermarkets, setSupermarkets] = useState([]);
   const [loading, setLoading] = useState(false);
 
   // Sync currentSupermarket to localStorage
@@ -204,8 +115,10 @@ export function AuthProvider({ children }) {
   }, [currentSupermarket?.code, currentSupermarket?._id]);
 
   useEffect(() => {
-    loadSupermarkets();
-  }, [loadSupermarkets]);
+    if (user?.role === "SUPER_ADMIN") {
+      loadSupermarkets();
+    }
+  }, [user?.role, loadSupermarkets]);
 
   // Real-time synchronization via Socket.IO for supermarkets & platform stats
   useEffect(() => {
@@ -254,6 +167,37 @@ export function AuthProvider({ children }) {
         }
       });
 
+      socket.on("supermarket:availability_updated", (data) => {
+        if (!data) return;
+        setSupermarkets((prev) =>
+          prev.map((s) => {
+            if (s._id === data.supermarketId || s.code === data.supermarketCode) {
+              return {
+                ...s,
+                onlineAvailable: data.onlineAvailable,
+                offlineAvailable: data.offlineAvailable,
+              };
+            }
+            return s;
+          })
+        );
+        setCurrentSupermarket((prev) => {
+          if (prev && (prev._id === data.supermarketId || prev.code === data.supermarketCode)) {
+            const updated = {
+              ...prev,
+              onlineAvailable: data.onlineAvailable,
+              offlineAvailable: data.offlineAvailable,
+            };
+            try {
+              localStorage.setItem("grocerease_current_supermarket", JSON.stringify(updated));
+            } catch (_) {}
+            return updated;
+          }
+          return prev;
+        });
+        window.dispatchEvent(new Event("grocerease_storage_updated"));
+      });
+
       socket.on("platform:stats_updated", () => {
         loadSupermarkets();
       });
@@ -284,7 +228,7 @@ export function AuthProvider({ children }) {
     }
   };
 
-  // Login handler
+  // Login handler - Strict server-side authentication
   const login = async (username, password) => {
     try {
       const res = await API.post("/auth/login", { username, password });
@@ -308,146 +252,16 @@ export function AuthProvider({ children }) {
           localStorage.setItem("grocerease_current_supermarket", JSON.stringify(storeObj));
           setCurrentSupermarket(storeObj);
         } else if (authenticatedUser.role === "SUPER_ADMIN") {
-          // Default to platform view or first supermarket
-          if (!currentSupermarket) {
-            setCurrentSupermarket(DEFAULT_SUPERMARKET_STORE1);
-          }
+          localStorage.removeItem("grocerease_current_supermarket");
+          setCurrentSupermarket(null);
         }
 
         window.dispatchEvent(new Event("grocerease_storage_updated"));
         return { success: true, user: authenticatedUser };
       }
-      return { success: false, message: res.data?.message || "Login failed" };
+      return { success: false, message: res.data?.message || "Invalid credentials." };
     } catch (err) {
-      // Offline fallback demo login handler so testing works anywhere without internet/db
-      const cleanU = String(username).trim().toLowerCase();
-      const p = String(password).trim().toLowerCase();
-
-      // 1. Pooja Admin: mail id "pooja" / password "pooja@123" -> Admin Dashboard
-      if (
-        (cleanU === "pooja" || cleanU === "poojasree@gmail.com" || cleanU.includes("pooja")) &&
-        (p === "pooja@123" || p === "pooja123" || p === "pooja")
-      ) {
-        const poojaAdminUser = {
-          _id: "user-pooja-admin-1",
-          name: "Pooja V",
-          username: "pooja",
-          email: "poojasree@gmail.com",
-          role: "STORE_ADMIN",
-          supermarket: DEFAULT_SUPERMARKET_STORE1,
-          supermarketCode: "STR-001",
-          supermarketName: "GrocerEase Flagship - Indiranagar",
-          isRealLogin: true,
-        };
-        localStorage.setItem("grocerease_auth_token", "mock_pooja_token");
-        localStorage.setItem("grocerease_user", JSON.stringify(poojaAdminUser));
-        localStorage.setItem("grocerease_current_supermarket", JSON.stringify(DEFAULT_SUPERMARKET_STORE1));
-        setToken("mock_pooja_token");
-        setUser(poojaAdminUser);
-        setCurrentSupermarket(DEFAULT_SUPERMARKET_STORE1);
-        window.dispatchEvent(new Event("grocerease_storage_updated"));
-        return { success: true, user: poojaAdminUser };
-      }
-
-      // 2. Super Admin: username "admin" / password "admin123"
-      if (
-        (cleanU === "admin" || cleanU === "superadmin@grocerease.store" || cleanU === "superadmin" || cleanU.includes("superadmin") || cleanU === "admin@grocerease.store" || cleanU === "admin@gmail.com") &&
-        (p === "admin123" || p === "admin@123" || p === "admin")
-      ) {
-        const superAdminUser = {
-          _id: "user-super-admin-1",
-          name: "Super Admin",
-          username: "admin",
-          email: "superadmin@grocerease.store",
-          role: "SUPER_ADMIN",
-          isRealLogin: true,
-        };
-        localStorage.setItem("grocerease_auth_token", "mock_super_admin_token");
-        localStorage.setItem("grocerease_user", JSON.stringify(superAdminUser));
-        setToken("mock_super_admin_token");
-        setUser(superAdminUser);
-        return { success: true, user: superAdminUser };
-      }
-
-      // 3. Store Admin B: username "storeb" / password "StoreB@123"
-      if (
-        (cleanU === "storeb" || cleanU === "storeb@freshmart.store" || cleanU === "str-002" || cleanU.includes("freshmart")) &&
-        (p === "storeb@123" || p === "storeb123" || p === "storeb" || p === "password123")
-      ) {
-        const storeBUser = {
-          _id: "user-store-b",
-          name: "Rohan Gupta",
-          username: "storeb",
-          email: "storeb@freshmart.store",
-          role: "STORE_ADMIN",
-          supermarket: DEFAULT_SUPERMARKET_STORE2,
-          supermarketCode: "STR-002",
-          supermarketName: "FreshMart Supermarket",
-          isRealLogin: true,
-        };
-        localStorage.setItem("grocerease_auth_token", "mock_storeb_token");
-        localStorage.setItem("grocerease_user", JSON.stringify(storeBUser));
-        localStorage.setItem("grocerease_current_supermarket", JSON.stringify(DEFAULT_SUPERMARKET_STORE2));
-        setToken("mock_storeb_token");
-        setUser(storeBUser);
-        setCurrentSupermarket(DEFAULT_SUPERMARKET_STORE2);
-        window.dispatchEvent(new Event("grocerease_storage_updated"));
-        return { success: true, user: storeBUser };
-      }
-
-      // 4. Store Admin Akshaya: username "akshaya" / password "Akshaya@123"
-      if (
-        (cleanU === "akshaya" || cleanU === "akshaya@gmail.com" || cleanU === "sm-7087" || cleanU.includes("akshaya")) &&
-        (p === "akshaya@123" || p === "akshaya123" || p === "akshaya")
-      ) {
-        const akshayaUser = {
-          _id: "user-akshaya-admin",
-          name: "Akshaya Admin",
-          username: "akshaya",
-          email: "akshaya@gmail.com",
-          role: "STORE_ADMIN",
-          supermarket: DEFAULT_SUPERMARKET_AKSHAYA,
-          supermarketCode: "SM-7087",
-          supermarketName: "Akshaya",
-          isRealLogin: true,
-        };
-        localStorage.setItem("grocerease_auth_token", "mock_akshaya_token");
-        localStorage.setItem("grocerease_user", JSON.stringify(akshayaUser));
-        localStorage.setItem("grocerease_current_supermarket", JSON.stringify(DEFAULT_SUPERMARKET_AKSHAYA));
-        setToken("mock_akshaya_token");
-        setUser(akshayaUser);
-        setCurrentSupermarket(DEFAULT_SUPERMARKET_AKSHAYA);
-        window.dispatchEvent(new Event("grocerease_storage_updated"));
-        return { success: true, user: akshayaUser };
-      }
-
-      // 5. Store Admin 24/7 Freshmart: username "agila" / password "Agila@123"
-      if (
-        (cleanU === "agila" || cleanU === "agila@grocerease.store" || cleanU === "str-003" || cleanU.includes("agila") || cleanU.includes("247")) &&
-        (p === "agila@123" || p === "agila123" || p === "agila")
-      ) {
-        const freshmartUser = {
-          _id: "user-agila-admin",
-          name: "Agila",
-          username: "agila",
-          email: "agila@grocerease.store",
-          role: "STORE_ADMIN",
-          supermarket: DEFAULT_SUPERMARKET_FRESHMART_247,
-          supermarketCode: "STR-003",
-          supermarketName: "24/7 Freshmart",
-          isRealLogin: true,
-        };
-        localStorage.setItem("grocerease_auth_token", "mock_agila_token");
-        localStorage.setItem("grocerease_user", JSON.stringify(freshmartUser));
-        localStorage.setItem("grocerease_current_supermarket", JSON.stringify(DEFAULT_SUPERMARKET_FRESHMART_247));
-        setToken("mock_agila_token");
-        setUser(freshmartUser);
-        setCurrentSupermarket(DEFAULT_SUPERMARKET_FRESHMART_247);
-        window.dispatchEvent(new Event("grocerease_storage_updated"));
-        return { success: true, user: freshmartUser };
-      }
-
-      const msg = err.response?.data?.message || err.message || "Invalid credentials.";
+      const msg = err.response?.data?.message || err.message || "Invalid credentials. Please verify your Email and Password.";
       return { success: false, message: msg };
     }
   };
@@ -456,6 +270,7 @@ export function AuthProvider({ children }) {
   const logout = () => {
     localStorage.removeItem("grocerease_auth_token");
     localStorage.removeItem("grocerease_user");
+    localStorage.removeItem("grocerease_current_supermarket");
     setToken(null);
     setUser(null);
     window.location.href = "/login";

@@ -25,7 +25,7 @@ export default function ProductDetailsScreen() {
     barcode?: string;
   }>();
 
-  const { addToCart, totalCount } = useCart();
+  const { addToCart, totalCount, selectedSupermarket } = useCart();
 
   const [product, setProduct] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -50,7 +50,13 @@ export default function ProductDetailsScreen() {
         throw new Error("No product ID or barcode provided.");
       }
 
-      const res = await safeFetch(endpoint, {}, 6000);
+      const headers: Record<string, string> = {};
+      if (selectedSupermarket?._id) {
+        headers["x-supermarket-id"] = selectedSupermarket._id;
+        headers["x-supermarket-code"] = selectedSupermarket.code || "";
+      }
+
+      const res = await safeFetch(endpoint, { headers }, 6000);
       const data = await res.json();
 
       if (res.ok && data.success && data.product) {

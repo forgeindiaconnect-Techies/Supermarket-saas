@@ -15,7 +15,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useCart, OrderRecord } from "../context/CartContext";
-import { API_URL, safeFetch } from "../constants/api";
+import { API_URL, safeFetch, formatPhoneNumber } from "../constants/api";
 import { generateAndShareReceipt } from "../utils/receiptGenerator";
 import ReceiptModal from "../components/ReceiptModal";
 
@@ -322,7 +322,7 @@ export default function PaymentSuccessScreen() {
                     <View style={{ flex: 1 }}>
                       <Text style={styles.customerNameBold}>{customerName}</Text>
                       {customerPhone ? (
-                        <Text style={styles.customerPhoneBold}>📱 +91 {customerPhone}</Text>
+                        <Text style={styles.customerPhoneBold}>📱 {formatPhoneNumber(customerPhone)}</Text>
                       ) : null}
                       {customerAddress ? (
                         <Text style={styles.customerAddressText} numberOfLines={2}>
@@ -335,24 +335,8 @@ export default function PaymentSuccessScreen() {
               ) : null}
             </View>
 
-            {/* Action Buttons in Mobile App Purple Theme */}
+            {/* Action Button: Single Full-Width Primary Action (Screen auto-polls backend status) */}
             <View style={styles.actionButtonsContainer}>
-              <TouchableOpacity
-                style={styles.refreshStatusBtn}
-                onPress={handleManualRefresh}
-                disabled={manualRefreshing}
-                activeOpacity={0.82}
-              >
-                {manualRefreshing ? (
-                  <ActivityIndicator size="small" color="#3B0764" />
-                ) : (
-                  <>
-                    <Text style={styles.refreshIcon}>🔄</Text>
-                    <Text style={styles.refreshBtnText}>Check Status Now</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-
               <TouchableOpacity
                 style={styles.viewOrdersSecondaryBtn}
                 onPress={() => router.replace("/orders")}
@@ -453,7 +437,7 @@ export default function PaymentSuccessScreen() {
                       <View style={{ flex: 1 }}>
                         <Text style={styles.customerNameBold}>{customerName}</Text>
                         {customerPhone ? (
-                          <Text style={styles.customerPhoneBold}>📱 +91 {customerPhone}</Text>
+                          <Text style={styles.customerPhoneBold}>📱 {formatPhoneNumber(customerPhone)}</Text>
                         ) : null}
                       </View>
                     </View>

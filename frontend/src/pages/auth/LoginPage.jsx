@@ -745,12 +745,12 @@ export default function LoginPage() {
                   <span>Username:</span> <code>admin</code>
                 </div>
                 <div className="ref-demo-line">
-                  <span>Password:</span> <code>Admin@123</code>
+                  <span>Password:</span> <code>admin</code>
                 </div>
                 <button
                   type="button"
                   className="ref-quick-fill-btn"
-                  onClick={() => handleQuickFill("admin", "Admin@123")}
+                  onClick={() => handleQuickFill("admin", "admin")}
                 >
                   Quick Fill Super Admin &rarr;
                 </button>
@@ -794,24 +794,6 @@ export default function LoginPage() {
             </div>
 
             <div className="ref-modal-body">
-              {/* Super Admin */}
-              <div className="ref-demo-card">
-                <div className="ref-demo-head">
-                  <strong>Central Super Admin</strong>
-                  <span className="ref-pill sa">Super Admin</span>
-                </div>
-                <div className="ref-demo-line">
-                  <span>User:</span> <code>admin</code> &bull; <span>Pass:</span> <code>Admin@123</code>
-                </div>
-                <button
-                  type="button"
-                  className="ref-quick-fill-btn"
-                  onClick={() => handleQuickFill("admin", "Admin@123")}
-                >
-                  Fill Super Admin &rarr;
-                </button>
-              </div>
-
               {/* 24/7 Freshmart */}
               <div className="ref-demo-card">
                 <div className="ref-demo-head">

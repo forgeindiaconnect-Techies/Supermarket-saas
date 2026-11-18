@@ -252,14 +252,54 @@ exports.createProduct = async (req, res) => {
   }
 };
 
-// Get all active products
+// Get all active products with strict tenant isolation and search/category filtering
 exports.getProducts = async (req, res) => {
   try {
     const filter = {
       isActive: { $ne: false },
     };
-    if (req.supermarketId) {
-      filter.supermarket = req.supermarketId;
+
+    // Resolve target supermarket from query, header, or auth context
+    const requestedStoreId = req.query.supermarketId || req.headers["x-supermarket-id"] || req.supermarketId;
+    const requestedStoreCode = req.query.supermarketCode || req.headers["x-supermarket-code"] || req.supermarketCode;
+
+    if (requestedStoreId && requestedStoreId !== "all" && requestedStoreId !== "ALL") {
+      let storeDoc = null;
+      if (String(requestedStoreId).match(/^[0-9a-fA-F]{24}$/)) {
+        storeDoc = await Supermarket.findById(requestedStoreId);
+      }
+      if (!storeDoc && (requestedStoreCode || requestedStoreId)) {
+        storeDoc = await Supermarket.findOne({ code: String(requestedStoreCode || requestedStoreId).toUpperCase() });
+      }
+
+      if (storeDoc) {
+        filter.$or = [
+          { supermarket: storeDoc._id },
+          { supermarketCode: storeDoc.code },
+        ];
+      } else {
+        filter.supermarket = requestedStoreId;
+      }
+    } else if (requestedStoreCode && requestedStoreCode !== "all" && requestedStoreCode !== "ALL" && requestedStoreCode !== "DEFAULT") {
+      filter.supermarketCode = String(requestedStoreCode).toUpperCase();
+    }
+
+    if (req.query.category && req.query.category !== "all" && req.query.category !== "All Categories") {
+      filter.category = req.query.category;
+    }
+
+    if (req.query.search && req.query.search.trim()) {
+      const q = req.query.search.trim();
+      const regex = new RegExp(q, "i");
+      filter.$and = filter.$and || [];
+      filter.$and.push({
+        $or: [
+          { name: regex },
+          { brand: regex },
+          { barcode: regex },
+          { category: regex },
+        ],
+      });
     }
 
     const products = await Product.find(filter).sort({ createdAt: -1 });

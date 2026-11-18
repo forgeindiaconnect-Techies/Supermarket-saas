@@ -7,29 +7,40 @@ const ChatMessage = require("../models/ChatMessage");
 const PlatformNotification = require("../models/PlatformNotification");
 const DeletedRecord = require("../models/DeletedRecord");
 
-async function seedSaaSPlatformData() {
+async function ensureSuperAdminUser() {
   try {
-    // =========================================================================
-    // 1. ENSURE PLATFORM SUPER ADMIN (admin / Admin@123)
-    // =========================================================================
-    let superAdmin = await User.findOne({ username: "admin" });
+    let superAdmin = await User.findOne({
+      $or: [{ username: "admin" }, { role: "SUPER_ADMIN" }, { email: "admin" }],
+    });
     if (!superAdmin) {
       superAdmin = await User.create({
         name: "Super Admin",
         username: "admin",
-        email: "superadmin@grocerease.store",
-        password: "Admin@123",
+        email: "admin",
+        password: "admin",
         role: "SUPER_ADMIN",
         status: "Active",
       });
-      console.log("✓ Created Platform Super Admin: admin / Admin@123");
+      console.log("✓ Created Platform Super Admin: admin / admin");
     } else {
       superAdmin.name = "Super Admin";
+      superAdmin.username = "admin";
       superAdmin.role = "SUPER_ADMIN";
-      superAdmin.email = "superadmin@grocerease.com";
-      superAdmin.password = "Admin@123";
+      superAdmin.email = "admin";
+      superAdmin.password = "admin";
       await superAdmin.save();
+      console.log("✓ Verified Platform Super Admin: admin / admin");
     }
+    return superAdmin;
+  } catch (err) {
+    console.error("Super Admin user ensure error:", err.message);
+  }
+}
+
+async function seedSaaSPlatformData() {
+  try {
+    // 1. ENSURE PLATFORM SUPER ADMIN (admin / Admin 123)
+    await ensureSuperAdminUser();
 
     // =========================================================================
     // PERMANENT DELETION PROTECTION GUARD:
@@ -782,121 +793,6 @@ async function seedSaaSPlatformData() {
       }
     }
 
-    // =========================================================================
-    // 9. ENSURE 8 REALISTIC PLATFORM NOTIFICATIONS (Matching Localhost Badge 8)
-    // =========================================================================
-    const notifCount = await PlatformNotification.countDocuments();
-    if (notifCount < 8) {
-      const stores = await Supermarket.find();
-      const s1 = stores.find((s) => s.code === "STR-001") || stores[0];
-      const s2 = stores.find((s) => s.code === "STR-002") || stores[1] || stores[0];
-      const s3 = stores.find((s) => s.code === "SM-7087") || stores[2] || stores[0];
-      const s4 = stores.find((s) => s.code === "STR-003") || stores[3] || stores[0];
-
-      const platformNotifs = [
-        {
-          title: "New Supermarket Onboarded",
-          type: "NEW_REGISTRATION",
-          supermarket: s4?._id,
-          supermarketName: s4?.name || "24/7 Freshmart",
-          supermarketCode: s4?.code || "STR-003",
-          message: 'Supermarket "24/7 Freshmart" (STR-003) registered with Basic Plan.',
-          color: "green",
-          isRead: false,
-          actionUrl: "/super-admin/supermarkets",
-          createdAt: new Date(Date.now() - 3600000 * 2),
-        },
-        {
-          title: "Subscription Renewal Notice Sent",
-          type: "EMAIL_SENT",
-          supermarket: s1?._id,
-          supermarketName: s1?.name || "GrocerEase Supermarket",
-          supermarketCode: s1?.code || "STR-001",
-          message: "Automated renewal notice dispatched to poojasree@gmail.com via Brevo SMTP.",
-          color: "blue",
-          isRead: false,
-          actionUrl: "/super-admin/plans",
-          createdAt: new Date(Date.now() - 3600000 * 5),
-        },
-        {
-          title: "Subscription Active",
-          type: "SUBSCRIPTION_RENEWED",
-          supermarket: s2?._id,
-          supermarketName: s2?.name || "FreshMart Supermarket",
-          supermarketCode: s2?.code || "STR-002",
-          message: "Professional plan renewed successfully for FreshMart Supermarket.",
-          color: "green",
-          isRead: false,
-          actionUrl: "/super-admin/plans",
-          createdAt: new Date(Date.now() - 3600000 * 8),
-        },
-        {
-          title: "New Supermarket Onboarded",
-          type: "NEW_REGISTRATION",
-          supermarket: s3?._id,
-          supermarketName: s3?.name || "Akshaya Supermarket",
-          supermarketCode: s3?.code || "SM-7087",
-          message: 'Supermarket "Akshaya" (SM-7087) registered with Basic Plan.',
-          color: "green",
-          isRead: false,
-          actionUrl: "/super-admin/supermarkets",
-          createdAt: new Date(Date.now() - 3600000 * 12),
-        },
-        {
-          title: "Trial Period Active",
-          type: "TRIAL_EXPIRING",
-          supermarket: s3?._id,
-          supermarketName: s3?.name || "Akshaya Supermarket",
-          supermarketCode: s3?.code || "SM-7087",
-          message: "Akshaya Supermarket has 18 days remaining on Basic subscription.",
-          color: "orange",
-          isRead: false,
-          actionUrl: "/super-admin/plans",
-          createdAt: new Date(Date.now() - 3600000 * 16),
-        },
-        {
-          title: "IoT Turnstile Gateway Online",
-          type: "SYSTEM",
-          supermarket: s1?._id,
-          supermarketName: s1?.name || "GrocerEase Supermarket",
-          supermarketCode: s1?.code || "STR-001",
-          message: "4 Smart QR exit turnstile gates verified and online.",
-          color: "green",
-          isRead: false,
-          actionUrl: "/super-admin/supermarkets",
-          createdAt: new Date(Date.now() - 3600000 * 20),
-        },
-        {
-          title: "Subscription Renewal Notice Sent",
-          type: "EMAIL_SENT",
-          supermarket: s2?._id,
-          supermarketName: s2?.name || "FreshMart Supermarket",
-          supermarketCode: s2?.code || "STR-002",
-          message: "Subscription statement generated and sent to storeb@gmail.com.",
-          color: "blue",
-          isRead: false,
-          actionUrl: "/super-admin/plans",
-          createdAt: new Date(Date.now() - 3600000 * 24),
-        },
-        {
-          title: "Platform Security Audit Passed",
-          type: "SYSTEM",
-          supermarket: s1?._id,
-          supermarketName: s1?.name || "GrocerEase Supermarket",
-          supermarketCode: s1?.code || "STR-001",
-          message: "Cryptographic tenant boundary checks passed with 100% isolation.",
-          color: "green",
-          isRead: false,
-          actionUrl: "/super-admin/dashboard",
-          createdAt: new Date(Date.now() - 3600000 * 28),
-        },
-      ];
-
-      await PlatformNotification.deleteMany({});
-      await PlatformNotification.insertMany(platformNotifs);
-      console.log("✓ Seeded 8 platform notifications (matching localhost badge 8).");
-    }
-
     // Mark initial seed as complete so it is never re-run
     await DeletedRecord.create({
       entityType: "SYSTEM",
@@ -905,7 +801,7 @@ async function seedSaaSPlatformData() {
     });
 
     console.log("✓ Multi-Tenant SaaS platform seeding complete:");
-    console.log("  - Super Admin: admin / Admin@123");
+    console.log("  - Super Admin: admin / Admin 123");
     console.log("  - Supermarket 1 (STR-001): pooja / pooja@123 (Pooja V - Enterprise)");
     console.log("  - Supermarket 2 (STR-002): storeb / StoreB@123 (Rohan Gupta - Professional)");
     console.log("  - Supermarket 3 (SM-7087): akshaya / Akshaya@123 (Akshaya Admin - Basic)");
@@ -915,4 +811,4 @@ async function seedSaaSPlatformData() {
   }
 }
 
-module.exports = { seedSaaSPlatformData };
+module.exports = { seedSaaSPlatformData, ensureSuperAdminUser };

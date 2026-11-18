@@ -180,22 +180,44 @@ exports.checkout = async (req, res) => {
     }
 
     // Look up the store to get canonical name and code
+    let verifiedStore = null;
     if (resolvedSupermarketId) {
       try {
-        const store = await Supermarket.findById(resolvedSupermarketId);
-        if (store) {
-          resolvedSupermarketId = store._id.toString();
-          resolvedSupermarketCode = store.code;
-          resolvedSupermarketName = store.name;
-        }
+        verifiedStore = await Supermarket.findById(resolvedSupermarketId);
       } catch (_) {}
     }
+    if (!verifiedStore && resolvedSupermarketCode) {
+      verifiedStore = await Supermarket.findOne({ code: String(resolvedSupermarketCode).toUpperCase() });
+    }
 
-    // Fallback if still unresolved
-    if (!resolvedSupermarketId && req.supermarketId) {
+    if (verifiedStore) {
+      resolvedSupermarketId = verifiedStore._id.toString();
+      resolvedSupermarketCode = verifiedStore.code;
+      resolvedSupermarketName = verifiedStore.name;
+    } else if (req.supermarketId) {
       resolvedSupermarketId = req.supermarketId;
       resolvedSupermarketCode = req.supermarketCode;
       resolvedSupermarketName = req.supermarketName;
+    }
+
+    // Strict Super Admin Online / Offline availability validation
+    const purchaseMode = String(req.body?.purchaseMode || req.headers["x-purchase-mode"] || "OFFLINE").toUpperCase();
+    if (verifiedStore) {
+      if (purchaseMode === "ONLINE") {
+        if (verifiedStore.onlineAvailable !== true) {
+          return res.status(403).json({
+            success: false,
+            message: "This supermarket does not currently support Online Purchase. Please choose an available option.",
+          });
+        }
+      } else {
+        if (verifiedStore.offlineAvailable !== true) {
+          return res.status(403).json({
+            success: false,
+            message: "This supermarket does not currently support Offline Purchase. Please choose an available option.",
+          });
+        }
+      }
     }
 
     const rawCustomerPhone = (customer?.phone || "").replace(/\D/g, "").slice(-10);
@@ -212,6 +234,7 @@ exports.checkout = async (req, res) => {
       paymentMethod,
       paymentStatus,
       paymentId,
+      purchaseMode,
       customer: {
         name: customer?.name || "Mobile Shopper",
         phone: cleanCustomerPhone,
@@ -225,20 +248,17 @@ exports.checkout = async (req, res) => {
       supermarketName: resolvedSupermarketName || "GrocerEase Supermarket",
     });
 
-    // 5. Log Cart completed strictly scoped to this supermarket
+    // 5. Clean up temporary scanning cart activity sessions for this customer upon order completion
     try {
-      await CartActivity.create({
-        sessionId: customer?.phone || "mobile-shopper",
-        customerName: customer?.name || "Mobile Shopper",
-        productName: `Completed Order (${totalItems} items)`,
-        quantity: totalItems,
-        price: totalAmount,
-        action: "cleared",
-        totalCartItems: 0,
-        totalCartAmount: 0,
-        supermarket: resolvedSupermarketId || null,
-        supermarketCode: resolvedSupermarketCode || "DEFAULT",
-      });
+      if (rawCustomerPhone) {
+        await CartActivity.deleteMany({
+          supermarket: resolvedSupermarketId || null,
+          $or: [
+            { sessionId: { $regex: rawCustomerPhone } },
+            { customerName: customer?.name },
+          ],
+        });
+      }
     } catch (_) { }
 
     try {
@@ -451,14 +471,31 @@ exports.getOrders = async (req, res) => {
       } else {
         return res.status(200).json({ success: true, count: 0, orders: [] });
       }
-    } else if (req.supermarketId) {
-      const orConditions = [{ supermarket: req.supermarketId }];
-      if (req.supermarketCode && req.supermarketCode !== "DEFAULT" && req.supermarketCode !== "ALL") {
-        orConditions.push({ supermarketCode: req.supermarketCode });
+    } else if (req.supermarketId || req.query.supermarketId || req.headers["x-supermarket-id"]) {
+      const targetStoreId = req.supermarketId || req.query.supermarketId || req.headers["x-supermarket-id"];
+      const targetStoreCode = req.supermarketCode || req.query.supermarketCode || req.headers["x-supermarket-code"];
+      const orConditions = [];
+      if (targetStoreId && targetStoreId !== "all" && targetStoreId !== "ALL") {
+        orConditions.push({ supermarket: targetStoreId });
       }
-      filter.$or = orConditions;
+      if (targetStoreCode && targetStoreCode !== "DEFAULT" && targetStoreCode !== "ALL") {
+        orConditions.push({ supermarketCode: targetStoreCode });
+      }
+      if (orConditions.length > 0) {
+        filter.$or = orConditions;
+      }
+    } else if (req.query.phone || req.headers["x-customer-phone"]) {
+      const cleanPhone = (req.query.phone || req.headers["x-customer-phone"]).replace(/\D/g, "").slice(-10);
+      filter["customer.phone"] = { $regex: cleanPhone };
     } else if (!req.user || req.user.role !== "SUPER_ADMIN") {
       return res.status(200).json({ success: true, count: 0, orders: [] });
+    }
+
+    // Customer phone filter if provided
+    const queryPhone = req.query.phone || req.headers["x-customer-phone"];
+    if (queryPhone) {
+      const cleanPhone = queryPhone.replace(/\D/g, "").slice(-10);
+      filter["customer.phone"] = { $regex: cleanPhone };
     }
 
     const orders = await Order.find(filter).sort({ createdAt: -1 });

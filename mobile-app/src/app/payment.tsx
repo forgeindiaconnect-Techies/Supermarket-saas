@@ -82,11 +82,20 @@ export default function SecurePaymentScreen() {
     customerPhone?: string;
     customerAddress?: string;
   }>();
-  const { cart, totalAmount, clearCart, addRecentOrder, customerInfo } = useCart();
+  const {
+    cart,
+    totalAmount,
+    clearCart,
+    addRecentOrder,
+    customerInfo,
+    selectedSupermarket,
+    purchaseMode,
+  } = useCart();
 
   // Resolved Customer Details (checking route params and CartContext)
   const effectiveName = (customerName || customerInfo?.name || "").trim();
-  const effectivePhone = (customerPhone || customerInfo?.phone || "").replace(/\D/g, "");
+  const rawPhoneDigits = (customerPhone || customerInfo?.phone || "").replace(/\D/g, "");
+  const effectivePhone = rawPhoneDigits.length >= 10 ? rawPhoneDigits.slice(-10) : rawPhoneDigits;
   const effectiveAddress = (customerAddress || customerInfo?.address || "").trim();
 
   const [secondsLeft, setSecondsLeft] = useState(300); // 5 minutes countdown
@@ -158,8 +167,9 @@ export default function SecurePaymentScreen() {
     try {
       if (!API_URL) throw new Error("API URL missing in configuration.");
 
-      const resolvedStoreId = cart[0]?.supermarket ? String(cart[0].supermarket) : undefined;
-      const resolvedStoreCode = cart[0]?.supermarketCode ? String(cart[0].supermarketCode) : undefined;
+      const resolvedStoreId = selectedSupermarket?._id || (cart[0]?.supermarket ? String(cart[0].supermarket) : undefined);
+      const resolvedStoreCode = selectedSupermarket?.code || (cart[0]?.supermarketCode ? String(cart[0].supermarketCode) : undefined);
+      const currentMode = (purchaseMode || "OFFLINE").toUpperCase();
 
       const payload = {
         items: cart.map((it) => ({
@@ -168,6 +178,7 @@ export default function SecurePaymentScreen() {
           name: it.name,
         })),
         paymentMethod: method === "Card" ? "Card" : "UPI",
+        purchaseMode: currentMode,
         customer: {
           name: effectiveName,
           phone: effectivePhone,
@@ -179,6 +190,7 @@ export default function SecurePaymentScreen() {
 
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
+        "x-purchase-mode": currentMode,
       };
       if (resolvedStoreId) headers["x-supermarket-id"] = resolvedStoreId;
       if (resolvedStoreCode) headers["x-supermarket-code"] = resolvedStoreCode;

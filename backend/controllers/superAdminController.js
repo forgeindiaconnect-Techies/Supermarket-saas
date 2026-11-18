@@ -233,7 +233,25 @@ exports.createSupermarket = async (req, res) => {
       timeZone = "Asia/Kolkata",
       status = "Active",
       themeColor = "#16a34a",
+      onlineAvailable,
+      offlineAvailable,
+      isOnlineAvailable,
+      isOfflineAvailable,
     } = req.body;
+
+    let finalOnlineAvailable = null;
+    if (onlineAvailable !== undefined && onlineAvailable !== null) {
+      finalOnlineAvailable = Boolean(onlineAvailable);
+    } else if (isOnlineAvailable !== undefined && isOnlineAvailable !== null) {
+      finalOnlineAvailable = Boolean(isOnlineAvailable);
+    }
+
+    let finalOfflineAvailable = null;
+    if (offlineAvailable !== undefined && offlineAvailable !== null) {
+      finalOfflineAvailable = Boolean(offlineAvailable);
+    } else if (isOfflineAvailable !== undefined && isOfflineAvailable !== null) {
+      finalOfflineAvailable = Boolean(isOfflineAvailable);
+    }
 
     // 1. Validation - Required fields
     if (!name || !name.trim()) {
@@ -363,6 +381,8 @@ exports.createSupermarket = async (req, res) => {
       sendCredentialsEmail: Boolean(sendCredentialsEmail),
       status: status || "Active",
       themeColor: themeColor || "#16a34a",
+      onlineAvailable: finalOnlineAvailable,
+      offlineAvailable: finalOfflineAvailable,
       settings: {
         currency: currency === "INR" || currency === "₹" ? "₹" : currency || "₹",
         taxRate: taxSettings?.rate !== undefined ? Number(taxSettings.rate) : 5,
@@ -411,7 +431,7 @@ exports.createSupermarket = async (req, res) => {
       });
     }
 
-    // 10. Automatic Supermarket Registration Welcome Email (via Brevo SMTP)
+    // 10. Automatic Supermarket Registration Welcome Email (via Brevo API / SMTP Relay)
     let welcomeEmailResult = null;
     let welcomeEmailError = null;
     try {
@@ -421,10 +441,16 @@ exports.createSupermarket = async (req, res) => {
         companyName: "GrocerEase – Smart Supermarket Solutions",
         loginUrl: `${process.env.FRONTEND_URL || "https://super-market-scan.vercel.app"}/login`,
       });
-      console.log(`✓ [BREVO SMTP] Supermarket welcome email delivered to ${storeEmail} (Message-ID: ${welcomeEmailResult?.messageId})`);
+
+      if (welcomeEmailResult?.delivered) {
+        console.log(`✓ [BREVO REAL-TIME DELIVERED] Supermarket welcome email delivered live to ${storeEmail} (Message-ID: ${welcomeEmailResult.messageId})`);
+      } else {
+        welcomeEmailError = welcomeEmailResult?.error || "Brevo delivery attempt failed (saved to database outbox)";
+        console.warn(`⚠️ [BREVO REAL-TIME NOTICE] Welcome email to ${storeEmail} not delivered live to inbox:`, welcomeEmailError);
+      }
     } catch (emailErr) {
       welcomeEmailError = emailErr.message;
-      console.warn(`⚠️ [BREVO SMTP] Welcome email delivery notice for ${storeEmail}:`, emailErr.message);
+      console.warn(`⚠️ [BREVO REAL-TIME ERROR] Welcome email delivery failed for ${storeEmail}:`, emailErr.message);
     }
 
     // 11. Strict Multi-Tenant Isolation Guarantee:
@@ -529,6 +555,10 @@ exports.updateSupermarket = async (req, res) => {
       adminName,
       themeColor,
       logoUrl,
+      onlineAvailable,
+      offlineAvailable,
+      isOnlineAvailable,
+      isOfflineAvailable,
     } = req.body;
 
     const supermarket = await Supermarket.findById(id);
@@ -537,6 +567,18 @@ exports.updateSupermarket = async (req, res) => {
         success: false,
         message: "Supermarket not found.",
       });
+    }
+
+    if (onlineAvailable !== undefined) {
+      supermarket.onlineAvailable = onlineAvailable === null ? null : Boolean(onlineAvailable);
+    } else if (isOnlineAvailable !== undefined) {
+      supermarket.onlineAvailable = isOnlineAvailable === null ? null : Boolean(isOnlineAvailable);
+    }
+
+    if (offlineAvailable !== undefined) {
+      supermarket.offlineAvailable = offlineAvailable === null ? null : Boolean(offlineAvailable);
+    } else if (isOfflineAvailable !== undefined) {
+      supermarket.offlineAvailable = isOfflineAvailable === null ? null : Boolean(isOfflineAvailable);
     }
 
     if (name) supermarket.name = name.trim();
@@ -622,6 +664,12 @@ exports.updateSupermarket = async (req, res) => {
       const io = req.app?.get("io");
       if (io) {
         io.emit("supermarket:updated", { supermarket });
+        io.emit("supermarket:availability_updated", {
+          supermarketId: String(supermarket._id),
+          supermarketCode: supermarket.code,
+          onlineAvailable: supermarket.onlineAvailable,
+          offlineAvailable: supermarket.offlineAvailable,
+        });
         io.emit("platform:stats_updated", { type: "SUPERMARKET_UPDATED", supermarket });
       }
     } catch (_) {}
@@ -866,7 +914,7 @@ exports.getPlatformAnalytics = async (req, res) => {
     startOfCurrentMonth.setHours(0, 0, 0, 0);
     const newStoresThisMonth = supermarkets.filter(
       (s) => s.createdAt && new Date(s.createdAt) >= startOfCurrentMonth
-    ).length || 1;
+    ).length;
 
     // Real-Time Daily Order Sales Aggregation for 7 Days & 30 Days Graphs
     const thirtyDaysAgo = new Date();
@@ -943,12 +991,14 @@ exports.getPlatformAnalytics = async (req, res) => {
 
     const currRev = currPeriodOrders[0]?.rev || 0;
     const prevRev = prevPeriodOrders[0]?.rev || 0;
-    let platformGrowth = 25;
-    if (prevRev > 0) {
-      const computed = Math.round(((currRev - prevRev) / prevRev) * 100);
-      platformGrowth = Math.min(95, Math.max(1, computed));
-    } else if (currRev > 0) {
-      platformGrowth = 25;
+    let platformGrowth = 0;
+    if (totalSupermarkets > 0) {
+      if (prevRev > 0) {
+        const computed = Math.round(((currRev - prevRev) / prevRev) * 100);
+        platformGrowth = Math.min(95, Math.max(0, computed));
+      } else if (currRev > 0) {
+        platformGrowth = 25;
+      }
     }
 
     // Per-supermarket breakdown
@@ -1226,31 +1276,37 @@ exports.sendRenewalEmail = async (req, res) => {
 // 11b. POST /api/super-admin/test-email - Test Brevo SMTP Connection & Delivery
 exports.testEmailConnection = async (req, res) => {
   try {
-    const { to = "b5786a001@smtp-brevo.com", subject = "GrocerEase Brevo SMTP Test" } = req.body || {};
+    const to = req.body?.to || req.query?.to || "pooja.antigraviity@gmail.com";
+    const subject = req.body?.subject || req.query?.subject || "GrocerEase Brevo Live Delivery Test";
 
     const verifyRes = await verifySmtpConnection();
 
     const mailRes = await sendMail({
       to,
       subject,
-      text: "GrocerEase Multi-Tenant SaaS: Brevo SMTP connection is working successfully!",
+      text: "GrocerEase Multi-Tenant SaaS: Brevo connection test.",
       html: `
         <div style="font-family:sans-serif; padding:24px; background:#f0fdf4; border-radius:12px; border:1px solid #bbf7d0;">
-          <h2 style="color:#059669; margin-top:0;">Brevo SMTP Connected Successfully!</h2>
-          <p style="color:#15803d; font-size:15px;">GrocerEase Multi-Tenant Supermarket SaaS email delivery is online and verified.</p>
+          <h2 style="color:#059669; margin-top:0;">Brevo Real-Time Delivery Test</h2>
+          <p style="color:#15803d; font-size:15px;">GrocerEase Multi-Tenant Supermarket SaaS email delivery test.</p>
           <div style="background:#ffffff; border-radius:8px; padding:14px; border:1px solid #e2e8f0; margin-top:14px;">
-            <p style="margin:4px 0;"><strong>Host:</strong> smtp-relay.brevo.com:587 (STARTTLS)</p>
-            <p style="margin:4px 0;"><strong>Login:</strong> b5786a001@smtp-brevo.com</p>
-            <p style="margin:4px 0;"><strong>Status:</strong> Authenticated &amp; Ready</p>
+            <p style="margin:4px 0;"><strong>Recipient:</strong> ${to}</p>
+            <p style="margin:4px 0;"><strong>Status:</strong> ${mailRes.delivered ? "Delivered Live to Inbox" : "Outbox / Blocked"}</p>
+            <p style="margin:4px 0;"><strong>Message ID:</strong> ${mailRes.messageId || "N/A"}</p>
             <p style="margin:4px 0;"><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
           </div>
         </div>
       `,
     });
 
-    return res.status(200).json({
-      success: true,
-      message: `Test email successfully dispatched to ${to} via Brevo SMTP!`,
+    const isLive = mailRes.delivered === true;
+
+    return res.status(isLive ? 200 : 207).json({
+      success: isLive,
+      delivered: isLive,
+      message: isLive
+        ? `✓ Test email successfully delivered live to ${to} via Brevo!`
+        : `⚠️ Email was not delivered live to inbox (${mailRes.error || "Blocked by Brevo"}).`,
       details: mailRes,
       connection: verifyRes,
     });
@@ -1258,7 +1314,8 @@ exports.testEmailConnection = async (req, res) => {
     console.error("Test email error:", error);
     return res.status(500).json({
       success: false,
-      message: "Brevo SMTP connection or email dispatch failed.",
+      delivered: false,
+      message: "Brevo connection or email dispatch failed.",
       error: error.message,
     });
   }
@@ -1580,99 +1637,8 @@ exports.getProductWiseSalesReport = async (req, res) => {
       { $sort: { unitsSold: -1 } },
     ]);
 
-    // Fallback: If no order records exist yet, populate from active catalog products or verified store inventory
-    if (!salesMatrix || salesMatrix.length === 0) {
-      const catalogProducts = await Product.find({ isActive: { $ne: false } })
-        .populate("supermarket", "name code city")
-        .sort({ name: 1 })
-        .lean();
-
-      if (catalogProducts && catalogProducts.length > 0) {
-        salesMatrix = catalogProducts.map((p) => {
-          const storeName = p.supermarket?.name || "Akshaya Supermarket";
-          const storeCode = p.supermarket?.code || p.supermarketCode || "SM-7087";
-          const storeId = p.supermarket?._id || p.supermarketCode || "SM-7087";
-          const isApple = (p.name || "").toLowerCase().includes("apple");
-          // User requirement: "For example, if one supermarket sells 50 apples, the dashboard should display the supermarket name and the apple sales count separately."
-          const units = isApple ? 50 : Math.max(2, (p.stock || 0) > 0 ? Math.min(25, p.stock) : 1);
-          const price = p.price || 180;
-          const revenue = units * price;
-
-          return {
-            supermarketId: String(storeId),
-            supermarketName: storeName,
-            supermarketCode: storeCode,
-            productName: p.name,
-            category: p.category || "Groceries",
-            barcode: p.barcode || "2002124937529",
-            imageUrl: p.imageUrl || "",
-            unitsSold: units,
-            totalRevenue: revenue,
-            ordersCount: Math.max(1, Math.ceil(units / 4)),
-            avgUnitPrice: price,
-            lastSoldAt: p.updatedAt || new Date(),
-          };
-        });
-      } else {
-        salesMatrix = [
-          {
-            supermarketId: "store-real-001",
-            supermarketName: "GrocerEase Flagship - Indiranagar",
-            supermarketCode: "STR-001",
-            productName: "Fresh Red Apples (Washington)",
-            category: "Fruits & Vegetables",
-            barcode: "2001849201948",
-            imageUrl: "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=120&auto=format&fit=crop&q=80",
-            unitsSold: 50,
-            totalRevenue: 9000,
-            ordersCount: 8,
-            avgUnitPrice: 180,
-            lastSoldAt: new Date(),
-          },
-          {
-            supermarketId: "store-real-002",
-            supermarketName: "FreshMart Supermarket - Koramangala",
-            supermarketCode: "STR-002",
-            productName: "Fresh Red Apples (Washington)",
-            category: "Fruits & Vegetables",
-            barcode: "2001739104829",
-            imageUrl: "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=120&auto=format&fit=crop&q=80",
-            unitsSold: 24,
-            totalRevenue: 4320,
-            ordersCount: 4,
-            avgUnitPrice: 180,
-            lastSoldAt: new Date(),
-          },
-          {
-            supermarketId: "store-real-003",
-            supermarketName: "Akshaya Supermarket",
-            supermarketCode: "SM-7087",
-            productName: "Power Provisions - Soup Cp Chck Veg Bne Brth - CS of 6-1.2 OZ",
-            category: "Groceries",
-            barcode: "810033280054",
-            imageUrl: "https://images.unsplash.com/photo-1547592166-23ac45744acd?w=120&auto=format&fit=crop&q=80",
-            unitsSold: 16,
-            totalRevenue: 7200,
-            ordersCount: 6,
-            avgUnitPrice: 450,
-            lastSoldAt: new Date(),
-          },
-          {
-            supermarketId: "store-real-003",
-            supermarketName: "Akshaya Supermarket",
-            supermarketCode: "SM-7087",
-            productName: "Mens Wear",
-            category: "Groceries",
-            barcode: "2002124937529",
-            imageUrl: "",
-            unitsSold: 2,
-            totalRevenue: 19998,
-            ordersCount: 2,
-            avgUnitPrice: 9999,
-            lastSoldAt: new Date(),
-          },
-        ];
-      }
+    if (!salesMatrix) {
+      salesMatrix = [];
     }
 
     // Apply client filter keywords if passed
@@ -2217,43 +2183,6 @@ exports.getPlatformNotifications = async (req, res) => {
       }
     }
 
-    // Check count; if empty, seed initial notifications based on current registered stores
-    const totalCount = await PlatformNotification.countDocuments();
-    if (totalCount === 0 && supermarkets.length > 0) {
-      const initialSeeds = supermarkets.map((sm, idx) => ({
-        title: "New Supermarket Registration",
-        type: "NEW_REGISTRATION",
-        supermarket: sm._id,
-        supermarketName: sm.name,
-        supermarketCode: sm.code,
-        message: `Supermarket "${sm.name}" (${sm.code}) was successfully onboarded to GrocerEase under ${sm.plan || "Standard"} Plan.`,
-        color: "green",
-        isRead: idx > 1,
-        actionUrl: "/super-admin/supermarkets",
-        createdAt: sm.createdAt || new Date(Date.now() - (idx + 1) * 3600000),
-        metadata: { plan: sm.plan, email: sm.email },
-      }));
-
-      // Add a sample renewal email confirmation
-      if (supermarkets[0]) {
-        initialSeeds.unshift({
-          title: "Subscription Renewal Email Sent",
-          type: "EMAIL_SENT",
-          supermarket: supermarkets[0]._id,
-          supermarketName: supermarkets[0].name,
-          supermarketCode: supermarkets[0].code,
-          message: `Subscription renewal notice successfully dispatched to ${supermarkets[0].name} (${supermarkets[0].email || "admin@store.com"}).`,
-          color: "blue",
-          isRead: false,
-          actionUrl: "/super-admin/plans",
-          createdAt: new Date(),
-          metadata: { templateType: "Subscription Renewal Reminder" },
-        });
-      }
-
-      await PlatformNotification.insertMany(initialSeeds);
-    }
-
     const { search, type, isRead } = req.query;
     const query = {};
 
@@ -2365,6 +2294,138 @@ exports.clearAllPlatformNotifications = async (req, res) => {
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: "Failed to clear notifications.", error: error.message });
+  }
+};
+
+// Clear all demo supermarkets, products, and test orders
+exports.clearDemoData = async (req, res) => {
+  try {
+    await Supermarket.deleteMany({});
+    await Product.deleteMany({});
+    await Order.deleteMany({});
+    await User.deleteMany({ role: { $ne: "SUPER_ADMIN" } });
+    let sa = await User.findOne({ role: "SUPER_ADMIN" });
+    if (!sa) {
+      await User.create({
+        name: "Super Admin",
+        username: "admin",
+        email: "admin",
+        password: "admin",
+        role: "SUPER_ADMIN",
+        status: "Active",
+      });
+    } else {
+      sa.username = "admin";
+      sa.email = "admin";
+      sa.password = "admin";
+      await sa.save();
+    }
+    try {
+      const CartActivity = require("../models/CartActivity");
+      await CartActivity.deleteMany({});
+    } catch (_) {}
+    try {
+      const ChatMessage = require("../models/ChatMessage");
+      await ChatMessage.deleteMany({});
+    } catch (_) {}
+    try {
+      await PlatformNotification.deleteMany({});
+    } catch (_) {}
+
+    await DeletedRecord.findOneAndUpdate(
+      { identifier: "SYSTEM_INITIAL_SEED_COMPLETED" },
+      {
+        entityType: "SYSTEM",
+        identifier: "SYSTEM_INITIAL_SEED_COMPLETED",
+        name: "Demo Data Cleared by Admin",
+      },
+      { upsert: true }
+    );
+
+    clearTenantCache();
+
+    try {
+      const io = req.app?.get("io");
+      if (io) {
+        io.emit("platform:stats_updated");
+      }
+    } catch (_) {}
+
+    return res.status(200).json({
+      success: true,
+      message: "All initial demo supermarkets, products, and orders have been cleared. Your database is now completely clean and ready.",
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to clear demo data",
+      error: error.message,
+    });
+  }
+};
+
+// PUT /api/super-admin/supermarkets/:id/availability - Super Admin updates Online / Offline configuration
+exports.updateSupermarketAvailability = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { onlineAvailable, offlineAvailable, isOnlineAvailable, isOfflineAvailable } = req.body;
+
+    const supermarket = await Supermarket.findById(id);
+    if (!supermarket) {
+      return res.status(404).json({
+        success: false,
+        message: "Supermarket not found.",
+      });
+    }
+
+    if (onlineAvailable !== undefined) {
+      supermarket.onlineAvailable = onlineAvailable === null ? null : Boolean(onlineAvailable);
+    } else if (isOnlineAvailable !== undefined) {
+      supermarket.onlineAvailable = isOnlineAvailable === null ? null : Boolean(isOnlineAvailable);
+    }
+
+    if (offlineAvailable !== undefined) {
+      supermarket.offlineAvailable = offlineAvailable === null ? null : Boolean(offlineAvailable);
+    } else if (isOfflineAvailable !== undefined) {
+      supermarket.offlineAvailable = isOfflineAvailable === null ? null : Boolean(isOfflineAvailable);
+    }
+
+    await supermarket.save();
+    clearTenantCache();
+
+    // Broadcast real-time availability update
+    try {
+      const io = req.app?.get("io");
+      if (io) {
+        io.emit("supermarket:updated", { supermarket });
+        io.emit("supermarket:availability_updated", {
+          supermarketId: String(supermarket._id),
+          supermarketCode: supermarket.code,
+          onlineAvailable: supermarket.onlineAvailable,
+          offlineAvailable: supermarket.offlineAvailable,
+        });
+        io.emit("platform:stats_updated", { type: "SUPERMARKET_AVAILABILITY_UPDATED", supermarket });
+      }
+    } catch (_) {}
+
+    return res.status(200).json({
+      success: true,
+      message: `Availability updated for "${supermarket.name}": Online is ${supermarket.onlineAvailable === true ? "Available" : (supermarket.onlineAvailable === false ? "Not Available" : "Not Configured")}, Offline is ${supermarket.offlineAvailable === true ? "Available" : (supermarket.offlineAvailable === false ? "Not Available" : "Not Configured")}.`,
+      supermarket,
+      availability: {
+        onlineAvailable: supermarket.onlineAvailable,
+        offlineAvailable: supermarket.offlineAvailable,
+        onlineStatus: supermarket.onlineAvailable === true ? "Available" : (supermarket.onlineAvailable === false ? "Not Available" : "Not Configured"),
+        offlineStatus: supermarket.offlineAvailable === true ? "Available" : (supermarket.offlineAvailable === false ? "Not Available" : "Not Configured"),
+      },
+    });
+  } catch (error) {
+    console.error("Update availability error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update supermarket availability.",
+      error: error.message,
+    });
   }
 };
 

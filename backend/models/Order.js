@@ -86,6 +86,12 @@ const orderSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    purchaseMode: {
+      type: String,
+      enum: ["ONLINE", "OFFLINE"],
+      default: "OFFLINE",
+      index: true,
+    },
     supermarket: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Supermarket",

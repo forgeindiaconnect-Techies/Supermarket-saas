@@ -1,0 +1,61 @@
+{
+  "timestamp": "2026-11-18T09:16:45.189Z",
+  "sendersStatus": 200,
+  "sendersError": null,
+  "accountStatus": 200,
+  "accountError": null,
+  "smtpRelayStatus": "FAILED",
+  "smtpLoginsTest": [
+    {
+      "user": "b5786a001@smtp-brevo.com",
+      "status": "FAILED",
+      "error": "Invalid login: 535 5.7.8 Authentication failed"
+    },
+    {
+      "user": "forgeindiaconnectfic@gmail.com",
+      "status": "FAILED",
+      "error": "Invalid login: 535 5.7.8 Authentication failed"
+    },
+    {
+      "user": "pooja.antigraviity@gmail.com",
+      "status": "FAILED",
+      "error": "Invalid login: 535 5.7.8 Authentication failed"
+    }
+  ],
+  "sendersCount": 6,
+  "senders": [
+    {
+      "email": "forgeindiaconnectfic@gmail.com",
+      "name": "CS",
+      "active": true
+    },
+    {
+      "email": "forgeindiaconnectfic@gmail.com",
+      "name": "ForgeIndiaConnect",
+      "active": true
+    },
+    {
+      "email": "forgeindiaconnectfic@gmail.com",
+      "name": "Restaurant Hub",
+      "active": true
+    },
+    {
+      "email": "forgeindiaconnectfic@gmail.com",
+      "name": "RestaurantHub",
+      "active": true
+    },
+    {
+      "email": "forgeindiaconnectfic@gmail.com",
+      "name": "Smartsociety",
+      "active": true
+    },
+    {
+      "email": "forgeindiaconnectfic@gmail.com",
+      "name": "BuildingApproval",
+      "active": true
+    }
+  ],
+  "accountEmail": "forgeindiaconnectfic@gmail.com",
+  "accountName": "FIC CONNECT",
+  "resolvedSender": "forgeindiaconnectfic@gmail.com"
+}

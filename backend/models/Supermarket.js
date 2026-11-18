@@ -168,6 +168,15 @@ const supermarketSchema = new mongoose.Schema(
       type: String,
       default: "#1455d9",
     },
+    // Purchase Mode Availability Configuration (Fixed by Super Admin)
+    onlineAvailable: {
+      type: Boolean,
+      default: null, // null = Not Configured
+    },
+    offlineAvailable: {
+      type: Boolean,
+      default: null, // null = Not Configured
+    },
     settings: {
       currency: { type: String, default: "₹" },
       taxRate: { type: Number, default: 5 },

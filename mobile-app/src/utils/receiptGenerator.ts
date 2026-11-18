@@ -32,7 +32,8 @@ export function buildSupermarketReceiptHtml(order: OrderRecord): string {
   const payStatus = order.paymentStatus || "Completed";
 
   const customerName = (order as any).customer?.name || "Customer Shopper";
-  const customerPhone = (order as any).customer?.phone ? String((order as any).customer.phone).replace(/\D/g, "") : "";
+  const rawPhoneDigits = (order as any).customer?.phone ? String((order as any).customer.phone).replace(/\D/g, "") : "";
+  const customerPhone = rawPhoneDigits.length >= 10 ? `+91 ${rawPhoneDigits.slice(-10)}` : (rawPhoneDigits ? `+91 ${rawPhoneDigits}` : "");
   const customerAddress = (order as any).customer?.address || "";
 
   const totalQty = items.reduce((sum, item) => sum + (item.quantity || 1), 0);
@@ -291,7 +292,7 @@ export function buildSupermarketReceiptHtml(order: OrderRecord): string {
 
             ${customerPhone ? `
             <div class="meta-label">Mobile Number:</div>
-            <div class="meta-value">+91 ${customerPhone}</div>
+            <div class="meta-value">${customerPhone}</div>
             ` : ""}
 
             ${customerAddress ? `

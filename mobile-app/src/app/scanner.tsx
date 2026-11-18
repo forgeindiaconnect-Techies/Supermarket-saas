@@ -14,12 +14,14 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { Theme } from "../constants/colors";
 import { API_URL, safeFetch } from "../constants/api";
+import { useCart } from "../context/CartContext";
 
 const { width } = Dimensions.get("window");
 const SCAN_BOX_SIZE = width * 0.76;
 
 export default function ScanProductScreen() {
   const router = useRouter();
+  const { selectedSupermarket } = useCart();
   const [permission, requestPermission] = useCameraPermissions();
   const [torch, setTorch] = useState(false);
   const [scanned, setScanned] = useState(false);
@@ -87,7 +89,13 @@ export default function ScanProductScreen() {
         endpoint = `${API_URL}/products/barcode/${encodeURIComponent(cleanCode)}`;
       }
 
-      const res = await safeFetch(endpoint, {}, 5000);
+      const headers: Record<string, string> = {};
+      if (selectedSupermarket?._id) {
+        headers["x-supermarket-id"] = selectedSupermarket._id;
+        headers["x-supermarket-code"] = selectedSupermarket.code || "";
+      }
+
+      const res = await safeFetch(endpoint, { headers }, 5000);
       const json = await res.json();
 
       if (res.ok && json.success && json.product) {

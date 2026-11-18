@@ -528,6 +528,32 @@ export default function RegisteredSupermarkets() {
                       <span className="sa-green-dot-pulse" />
                       {store.status || "Active"}
                     </span>
+                    <span
+                      style={{
+                        padding: "3px 9px",
+                        borderRadius: "6px",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        backgroundColor: store.onlineAvailable === true ? "#dcfce7" : store.onlineAvailable === false ? "#fee2e2" : "#f1f5f9",
+                        color: store.onlineAvailable === true ? "#15803d" : store.onlineAvailable === false ? "#b91c1c" : "#64748b",
+                        border: `1px solid ${store.onlineAvailable === true ? "#86efac" : store.onlineAvailable === false ? "#fca5a5" : "#cbd5e1"}`,
+                      }}
+                    >
+                      Online: {store.onlineAvailable === true ? "Available" : store.onlineAvailable === false ? "Not Available" : "Not Configured"}
+                    </span>
+                    <span
+                      style={{
+                        padding: "3px 9px",
+                        borderRadius: "6px",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        backgroundColor: store.offlineAvailable === true ? "#dcfce7" : store.offlineAvailable === false ? "#fee2e2" : "#f1f5f9",
+                        color: store.offlineAvailable === true ? "#15803d" : store.offlineAvailable === false ? "#b91c1c" : "#64748b",
+                        border: `1px solid ${store.offlineAvailable === true ? "#86efac" : store.offlineAvailable === false ? "#fca5a5" : "#cbd5e1"}`,
+                      }}
+                    >
+                      Offline: {store.offlineAvailable === true ? "Available" : store.offlineAvailable === false ? "Not Available" : "Not Configured"}
+                    </span>
                     <span className="sa-hero-meta-item">
                       <MapPin size={13} color="#16a34a" />
                       <span>Location: {store.city || "Bangalore"}, {store.state || "Karnataka"}</span>
@@ -1531,19 +1557,6 @@ export default function RegisteredSupermarkets() {
         </div>
 
         <div className="sa-page-header-actions">
-          <button
-            type="button"
-            className="sa-btn-secondary"
-            onClick={() => {
-              setLoadingList(true);
-              loadSupermarkets();
-              setTimeout(() => setLoadingList(false), 500);
-            }}
-          >
-            <RefreshCw size={15} className={loadingList ? "spin-icon" : ""} />
-            <span>Sync</span>
-          </button>
-
           <Link to="/super-admin/add-supermarket" className="sa-btn-primary">
             <PlusCircle size={16} />
             <span>Add Supermarket</span>
@@ -1719,6 +1732,34 @@ export default function RegisteredSupermarkets() {
                           <small style={{ color: "#64748B" }}>
                             {store.email || `${store.adminUsername}@store.com`}
                           </small>
+                          <div style={{ display: "flex", gap: "4px", marginTop: "3px" }}>
+                            <span
+                              style={{
+                                fontSize: "10px",
+                                padding: "1px 6px",
+                                borderRadius: "4px",
+                                fontWeight: 700,
+                                background: store.onlineAvailable === true ? "#dcfce7" : store.onlineAvailable === false ? "#fee2e2" : "#f1f5f9",
+                                color: store.onlineAvailable === true ? "#15803d" : store.onlineAvailable === false ? "#b91c1c" : "#64748b",
+                                border: `1px solid ${store.onlineAvailable === true ? "#86efac" : store.onlineAvailable === false ? "#fca5a5" : "#cbd5e1"}`,
+                              }}
+                            >
+                              Online: {store.onlineAvailable === true ? "Available" : store.onlineAvailable === false ? "Not Available" : "Not Configured"}
+                            </span>
+                            <span
+                              style={{
+                                fontSize: "10px",
+                                padding: "1px 6px",
+                                borderRadius: "4px",
+                                fontWeight: 700,
+                                background: store.offlineAvailable === true ? "#dcfce7" : store.offlineAvailable === false ? "#fee2e2" : "#f1f5f9",
+                                color: store.offlineAvailable === true ? "#15803d" : store.offlineAvailable === false ? "#b91c1c" : "#64748b",
+                                border: `1px solid ${store.offlineAvailable === true ? "#86efac" : store.offlineAvailable === false ? "#fca5a5" : "#cbd5e1"}`,
+                              }}
+                            >
+                              Offline: {store.offlineAvailable === true ? "Available" : store.offlineAvailable === false ? "Not Available" : "Not Configured"}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </td>

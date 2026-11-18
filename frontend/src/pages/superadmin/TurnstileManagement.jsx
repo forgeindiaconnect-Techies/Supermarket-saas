@@ -98,8 +98,31 @@ const DEMO_TURNSTILE_LOGS = [
 
 export default function TurnstileManagement() {
   const { supermarkets } = useAuth();
-  const [gates, setGates] = useState(DEMO_GATES);
-  const [logs, setLogs] = useState(DEMO_TURNSTILE_LOGS);
+  const [gates, setGates] = useState([]);
+  const [logs, setLogs] = useState([]);
+
+  useEffect(() => {
+    if (Array.isArray(supermarkets) && supermarkets.length > 0) {
+      const generatedGates = [];
+      supermarkets.forEach((sm) => {
+        generatedGates.push({
+          gateId: `GATE-01-${sm.code}`,
+          gateName: `${sm.name} Express Turnstile 1`,
+          supermarketName: sm.name,
+          supermarketCode: sm.code,
+          status: "Operational",
+          mode: "Autonomous QR Scanning",
+          todayPasses: 0,
+          lastPassTime: "Active & Listening",
+          firmware: "v2.4.1 IoT-Secure",
+        });
+      });
+      setGates(generatedGates);
+    } else {
+      setGates([]);
+      setLogs([]);
+    }
+  }, [supermarkets]);
 
   return (
     <div className="sa-page-container">
@@ -118,39 +141,51 @@ export default function TurnstileManagement() {
       </div>
 
       {/* 2. Turnstile Status Cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "1.25rem" }}>
-        {gates.map((g) => (
-          <div key={g.gateId} className="sa-section-card" style={{ padding: "1.25rem" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.75rem" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <div style={{ width: "38px", height: "38px", borderRadius: "10px", background: "#ecfdf5", color: "#059669", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <ShieldCheck size={20} />
-                </div>
-                <div>
-                  <strong style={{ display: "block", fontSize: "14px", color: "#0f172a" }}>{g.gateName}</strong>
-                  <span style={{ fontSize: "11px", color: "#64748b" }}>{g.supermarketName}</span>
-                </div>
-              </div>
-              <span className="sa-badge active">Online</span>
-            </div>
-
-            <div style={{ background: "#f8fafc", padding: "10px 12px", borderRadius: "8px", fontSize: "12px", display: "flex", flexDirection: "column", gap: "4px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "#64748b" }}>Turnstiles Cleared Today:</span>
-                <strong style={{ color: "#0f172a" }}>{g.todayPasses} shoppers</strong>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "#64748b" }}>Last Activity:</span>
-                <span style={{ color: "#1e293b", fontWeight: 600 }}>{g.lastPassTime}</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "#64748b" }}>Security Mode:</span>
-                <span style={{ color: "#2563eb", fontWeight: 700 }}>QR Exit Pass Verified</span>
-              </div>
-            </div>
+      {gates.length === 0 ? (
+        <div className="sa-section-card" style={{ padding: "40px 20px", textAlign: "center", color: "#64748b" }}>
+          <ShieldCheck size={36} color="#94a3b8" style={{ margin: "0 auto 10px auto", opacity: 0.7 }} />
+          <div style={{ fontWeight: 700, fontSize: "14px", color: "#1e293b", marginBottom: "4px" }}>
+            No Active Turnstile Gates Registered
           </div>
-        ))}
-      </div>
+          <div style={{ fontSize: "12.5px", color: "#94a3b8" }}>
+            Onboard your first supermarket to auto-provision IoT exit turnstiles.
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "1.25rem" }}>
+          {gates.map((g) => (
+            <div key={g.gateId} className="sa-section-card" style={{ padding: "1.25rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.75rem" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <div style={{ width: "38px", height: "38px", borderRadius: "10px", background: "#ecfdf5", color: "#059669", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <ShieldCheck size={20} />
+                  </div>
+                  <div>
+                    <strong style={{ display: "block", fontSize: "14px", color: "#0f172a" }}>{g.gateName}</strong>
+                    <span style={{ fontSize: "11px", color: "#64748b" }}>{g.supermarketName}</span>
+                  </div>
+                </div>
+                <span className="sa-badge active">Online</span>
+              </div>
+
+              <div style={{ background: "#f8fafc", padding: "10px 12px", borderRadius: "8px", fontSize: "12px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ color: "#64748b" }}>Turnstiles Cleared Today:</span>
+                  <strong style={{ color: "#0f172a" }}>{g.todayPasses} shoppers</strong>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ color: "#64748b" }}>Last Activity:</span>
+                  <span style={{ color: "#1e293b", fontWeight: 600 }}>{g.lastPassTime}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ color: "#64748b" }}>Security Mode:</span>
+                  <span style={{ color: "#2563eb", fontWeight: 700 }}>QR Exit Pass Verified</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* 3. Turnstile Live Event Log */}
       <div className="sa-section-card">
@@ -175,42 +210,50 @@ export default function TurnstileManagement() {
               </tr>
             </thead>
             <tbody>
-              {logs.map((log) => (
-                <tr key={log.id}>
-                  <td>
-                    <span style={{ fontSize: "12px", color: "#64748b" }}>
-                      {new Date(log.timestamp).toLocaleTimeString("en-IN")}
-                    </span>
-                  </td>
-                  <td>
-                    <strong style={{ fontFamily: "monospace", fontSize: "12px", color: "#2563eb" }}>
-                      {log.gateId}
-                    </strong>
-                  </td>
-                  <td>
-                    <span style={{ fontSize: "13px", color: "#0f172a", fontWeight: 600 }}>
-                      {log.supermarket}
-                    </span>
-                  </td>
-                  <td>
-                    <code style={{ fontSize: "12px", color: "#475569" }}>{log.orderId}</code>
-                  </td>
-                  <td>
-                    <strong style={{ color: "#0f172a" }}>{log.customer}</strong>
-                  </td>
-                  <td>
-                    <span style={{ fontSize: "12px", color: "#16a34a", fontWeight: 700 }}>
-                      {log.scanLatencyMs} ms
-                    </span>
-                  </td>
-                  <td>
-                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                      <CheckCircle2 size={15} color="#16a34a" />
-                      <strong style={{ color: "#16a34a", fontSize: "12px" }}>{log.result}</strong>
-                    </div>
+              {logs.length === 0 ? (
+                <tr>
+                  <td colSpan="7" style={{ textAlign: "center", padding: "36px 20px", color: "#64748b" }}>
+                    No turnstile exit scans recorded yet. Events will appear here in real time when shoppers scan exit QR barcodes.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                logs.map((log) => (
+                  <tr key={log.id}>
+                    <td>
+                      <span style={{ fontSize: "12px", color: "#64748b" }}>
+                        {new Date(log.timestamp).toLocaleTimeString("en-IN")}
+                      </span>
+                    </td>
+                    <td>
+                      <strong style={{ fontFamily: "monospace", fontSize: "12px", color: "#2563eb" }}>
+                        {log.gateId}
+                      </strong>
+                    </td>
+                    <td>
+                      <span style={{ fontSize: "13px", color: "#0f172a", fontWeight: 600 }}>
+                        {log.supermarket}
+                      </span>
+                    </td>
+                    <td>
+                      <code style={{ fontSize: "12px", color: "#475569" }}>{log.orderId}</code>
+                    </td>
+                    <td>
+                      <strong style={{ color: "#0f172a" }}>{log.customer}</strong>
+                    </td>
+                    <td>
+                      <span style={{ fontSize: "12px", color: "#16a34a", fontWeight: 700 }}>
+                        {log.scanLatencyMs} ms
+                      </span>
+                    </td>
+                    <td>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <CheckCircle2 size={15} color="#16a34a" />
+                        <strong style={{ color: "#16a34a", fontSize: "12px" }}>{log.result}</strong>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

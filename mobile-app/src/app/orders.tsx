@@ -22,7 +22,7 @@ import ReceiptModal from "../components/ReceiptModal";
 
 export default function MyOrdersScreen() {
   const router = useRouter();
-  const { recentOrders } = useCart();
+  const { recentOrders, selectedSupermarket, customerUser } = useCart();
 
   const [orders, setOrders] = useState<OrderRecord[]>([]);
   const [activeFilter, setActiveFilter] = useState<"All" | "Pending" | "Completed">("All");
@@ -35,15 +35,37 @@ export default function MyOrdersScreen() {
     try {
       let dbOrders: OrderRecord[] = [];
       if (API_URL) {
-        const res = await safeFetch(`${API_URL}/orders`, {}, 5000);
+        const params = new URLSearchParams();
+        if (selectedSupermarket?._id) params.append("supermarketId", selectedSupermarket._id);
+        if (customerUser?.phone) params.append("phone", customerUser.phone);
+        const res = await safeFetch(`${API_URL}/orders?${params.toString()}`, {
+          headers: {
+            "x-supermarket-id": selectedSupermarket?._id || "",
+            "x-customer-phone": customerUser?.phone || "",
+          },
+        }, 5000);
         const data = await res.json();
         if (data.success && Array.isArray(data.orders)) {
           dbOrders = data.orders;
         }
       }
 
-      // Combine real orders from DB and local context (no fake mock orders)
-      const combined = [...recentOrders, ...dbOrders];
+      // Filter strictly to the connected supermarket (Tenant isolation)
+      if (selectedSupermarket?._id) {
+        dbOrders = dbOrders.filter((o: any) => {
+          const storeId = typeof o.supermarket === "object" ? o.supermarket?._id : o.supermarket;
+          const matchesId = storeId && String(storeId) === String(selectedSupermarket._id);
+          const matchesCode = o.supermarketCode && selectedSupermarket.code && o.supermarketCode.toUpperCase() === selectedSupermarket.code.toUpperCase();
+          return matchesId || matchesCode;
+        });
+      }
+
+      // Combine real orders from DB and local context
+      const relevantRecent = selectedSupermarket?._id
+        ? recentOrders.filter((o) => !o.supermarket || String(o.supermarket) === String(selectedSupermarket._id))
+        : recentOrders;
+
+      const combined = [...relevantRecent, ...dbOrders];
       const uniqueOrders = Array.from(
         new Map(combined.map((o) => [o._id || o.orderNumber, o])).values()
       );

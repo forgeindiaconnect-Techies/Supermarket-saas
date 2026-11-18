@@ -1,3 +1,5 @@
+const path = require("path");
+require("dotenv").config({ path: path.join(__dirname, "../.env") });
 const net = require("net");
 const tls = require("tls");
 const https = require("https");
@@ -12,6 +14,182 @@ let EmailLog = null;
 try {
   EmailLog = require("../models/EmailLog");
 } catch (_) {}
+
+const fs = require("fs");
+
+/**
+ * Fetch Brevo senders directly via REST API
+ */
+function fetchBrevoSenders(apiKey) {
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname: "api.brevo.com",
+      port: 443,
+      path: "/v3/senders",
+      method: "GET",
+      headers: {
+        accept: "application/json",
+        "api-key": apiKey,
+      },
+      timeout: 10000,
+    };
+    const req = https.request(options, (res) => {
+      let body = "";
+      res.on("data", (chunk) => { body += chunk; });
+      res.on("end", () => {
+        try {
+          const parsed = JSON.parse(body || "{}");
+          resolve({ statusCode: res.statusCode, data: parsed });
+        } catch (e) {
+          resolve({ statusCode: res.statusCode, raw: body });
+        }
+      });
+    });
+    req.on("error", reject);
+    req.on("timeout", () => { req.destroy(); reject(new Error("Timeout querying Brevo senders")); });
+    req.end();
+  });
+}
+
+/**
+ * Fetch Brevo account profile directly via REST API
+ */
+function fetchBrevoAccount(apiKey) {
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname: "api.brevo.com",
+      port: 443,
+      path: "/v3/account",
+      method: "GET",
+      headers: {
+        accept: "application/json",
+        "api-key": apiKey,
+      },
+      timeout: 10000,
+    };
+    const req = https.request(options, (res) => {
+      let body = "";
+      res.on("data", (chunk) => { body += chunk; });
+      res.on("end", () => {
+        try {
+          const parsed = JSON.parse(body || "{}");
+          resolve({ statusCode: res.statusCode, data: parsed });
+        } catch (e) {
+          resolve({ statusCode: res.statusCode, raw: body });
+        }
+      });
+    });
+    req.on("error", reject);
+    req.on("timeout", () => { req.destroy(); reject(new Error("Timeout querying Brevo account")); });
+    req.end();
+  });
+}
+
+// Cached verified sender email
+let cachedVerifiedSender = null;
+let lastSenderCheck = 0;
+
+/**
+ * Dynamically discover and resolve the active verified sender email for Brevo
+ */
+async function resolveBrevoVerifiedSender(apiKey, force = false) {
+  if (!force && cachedVerifiedSender && Date.now() - lastSenderCheck < 10 * 60 * 1000) {
+    return cachedVerifiedSender;
+  }
+  try {
+    const [sendersRes, accountRes] = await Promise.all([
+      fetchBrevoSenders(apiKey).catch((err) => ({ error: err.message })),
+      fetchBrevoAccount(apiKey).catch((err) => ({ error: err.message })),
+    ]);
+
+    let resolvedEmail = null;
+    let resolvedName = "GrocerEase Supermarket";
+
+    if (sendersRes && sendersRes.data && Array.isArray(sendersRes.data.senders)) {
+      // Find active verified sender
+      const activeSenders = sendersRes.data.senders.filter((s) => s.active !== false);
+      if (activeSenders.length > 0) {
+        resolvedEmail = activeSenders[0].email;
+        resolvedName = activeSenders[0].name || resolvedName;
+      }
+    }
+
+    if (!resolvedEmail && accountRes && accountRes.data && accountRes.data.email) {
+      resolvedEmail = accountRes.data.email;
+      resolvedName = `${accountRes.data.firstName || "GrocerEase"} ${accountRes.data.lastName || "Supermarket"}`.trim();
+    }
+
+    // Diagnostics report (without exposing API keys or credentials)
+    let smtpVerifyResult = null;
+    let smtpLoginsTest = [];
+    if (nodemailer) {
+      const candidates = [
+        process.env.SMTP_LOGIN || process.env.SMTP_USER,
+        "forgeindiaconnectfic@gmail.com",
+        "pooja.antigraviity@gmail.com",
+      ].filter(Boolean);
+
+      for (const candUser of candidates) {
+        try {
+          const testTransporter = nodemailer.createTransport({
+            host: process.env.SMTP_HOST || "smtp-relay.brevo.com",
+            port: parseInt(process.env.SMTP_PORT || "587", 10),
+            secure: false,
+            auth: {
+              user: candUser,
+              pass: process.env.SMTP_KEY || process.env.SMTP_PASSWORD || process.env.BREVO_API_KEY,
+            },
+            tls: { rejectUnauthorized: false },
+            connectionTimeout: 8000,
+          });
+          await testTransporter.verify();
+          smtpLoginsTest.push({ user: candUser, status: "SUCCESS" });
+          smtpVerifyResult = `SUCCESS with login: ${candUser}`;
+          break;
+        } catch (err) {
+          smtpLoginsTest.push({ user: candUser, status: "FAILED", error: err.message });
+        }
+      }
+    }
+
+    const diagReport = {
+      timestamp: new Date().toISOString(),
+      sendersStatus: sendersRes?.statusCode || null,
+      sendersError: sendersRes?.data?.message || sendersRes?.raw || null,
+      accountStatus: accountRes?.statusCode || null,
+      accountError: accountRes?.data?.message || accountRes?.raw || null,
+      smtpRelayStatus: smtpVerifyResult || "FAILED",
+      smtpLoginsTest,
+      sendersCount: sendersRes?.data?.senders?.length || 0,
+      senders: (sendersRes?.data?.senders || []).map((s) => ({ email: s.email, name: s.name, active: s.active })),
+      accountEmail: accountRes?.data?.email || null,
+      accountName: accountRes?.data ? `${accountRes.data.firstName || ""} ${accountRes.data.lastName || ""}`.trim() : null,
+      resolvedSender: resolvedEmail,
+    };
+
+    try {
+      fs.writeFileSync(path.join(__dirname, "../brevo_diagnostic.json"), JSON.stringify(diagReport, null, 2));
+    } catch (_) {}
+
+    if (resolvedEmail) {
+      cachedVerifiedSender = { email: resolvedEmail, name: resolvedName };
+      lastSenderCheck = Date.now();
+      console.log(`✓ [BREVO SENDER VERIFIED] Active verified sender discovered: ${resolvedEmail} (${resolvedName})`);
+      return cachedVerifiedSender;
+    }
+  } catch (err) {
+    console.warn("⚠️ [BREVO SENDER RESOLUTION] Error resolving verified sender:", err.message);
+  }
+  return null;
+}
+
+// Auto-run verified sender discovery on module initialization if Brevo API key is available
+setTimeout(async () => {
+  const key = process.env.BREVO_API_KEY || process.env.SMTP_KEY || process.env.SMTP_PASSWORD;
+  if (key && key.startsWith("xkeysib-")) {
+    await resolveBrevoVerifiedSender(key);
+  }
+}, 500);
 
 /**
  * Log email dispatch attempt to database
@@ -693,6 +871,10 @@ async function sendSupermarketWelcomeEmail({
       text,
       html,
     });
+    if (!mailResult.delivered) {
+      logStatus = "FAILED";
+      errorMessage = mailResult.error || "Brevo delivery attempt failed (captured in Outbox)";
+    }
   } catch (err) {
     logStatus = "FAILED";
     errorMessage = err.message;
@@ -711,6 +893,7 @@ async function sendSupermarketWelcomeEmail({
         storeCode: supermarket.code,
         plan: planName,
         adminUsername,
+        delivered: mailResult?.delivered || false,
       },
     });
   }

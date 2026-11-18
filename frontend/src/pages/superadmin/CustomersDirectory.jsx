@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import {
   Users,
@@ -12,73 +12,62 @@ import {
   Phone,
   CheckCircle2,
   Award,
+  RefreshCw,
 } from "lucide-react";
+import API from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import "./SuperAdmin.css";
 
-const DEMO_CUSTOMERS = [
-  {
-    id: "cust-1",
-    name: "SREE",
-    phone: "+91 1234567899",
-    supermarketName: "GrocerEase Flagship - Indiranagar",
-    supermarketCode: "STR-001",
-    totalOrders: 14,
-    totalSpend: 12450,
-    loyaltyTier: "Platinum VIP",
-    lastVisit: "Today at 10:15 AM",
-  },
-  {
-    id: "cust-2",
-    name: "POOJA",
-    phone: "+91 8521456986",
-    supermarketName: "FreshMart Supermarket - Koramangala",
-    supermarketCode: "STR-002",
-    totalOrders: 9,
-    totalSpend: 8200,
-    loyaltyTier: "Gold Member",
-    lastVisit: "Today at 09:40 AM",
-  },
-  {
-    id: "cust-3",
-    name: "Mobile Shopper (App User #491)",
-    phone: "+91 98450 11223",
-    supermarketName: "GrocerEase Flagship - Indiranagar",
-    supermarketCode: "STR-001",
-    totalOrders: 5,
-    totalSpend: 3100,
-    loyaltyTier: "Silver",
-    lastVisit: "Yesterday",
-  },
-  {
-    id: "cust-4",
-    name: "Rahul Sharma",
-    phone: "+91 97401 88392",
-    supermarketName: "FreshMart Supermarket - Koramangala",
-    supermarketCode: "STR-002",
-    totalOrders: 6,
-    totalSpend: 4700,
-    loyaltyTier: "Gold Member",
-    lastVisit: "2 days ago",
-  },
-  {
-    id: "cust-5",
-    name: "Priya Nair",
-    phone: "+91 99002 44556",
-    supermarketName: "GrocerEase Flagship - Indiranagar",
-    supermarketCode: "STR-001",
-    totalOrders: 8,
-    totalSpend: 7500,
-    loyaltyTier: "Gold Member",
-    lastVisit: "3 days ago",
-  },
-];
-
 export default function CustomersDirectory() {
   const { supermarkets } = useAuth();
-  const [customers, setCustomers] = useState(DEMO_CUSTOMERS);
+  const [customers, setCustomers] = useState([]);
+  const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedStore, setSelectedStore] = useState("all");
+
+  useEffect(() => {
+    const fetchCustomers = async () => {
+      try {
+        setLoading(true);
+        const res = await API.get("/super-admin/orders");
+        if (res.data?.success && Array.isArray(res.data.orders)) {
+          const map = {};
+          res.data.orders.forEach((o) => {
+            const rawPhone = o.customerPhone || "";
+            const cleanDigits = rawPhone.replace(/\D/g, "");
+            const phoneKey = cleanDigits.length >= 10 ? cleanDigits.slice(-10) : "";
+            const key = phoneKey ? `phone_${phoneKey}` : (o.customerName ? `name_${o.customerName.toLowerCase()}` : o._id);
+            if (!map[key]) {
+              map[key] = {
+                id: `cust-${phoneKey ? `CUST-${phoneKey.slice(-4)}` : key}`,
+                name: o.customerName || "Shopper",
+                phone: phoneKey ? `+91 ${phoneKey}` : (o.customerPhone || "N/A"),
+                supermarketName: o.supermarketName || "Supermarket",
+                supermarketCode: o.supermarketCode || "STR",
+                totalOrders: 0,
+                totalSpend: 0,
+                loyaltyTier: "Standard",
+                lastVisit: new Date(o.createdAt).toLocaleDateString("en-IN"),
+              };
+            }
+            map[key].totalOrders += 1;
+            map[key].totalSpend += Number(o.totalAmount || 0);
+            if (map[key].totalSpend > 10000) map[key].loyaltyTier = "Platinum VIP";
+            else if (map[key].totalSpend > 5000) map[key].loyaltyTier = "Gold Member";
+            else if (map[key].totalSpend > 2000) map[key].loyaltyTier = "Silver";
+          });
+          setCustomers(Object.values(map));
+        } else {
+          setCustomers([]);
+        }
+      } catch (_) {
+        setCustomers([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchCustomers();
+  }, []);
 
   const filtered = customers.filter((c) => {
     const matchSearch =

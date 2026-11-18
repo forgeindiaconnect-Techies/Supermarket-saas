@@ -11,6 +11,8 @@ export default function RootLayout() {
       <AnimatedSplashOverlay />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
+        <Stack.Screen name="auth" />
+        <Stack.Screen name="catalog" />
         <Stack.Screen name="scanner" />
         <Stack.Screen name="product-details" />
         <Stack.Screen name="cart" />

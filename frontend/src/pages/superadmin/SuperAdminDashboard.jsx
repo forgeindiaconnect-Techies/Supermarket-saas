@@ -16,6 +16,7 @@ import {
   Eye,
   Wifi,
   MessageSquare,
+  Trash2,
 } from "lucide-react";
 import API, { SOCKET_URL } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
@@ -238,6 +239,23 @@ export default function SuperAdminDashboard() {
     navigate(`/super-admin/registered-supermarkets?store=${storeId}`);
   };
 
+  const handleResetToCleanDatabase = async () => {
+    const confirmed = window.confirm(
+      "Are you sure you want to reset to a completely clean database? All demo supermarkets, products, orders, and notifications will be wiped to start strictly at 0. Only the Super Admin (admin / admin) will remain."
+    );
+    if (!confirmed) return;
+    try {
+      const res = await API.post("/super-admin/clear-demo-data");
+      if (res.data?.success) {
+        alert("Database successfully reset to 0! All counts are now clean.");
+        fetchAnalytics();
+        if (loadSupermarkets) loadSupermarkets();
+      }
+    } catch (err) {
+      alert("Error resetting database: " + (err.response?.data?.message || err.message));
+    }
+  };
+
   // Real-Time KPI Values strictly calculated from live database
   const totalStoresCount =
     analytics?.summary?.totalSupermarkets !== undefined
@@ -255,7 +273,7 @@ export default function SuperAdminDashboard() {
       : (analytics?.summary?.totalStoreSales || 0);
 
   const rawGrowth = analytics?.summary?.platformGrowth;
-  const platformGrowthRate = (rawGrowth !== undefined && rawGrowth !== null) ? (rawGrowth > 100 ? 95 : rawGrowth) : 95;
+  const platformGrowthRate = (rawGrowth !== undefined && rawGrowth !== null) ? Number(rawGrowth) : 0;
 
   const totalProductsCount =
     analytics?.summary?.totalProductsCount !== undefined
@@ -265,7 +283,7 @@ export default function SuperAdminDashboard() {
   const totalPosTurnstiles =
     analytics?.summary?.totalPosTurnstilesOnline !== undefined
       ? Number(analytics.summary.totalPosTurnstilesOnline)
-      : (totalStoresCount * 4);
+      : 0;
 
   const newStoresThisMonth =
     analytics?.summary?.newStoresThisMonth !== undefined
@@ -276,40 +294,46 @@ export default function SuperAdminDashboard() {
   const rawChartData = salesRange === "7d" ? analytics?.chart7d : analytics?.chart30d;
 
   const chartData = useMemo(() => {
-    if (Array.isArray(rawChartData) && rawChartData.length > 0 && rawChartData.some((d) => (d.amount || 0) > 0)) {
+    if (Array.isArray(rawChartData) && rawChartData.length > 0) {
       return rawChartData;
     }
-    // High-fidelity fallback curve matching localhost reference design (peak on Nov 14 at ~₹20K)
     const count = salesRange === "7d" ? 7 : 30;
     const fallback = [];
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const baseAmounts7d = [0, 850, 0, 19850, 0, 510, 0];
     for (let i = count - 1; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const dayIdx = 6 - i;
-      const amt = salesRange === "7d" && dayIdx >= 0 && dayIdx < 7 ? baseAmounts7d[dayIdx] : (i === 3 ? 19850 : 0);
+      const m = monthNames[d.getMonth()] || "Nov";
+      const day = d.getDate();
       fallback.push({
         dateKey: d.toISOString().split("T")[0],
-        label: `${monthNames[d.getMonth()]} ${d.getDate()}`,
-        amount: amt,
-        ordersCount: amt > 0 ? 3 : 0,
+        label: `${m} ${day}`,
+        amount: 0,
+        ordersCount: 0,
       });
     }
     return fallback;
   }, [rawChartData, salesRange]);
 
-  const maxVal = useMemo(() => {
-    const highest = Math.max(...chartData.map((d) => d.amount || 0), 0);
-    if (highest <= 0) return 45000;
-    if (highest <= 15000) return 15000;
-    if (highest <= 30000) return 30000;
-    return Math.ceil(highest / 15000) * 15000;
-  }, [chartData]);
-
   const [activePointIdx, setActivePointIdx] = useState(null);
 
-  const { points, splinePath, areaPath } = useMemo(() => {
+  const { points, splinePath, areaPath, maxVal } = useMemo(() => {
+    let highest = 0;
+    if (Array.isArray(chartData)) {
+      for (let i = 0; i < chartData.length; i++) {
+        const amt = Number(chartData[i]?.amount || 0);
+        if (amt > highest) highest = amt;
+      }
+    }
+    let computedMax = 10000;
+    if (highest > 30000) {
+      computedMax = Math.ceil(highest / 15000) * 15000;
+    } else if (highest > 15000) {
+      computedMax = 30000;
+    } else if (highest > 0) {
+      computedMax = 15000;
+    }
+
     const N = chartData.length;
     const xMin = 48;
     const xMax = 515;
@@ -319,7 +343,7 @@ export default function SuperAdminDashboard() {
 
     const pts = chartData.map((d, i) => {
       const x = N > 1 ? xMin + (i / (N - 1)) * (xMax - xMin) : xMin;
-      const fraction = maxVal > 0 ? (d.amount || 0) / maxVal : 0;
+      const fraction = computedMax > 0 ? (d.amount || 0) / computedMax : 0;
       const y = yBottom - fraction * h;
       return {
         ...d,
@@ -334,8 +358,8 @@ export default function SuperAdminDashboard() {
     const firstX = pts[0]?.x || 48;
     const aPath = sPath ? `${sPath} L ${lastX},185 L ${firstX},185 Z` : "";
 
-    return { points: pts, splinePath: sPath, areaPath: aPath };
-  }, [chartData, maxVal]);
+    return { points: pts, splinePath: sPath, areaPath: aPath, maxVal: computedMax };
+  }, [chartData]);
 
   const activePoint =
     activePointIdx !== null && points[activePointIdx]
@@ -349,15 +373,16 @@ export default function SuperAdminDashboard() {
       : (analytics?.recentSupermarkets || []);
 
   const formatDate = (dateStr) => {
-    if (!dateStr) return "2026-11-14";
+    if (!dateStr) return "-";
     try {
       const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return "-";
       const year = d.getFullYear();
       const month = String(d.getMonth() + 1).padStart(2, "0");
       const day = String(d.getDate()).padStart(2, "0");
       return `${year}-${month}-${day}`;
     } catch (_) {
-      return "2026-11-14";
+      return "-";
     }
   };
 
@@ -475,7 +500,7 @@ export default function SuperAdminDashboard() {
               <span className="sa-ref-kpi-label">Platform Growth</span>
               <div className="sa-ref-kpi-val-row">
                 <span className="sa-ref-kpi-val">{platformGrowthRate}%</span>
-                <span className="sa-ref-pill sa-pill-purple">&uarr; +{platformGrowthRate > 0 ? platformGrowthRate : 5}%</span>
+                <span className="sa-ref-pill sa-pill-purple">&uarr; +{platformGrowthRate}%</span>
               </div>
             </div>
           </div>
@@ -758,14 +783,24 @@ export default function SuperAdminDashboard() {
               style={{
                 left: `${(activePoint.x / 540) * 100}%`,
                 top: `${(activePoint.y / 220) * 100}%`,
-                transform: activePoint.x > 380 ? "translate(-85%, -125%)" : "translate(-50%, -125%)",
+                transform:
+                  activePoint.x > 400
+                    ? "translate(-92%, -125%)"
+                    : activePoint.x < 80
+                    ? "translate(-10%, -125%)"
+                    : "translate(-50%, -125%)",
                 transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+                whiteSpace: "nowrap",
+                width: "max-content",
+                minWidth: "max-content",
               }}
             >
-              <span className="sa-ref-tooltip-amount">
+              <span className="sa-ref-tooltip-amount" style={{ whiteSpace: "nowrap" }}>
                 &#8377;{Number(activePoint.amount || 0).toLocaleString("en-IN")}
               </span>
-              <span className="sa-ref-tooltip-date">{activePoint.label}</span>
+              <span className="sa-ref-tooltip-date" style={{ whiteSpace: "nowrap" }}>
+                {activePoint.label}
+              </span>
             </div>
           </div>
         </div>
@@ -792,57 +827,162 @@ export default function SuperAdminDashboard() {
             <table className="sa-ref-table" style={{ width: "100%" }}>
               <thead>
                 <tr>
-                  <th style={{ width: "30px" }}>#</th>
-                  <th>Supermarket Name</th>
-                  <th className="sa-ref-col-admin">Admin</th>
-                  <th className="sa-ref-col-plan">Plan</th>
-                  <th>Status</th>
-                  <th className="sa-ref-col-date">Registered On</th>
-                  <th style={{ textAlign: "center", width: "115px", whiteSpace: "nowrap" }}>Actions</th>
+                  <th style={{ width: "38px", textAlign: "center" }}>#</th>
+                  <th style={{ textAlign: "left", minWidth: "160px" }}>Supermarket Name</th>
+                  <th className="sa-ref-col-admin" style={{ textAlign: "left", minWidth: "120px" }}>Admin</th>
+                  <th className="sa-ref-col-plan" style={{ textAlign: "left", minWidth: "90px" }}>Plan</th>
+                  <th style={{ textAlign: "center", minWidth: "175px" }}>Availability</th>
+                  <th style={{ textAlign: "center", minWidth: "85px" }}>Status</th>
+                  <th className="sa-ref-col-date" style={{ textAlign: "left", minWidth: "115px" }}>Registered On</th>
+                  <th style={{ textAlign: "center", width: "125px", whiteSpace: "nowrap" }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {recentStoresList.map((store, idx) => (
-                  <tr key={store._id || idx}>
-                    <td className="sa-ref-td-num">{idx + 1}</td>
-                    <td>
-                      <div style={{ display: "flex", flexDirection: "column" }}>
-                        <span className="sa-ref-store-name">{store.name}</span>
-                        <span className="sa-ref-store-sub-mobile">
-                          {store.plan || "Basic"} &bull; {store.adminUsername || store.code || "Store Admin"}
-                        </span>
+                {recentStoresList.length === 0 ? (
+                  <tr>
+                    <td colSpan="8" style={{ textAlign: "center", padding: "48px 20px", color: "#64748b" }}>
+                      <Store size={36} color="#94a3b8" style={{ margin: "0 auto 10px auto", display: "block", opacity: 0.7 }} />
+                      <div style={{ fontWeight: 700, fontSize: "14px", color: "#1e293b", marginBottom: "4px" }}>
+                        No Supermarkets Registered Yet
+                      </div>
+                      <div style={{ fontSize: "12.5px", color: "#94a3b8" }}>
+                        Click "+ Onboard Supermarket" or Quick Actions to add your first supermarket.
                       </div>
                     </td>
-                    <td className="sa-ref-col-admin">
-                      <span className="sa-ref-admin-name">
-                        {store.adminUsername || store.email || `${store.code || "store"}@grocerease.store`}
-                      </span>
-                    </td>
-                    <td className="sa-ref-col-plan">
-                      <span className="sa-ref-plan-name">{store.plan || "Basic"}</span>
-                    </td>
-                    <td>
-                      <span className="sa-ref-status-pill">Active</span>
-                    </td>
-                    <td className="sa-ref-col-date">
-                      <span className="sa-ref-date-text">{formatDate(store.createdAt)}</span>
-                    </td>
-                    <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
-                      <button
-                        type="button"
-                        className="sa-ref-view-btn"
-                        onClick={() => handleLaunchStore(store)}
-                        title={`View detailed performance for ${store.name}`}
-                      >
-                        <span>View Details</span>
-                        <span>&rarr;</span>
-                      </button>
-                    </td>
                   </tr>
-                ))}
+                ) : (
+                  recentStoresList.map((store, idx) => (
+                    <tr key={store._id || idx}>
+                      <td className="sa-ref-td-num" style={{ textAlign: "center", verticalAlign: "middle" }}>{idx + 1}</td>
+                      <td style={{ verticalAlign: "middle" }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px", whiteSpace: "nowrap" }}>
+                            <span className="sa-ref-store-name">{store.name}</span>
+                            {store.code && (
+                              <span
+                                style={{
+                                  fontSize: "10px",
+                                  fontWeight: 800,
+                                  fontFamily: "monospace",
+                                  color: "#059669",
+                                  background: "#ecfdf5",
+                                  padding: "1px 5px",
+                                  borderRadius: "4px",
+                                  border: "1px solid #a7f3d0",
+                                }}
+                              >
+                                {store.code}
+                              </span>
+                            )}
+                          </div>
+                          <span className="sa-ref-store-sub-mobile">
+                            {store.plan || "Basic"} &bull; {store.adminUsername || store.code || "Store Admin"}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="sa-ref-col-admin" style={{ verticalAlign: "middle" }}>
+                        <span className="sa-ref-admin-name">
+                          {store.adminUsername || store.email || `${store.code || "store"}@grocerease.store`}
+                        </span>
+                      </td>
+                      <td className="sa-ref-col-plan" style={{ verticalAlign: "middle" }}>
+                        <span className="sa-ref-plan-name" style={{ fontWeight: 700, color: "#063d2e" }}>
+                          {store.plan || "Basic"}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: "center", verticalAlign: "middle", whiteSpace: "nowrap" }}>
+                        <div style={{ display: "inline-flex", gap: "6px", alignItems: "center", justifyContent: "center", whiteSpace: "nowrap" }}>
+                          <span
+                            style={{
+                              fontSize: "11px",
+                              fontWeight: 750,
+                              padding: "3px 8px",
+                              borderRadius: "6px",
+                              background: store.onlineAvailable === true ? "#dcfce7" : "#fee2e2",
+                              color: store.onlineAvailable === true ? "#15803d" : "#991b1b",
+                              border: `1px solid ${store.onlineAvailable === true ? "#86efac" : "#fca5a5"}`,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {store.onlineAvailable === true ? "⚡ Online" : "✕ Online"}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: "11px",
+                              fontWeight: 750,
+                              padding: "3px 8px",
+                              borderRadius: "6px",
+                              background: store.offlineAvailable === true ? "#dcfce7" : "#fee2e2",
+                              color: store.offlineAvailable === true ? "#15803d" : "#991b1b",
+                              border: `1px solid ${store.offlineAvailable === true ? "#86efac" : "#fca5a5"}`,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {store.offlineAvailable === true ? "🏪 Offline" : "✕ Offline"}
+                          </span>
+                        </div>
+                      </td>
+                      <td style={{ textAlign: "center", verticalAlign: "middle" }}>
+                        <span className="sa-ref-status-pill">Active</span>
+                      </td>
+                      <td className="sa-ref-col-date" style={{ verticalAlign: "middle" }}>
+                        <span className="sa-ref-date-text">{formatDate(store.createdAt)}</span>
+                      </td>
+                      <td style={{ textAlign: "center", verticalAlign: "middle", whiteSpace: "nowrap" }}>
+                        <button
+                          type="button"
+                          className="sa-ref-view-btn"
+                          onClick={() => handleLaunchStore(store)}
+                          title={`View detailed performance for ${store.name}`}
+                        >
+                          <span>View Details</span>
+                          <span>&rarr;</span>
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
+
+          {recentStoresList.length > 0 && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "9px 12px",
+                marginTop: "10px",
+                borderTop: "1px solid #f1f5f9",
+                fontSize: "12px",
+                color: "#64748b",
+                background: "#f8fafc",
+                borderRadius: "8px",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <span
+                  style={{
+                    width: "7px",
+                    height: "7px",
+                    borderRadius: "50%",
+                    background: "#10b981",
+                    display: "inline-block",
+                  }}
+                />
+                <span style={{ fontWeight: 650, color: "#334155" }}>
+                  {recentStoresList.length} {recentStoresList.length === 1 ? "Supermarket" : "Supermarkets"} Registered &bull; Live Realtime Sync
+                </span>
+              </div>
+              <Link
+                to="/super-admin/registered-supermarkets"
+                style={{ color: "#047857", fontWeight: 750, textDecoration: "none", fontSize: "11.5px" }}
+              >
+                Manage All &rarr;
+              </Link>
+            </div>
+          )}
         </div>
 
         {/* Right Card: Quick Actions */}
@@ -862,7 +1002,7 @@ export default function SuperAdminDashboard() {
               onClick={() => navigate("/super-admin/add-supermarket")}
             >
               <div className="sa-ref-qa-icon primary">
-                <PlusCircle size={18} strokeWidth={2.4} />
+                <PlusCircle size={16} strokeWidth={2.4} />
               </div>
               <div className="sa-ref-qa-label">
                 <span>Add New Supermarket</span>
@@ -881,7 +1021,7 @@ export default function SuperAdminDashboard() {
               }}
             >
               <div className="sa-ref-qa-icon chat" style={{ color: "#ffffff" }}>
-                <MessageSquare size={18} color="#ffffff" strokeWidth={2.4} />
+                <MessageSquare size={16} color="#ffffff" strokeWidth={2.4} />
               </div>
               <div className="sa-ref-qa-label">
                 <span>Supermarket Chat</span>
@@ -889,32 +1029,32 @@ export default function SuperAdminDashboard() {
               </div>
             </button>
 
-            {/* Action 3: View Platform Reports */}
-            <button
-              type="button"
-              className="sa-ref-qa-btn mint"
-              onClick={() => navigate("/super-admin/reports")}
-            >
-              <div className="sa-ref-qa-icon mint">
-                <FileText size={18} color="#059669" strokeWidth={2.2} />
-              </div>
-              <div className="sa-ref-qa-label">
-                <span>View Platform Reports</span>
-                <span className="sa-ref-qa-arr">&rarr;</span>
-              </div>
-            </button>
-
-            {/* Action 4: Manage Plans */}
+            {/* Action 3: Manage Plans */}
             <button
               type="button"
               className="sa-ref-qa-btn mint"
               onClick={() => navigate("/super-admin/plans")}
             >
               <div className="sa-ref-qa-icon mint">
-                <Crown size={18} color="#059669" strokeWidth={2.2} />
+                <Crown size={16} color="#059669" strokeWidth={2.2} />
               </div>
               <div className="sa-ref-qa-label">
-                <span>Manage Plans</span>
+                <span>Manage SaaS Plans</span>
+                <span className="sa-ref-qa-arr">&rarr;</span>
+              </div>
+            </button>
+
+            {/* Action 4: View Platform Reports */}
+            <button
+              type="button"
+              className="sa-ref-qa-btn mint"
+              onClick={() => navigate("/super-admin/reports")}
+            >
+              <div className="sa-ref-qa-icon mint">
+                <FileText size={16} color="#059669" strokeWidth={2.2} />
+              </div>
+              <div className="sa-ref-qa-label">
+                <span>View Platform Reports</span>
                 <span className="sa-ref-qa-arr">&rarr;</span>
               </div>
             </button>
@@ -926,10 +1066,10 @@ export default function SuperAdminDashboard() {
               onClick={() => navigate("/super-admin/registered-supermarkets")}
             >
               <div className="sa-ref-qa-icon mint">
-                <RefreshCw size={18} color="#059669" strokeWidth={2.2} />
+                <RefreshCw size={16} color="#059669" strokeWidth={2.2} />
               </div>
               <div className="sa-ref-qa-label">
-                <span>Check Subscriptions</span>
+                <span>All Registered Stores</span>
                 <span className="sa-ref-qa-arr">&rarr;</span>
               </div>
             </button>

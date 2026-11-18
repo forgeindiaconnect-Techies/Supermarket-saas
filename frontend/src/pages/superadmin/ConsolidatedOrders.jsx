@@ -23,7 +23,8 @@ import API, { SOCKET_URL } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import "./SuperAdmin.css";
 
-const DEMO_ORDERS = [
+const DEMO_ORDERS = [];
+const UNUSED_DEMO = false ? [
   {
     _id: "ord-1",
     orderId: "ORD-948201-9481",
@@ -93,11 +94,11 @@ const DEMO_ORDERS = [
     ],
     createdAt: "2026-11-12T18:30:00Z",
   },
-];
+] : [];
 
 export default function ConsolidatedOrders() {
   const { supermarkets } = useAuth();
-  const [orders, setOrders] = useState(DEMO_ORDERS);
+  const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedStore, setSelectedStore] = useState("all");
@@ -128,9 +129,11 @@ export default function ConsolidatedOrders() {
             createdAt: o.createdAt || new Date().toISOString(),
           }))
         );
+      } else {
+        setOrders([]);
       }
     } catch (_) {
-      // Fallback
+      setOrders([]);
     } finally {
       setLoading(false);
     }

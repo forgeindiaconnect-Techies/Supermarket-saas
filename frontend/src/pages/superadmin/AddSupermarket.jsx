@@ -32,6 +32,7 @@ import {
   CheckSquare,
   Upload,
   X,
+  Globe,
 } from "lucide-react";
 import API from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
@@ -174,6 +175,10 @@ export default function AddSupermarket() {
   const [logoLoadError, setLogoLoadError] = useState(false);
   const logoFileInputRef = useRef(null);
 
+  // ================= Purchase Mode Availability (Super Admin Fixed Policy) =================
+  const [onlineAvailable, setOnlineAvailable] = useState(false);
+  const [offlineAvailable, setOfflineAvailable] = useState(false);
+
   // ================= Step 2: Admin Credentials =================
   const [adminUsername, setAdminUsername] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
@@ -181,6 +186,7 @@ export default function AddSupermarket() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showReviewPassword, setShowReviewPassword] = useState(false);
   const [sendCredentialsEmail, setSendCredentialsEmail] = useState(true);
   const [forcePasswordChange, setForcePasswordChange] = useState(true);
 
@@ -406,7 +412,11 @@ export default function AddSupermarket() {
     setConfirmPassword(pwd);
     setSelectedPlanId("Premium");
     setBillingCycle("Monthly");
+    setOnlineAvailable(false);
+    setOfflineAvailable(false);
     setStoreType("Grocery & Supermarket");
+    setOnlineAvailable(true);
+    setOfflineAvailable(true);
     setErrors({});
     setGeneralError("");
   };
@@ -616,6 +626,8 @@ export default function AddSupermarket() {
         timeZone: timeZone,
         status: accountStatus,
         themeColor: "#16a34a",
+        onlineAvailable: Boolean(onlineAvailable),
+        offlineAvailable: Boolean(offlineAvailable),
       };
 
       const res = await API.post("/super-admin/supermarkets", payload);
@@ -1102,6 +1114,8 @@ export default function AddSupermarket() {
     setConfirmPassword(newPwd);
     setSelectedPlanId("Premium");
     setBillingCycle("Monthly");
+    setOnlineAvailable(false);
+    setOfflineAvailable(false);
     setCreatedData(null);
     setErrors({});
     setGeneralError("");
@@ -1140,18 +1154,6 @@ export default function AddSupermarket() {
         </div>
 
         <div className="asm-header-actions">
-          {currentStep <= 5 && (
-            <button
-              type="button"
-              className="asm-btn-demo"
-              onClick={handleFillDemoStore}
-              title="Auto-fill realistic supermarket data for fast testing"
-            >
-              <Sparkles size={15} />
-              <span>Fill Sample Store</span>
-            </button>
-          )}
-
           <div className="asm-header-badges">
             <span className="asm-badge-tenant" title="Full data isolation guaranteed">
               <ShieldCheck size={14} />
@@ -1741,6 +1743,182 @@ export default function AddSupermarket() {
             </div>
           </div>
 
+          {/* Section D: Store Availability & Purchase Mode Configuration (Online / Offline) */}
+          <div className="asm-form-section asm-availability-section">
+            <div className="asm-section-title">
+              <Sliders size={16} />
+              <span>Purchase Mode &amp; Channel Availability (Super Admin Configuration)</span>
+            </div>
+            <p className="asm-section-desc" style={{ fontSize: "13px", color: "#64748b", margin: "-6px 0 16px 0" }}>
+              Configure internal availability policy for this supermarket (Online, Offline, or both). This selection is an internal Super Admin control stored in the database and is never displayed to the supermarket Admin.
+            </p>
+
+            <div className="asm-availability-button-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+              {/* Button 1: Online Mode */}
+              <button
+                type="button"
+                className={`asm-avail-toggle-btn ${onlineAvailable ? "active-enabled" : "inactive-disabled"}`}
+                onClick={() => setOnlineAvailable((prev) => !prev)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "16px 18px",
+                  borderRadius: "14px",
+                  border: onlineAvailable ? "2px solid #16a34a" : "2px solid #cbd5e1",
+                  background: onlineAvailable ? "#f0fdf4" : "#ffffff",
+                  cursor: "pointer",
+                  transition: "all 0.2s ease",
+                  textAlign: "left",
+                  boxShadow: onlineAvailable ? "0 4px 12px rgba(22, 163, 74, 0.12)" : "none",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                  <div
+                    style={{
+                      width: "42px",
+                      height: "42px",
+                      borderRadius: "10px",
+                      background: onlineAvailable ? "#16a34a" : "#e2e8f0",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: onlineAvailable ? "#ffffff" : "#64748b",
+                    }}
+                  >
+                    <Globe size={22} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: "15px", fontWeight: 800, color: onlineAvailable ? "#166534" : "#1e293b" }}>
+                      Online
+                    </div>
+                    <div style={{ fontSize: "12px", color: onlineAvailable ? "#15803d" : "#64748b", marginTop: "2px" }}>
+                      Web portal &amp; digital catalog
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    padding: "6px 14px",
+                    borderRadius: "9999px",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    background: onlineAvailable ? "#dcfce7" : "#f1f5f9",
+                    color: onlineAvailable ? "#166534" : "#64748b",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    border: onlineAvailable ? "1px solid #86efac" : "1px solid #e2e8f0",
+                  }}
+                >
+                  {onlineAvailable ? (
+                    <>
+                      <CheckCircle2 size={14} color="#16a34a" />
+                      <span>Available</span>
+                    </>
+                  ) : (
+                    <span>Not Available</span>
+                  )}
+                </div>
+              </button>
+
+              {/* Button 2: Offline Mode */}
+              <button
+                type="button"
+                className={`asm-avail-toggle-btn ${offlineAvailable ? "active-enabled" : "inactive-disabled"}`}
+                onClick={() => setOfflineAvailable((prev) => !prev)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "16px 18px",
+                  borderRadius: "14px",
+                  border: offlineAvailable ? "2px solid #16a34a" : "2px solid #cbd5e1",
+                  background: offlineAvailable ? "#f0fdf4" : "#ffffff",
+                  cursor: "pointer",
+                  transition: "all 0.2s ease",
+                  textAlign: "left",
+                  boxShadow: offlineAvailable ? "0 4px 12px rgba(22, 163, 74, 0.12)" : "none",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                  <div
+                    style={{
+                      width: "42px",
+                      height: "42px",
+                      borderRadius: "10px",
+                      background: offlineAvailable ? "#16a34a" : "#e2e8f0",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: offlineAvailable ? "#ffffff" : "#64748b",
+                    }}
+                  >
+                    <Store size={22} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: "15px", fontWeight: 800, color: offlineAvailable ? "#166534" : "#1e293b" }}>
+                      Offline
+                    </div>
+                    <div style={{ fontSize: "12px", color: offlineAvailable ? "#15803d" : "#64748b", marginTop: "2px" }}>
+                      Physical in-store POS &amp; gate
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    padding: "6px 14px",
+                    borderRadius: "9999px",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    background: offlineAvailable ? "#dcfce7" : "#f1f5f9",
+                    color: offlineAvailable ? "#166534" : "#64748b",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    border: offlineAvailable ? "1px solid #86efac" : "1px solid #e2e8f0",
+                  }}
+                >
+                  {offlineAvailable ? (
+                    <>
+                      <CheckCircle2 size={14} color="#16a34a" />
+                      <span>Available</span>
+                    </>
+                  ) : (
+                    <span>Not Available</span>
+                  )}
+                </div>
+              </button>
+            </div>
+
+            {/* Current Selection Scenario Summary Indicator */}
+            <div
+              style={{
+                marginTop: "12px",
+                padding: "10px 14px",
+                background: "#f8fafc",
+                borderRadius: "8px",
+                border: "1px solid #e2e8f0",
+                fontSize: "12.5px",
+                color: "#334155",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+              }}
+            >
+              <Sparkles size={14} color="#059669" />
+              <span>
+                <strong>Configured Status: </strong>
+                {onlineAvailable && offlineAvailable && "Online – Available | Offline – Available (Scenario A: Both Channels Enabled)"}
+                {onlineAvailable && !offlineAvailable && "Online – Available | Offline – Not Available (Scenario B: Online Only)"}
+                {!onlineAvailable && offlineAvailable && "Online – Not Available | Offline – Available (Scenario C: Offline Only)"}
+                {!onlineAvailable && !offlineAvailable && "Online – Not Configured | Offline – Not Configured (Click buttons above to enable)"}
+              </span>
+            </div>
+          </div>
+
           <div className="asm-form-footer">
             <Link to="/super-admin/supermarkets" className="asm-btn-prev">
               <span>Cancel</span>
@@ -2315,83 +2493,218 @@ export default function AddSupermarket() {
       {/* ================= STEP 5: Review and Create ================= */}
       {currentStep === 5 && (
         <div className="asm-form-main-card">
-          <div className="asm-step-header">
+          {/* Header with Step indicator and Top Quick Action Button */}
+          <div className="asm-step-header" style={{ alignItems: "center" }}>
             <div className="asm-step-header-left">
               <h2>
-                <CheckCircle2 size={22} className="asm-header-icon" />
+                <CheckCircle2 size={24} className="asm-header-icon" color="#16a34a" />
                 <span>Review &amp; Create Supermarket</span>
               </h2>
-              <p>Verify all entered information before launching the new supermarket instance</p>
+              <p>Verify all entered store details, admin credentials, plan terms, and availability channels before launching</p>
             </div>
-            <span className="asm-step-counter-tag">Step 5 of 5</span>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+              <span className="asm-step-counter-tag">Step 5 of 5</span>
+              <button
+                type="button"
+                className="asm-btn-create"
+                style={{ padding: "0.55rem 1.25rem", fontSize: "0.85rem", height: "auto" }}
+                onClick={handleFinalCreateSupermarket}
+                disabled={submitting}
+              >
+                {submitting ? (
+                  <>
+                    <RefreshCw size={15} className="spin-icon" />
+                    <span>Provisioning...</span>
+                  </>
+                ) : (
+                  <>
+                    <PlusCircle size={16} />
+                    <span>Create Supermarket</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
 
-          {/* Strict Data Isolation Assurance Card */}
-          <div className="asm-isolation-notice">
-            <ShieldCheck size={24} style={{ flexShrink: 0, marginTop: "2px" }} />
-            <div>
-              <h4>Strict Multi-Tenant Isolation Guaranteed</h4>
-              <p>
-                This supermarket will be provisioned with its own unique tenant ID (<code>{supermarketId}</code>).
-                All inventory, orders, customer records, and financial metrics will start with clean zero-state
-                statistics, completely isolated from every other supermarket on this platform.
+          {/* Executive Summary & Launch Preview Strip */}
+          <div className="asm-review-hero-strip">
+            <div className="asm-review-hero-left">
+              <div className="asm-review-hero-avatar">
+                {logoUrl && !logoLoadError ? (
+                  <img src={logoUrl} alt={supermarketName} />
+                ) : (
+                  <Store size={28} color="#16a34a" />
+                )}
+              </div>
+              <div className="asm-review-hero-title">
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                  <h3>{supermarketName || "New Supermarket"}</h3>
+                  <span className="asm-val-tag" style={{ fontFamily: "monospace", fontSize: "0.8rem", letterSpacing: "0.5px" }}>
+                    {supermarketId}
+                  </span>
+                </div>
+                <div className="asm-review-hero-meta">
+                  <span style={{ fontSize: "0.82rem", color: "#475569", fontWeight: 600 }}>
+                    {city}, {state} ({pincode || "560001"})
+                  </span>
+                  <span style={{ color: "#94a3b8" }}>&bull;</span>
+                  <span style={{ fontSize: "0.82rem", color: "#166534", fontWeight: 700, background: "#dcfce7", padding: "1px 8px", borderRadius: "4px" }}>
+                    ★ {selectedPlanId} Plan ({billingCycle})
+                  </span>
+                  <span style={{ color: "#94a3b8" }}>&bull;</span>
+                  <span style={{ fontSize: "0.82rem", color: "#1e40af", fontWeight: 700, background: "#dbeafe", padding: "1px 8px", borderRadius: "4px" }}>
+                    Admin: {adminUsername}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Channels & Policy Status */}
+            <div className="asm-review-hero-right">
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px", alignItems: "flex-end" }}>
+                <span style={{ fontSize: "0.72rem", fontWeight: 800, textTransform: "uppercase", color: "#64748b", letterSpacing: "0.5px" }}>
+                  Store Availability Channels
+                </span>
+                <div style={{ display: "flex", gap: "6px" }}>
+                  <span
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: "6px",
+                      fontSize: "0.76rem",
+                      fontWeight: 800,
+                      backgroundColor: onlineAvailable ? "#dcfce7" : "#fee2e2",
+                      color: onlineAvailable ? "#15803d" : "#991b1b",
+                      border: onlineAvailable ? "1.5px solid #86efac" : "1.5px solid #fca5a5",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "4px",
+                    }}
+                  >
+                    <Globe size={13} /> Online: {onlineAvailable ? "Available" : "Not Available"}
+                  </span>
+                  <span
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: "6px",
+                      fontSize: "0.76rem",
+                      fontWeight: 800,
+                      backgroundColor: offlineAvailable ? "#dcfce7" : "#fee2e2",
+                      color: offlineAvailable ? "#15803d" : "#991b1b",
+                      border: offlineAvailable ? "1.5px solid #86efac" : "1.5px solid #fca5a5",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "4px",
+                    }}
+                  >
+                    <Building2 size={13} /> Offline: {offlineAvailable ? "Available" : "Not Available"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Multi-Tenant Cryptographic Isolation Assurance Card */}
+          <div className="asm-isolation-notice" style={{ background: "linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)", border: "1.5px solid #86efac", marginBottom: "1.5rem" }}>
+            <div style={{ width: "38px", height: "38px", borderRadius: "10px", background: "#dcfce7", color: "#15803d", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <ShieldCheck size={22} strokeWidth={2.4} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <h4 style={{ color: "#166534", fontSize: "0.92rem", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
+                <span>Strict Multi-Tenant Database Isolation Guaranteed</span>
+                <span style={{ fontSize: "0.72rem", padding: "1px 6px", background: "#bbf7d0", color: "#14532d", borderRadius: "4px" }}>Verified</span>
+              </h4>
+              <p style={{ color: "#15803d", fontSize: "0.82rem", lineHeight: 1.5, marginTop: "4px" }}>
+                This supermarket will be provisioned under unique tenant ID <strong>{supermarketId}</strong>. All catalog products, inventory stock, order transactions, customer profiles, and analytics will start with fresh, verified zero-state statistics strictly separated from every other supermarket.
               </p>
             </div>
           </div>
 
-          {/* 4 Summary Cards */}
+          {/* 4 Summary Cards (2x2 Grid) */}
           <div className="asm-review-grid">
             {/* Card 1: Supermarket Information */}
-            <div className="asm-review-card">
+            <div className="asm-review-card theme-emerald">
               <div className="asm-review-card-header">
                 <div className="asm-review-card-title">
-                  <Store size={16} color="#16a34a" />
+                  <div className="asm-card-icon-pill emerald">
+                    <Store size={17} />
+                  </div>
                   <span>1. Supermarket Information</span>
                 </div>
                 <button type="button" className="asm-edit-btn" onClick={() => handleJumpToStep(1)}>
                   <span>Edit</span>
                 </button>
               </div>
+
               <div className="asm-review-rows">
                 <div className="asm-review-row">
-                  <span className="asm-review-key">Store Name:</span>
+                  <span className="asm-review-key">
+                    <Store size={14} /> Store Name:
+                  </span>
                   <span className="asm-review-val">{supermarketName}</span>
                 </div>
                 <div className="asm-review-row">
-                  <span className="asm-review-key">Tenant ID:</span>
-                  <span className="asm-review-val asm-val-tag">{supermarketId}</span>
+                  <span className="asm-review-key">
+                    <Building2 size={14} /> Tenant ID:
+                  </span>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span className="asm-val-tag" style={{ fontFamily: "monospace" }}>{supermarketId}</span>
+                    <button
+                      type="button"
+                      className="asm-copy-pill-btn"
+                      onClick={() => handleCopyText(supermarketId, "tenant_id")}
+                      title="Copy Tenant ID"
+                    >
+                      {copiedKey === "tenant_id" ? <Check size={13} color="#16a34a" /> : <Copy size={13} />}
+                    </button>
+                  </div>
                 </div>
                 <div className="asm-review-row">
-                  <span className="asm-review-key">Owner Name:</span>
-                  <span className="asm-review-val">{ownerName}</span>
+                  <span className="asm-review-key">
+                    <User size={14} /> Owner / Contact:
+                  </span>
+                  <span className="asm-review-val">
+                    {ownerName || "N/A"} {contactPerson ? `(${contactPerson})` : ""}
+                  </span>
                 </div>
                 <div className="asm-review-row">
-                  <span className="asm-review-key">Contact Person:</span>
-                  <span className="asm-review-val">{contactPerson}</span>
+                  <span className="asm-review-key">
+                    <Mail size={14} /> Store Email:
+                  </span>
+                  <span className="asm-review-val" style={{ fontFamily: "monospace", fontSize: "0.8rem" }}>
+                    {email}
+                  </span>
                 </div>
                 <div className="asm-review-row">
-                  <span className="asm-review-key">Email:</span>
-                  <span className="asm-review-val">{email}</span>
-                </div>
-                <div className="asm-review-row">
-                  <span className="asm-review-key">Mobile:</span>
+                  <span className="asm-review-key">
+                    <Phone size={14} /> Mobile Number:
+                  </span>
                   <span className="asm-review-val">
                     {mobileNumber ? `+91 ${mobileNumber.replace(/\D/g, "").slice(-10)}` : "N/A"}
                   </span>
                 </div>
                 <div className="asm-review-row">
-                  <span className="asm-review-key">City / State:</span>
-                  <span className="asm-review-val">{city}, {state} ({pincode})</span>
+                  <span className="asm-review-key">
+                    <MapPin size={14} /> Location:
+                  </span>
+                  <span className="asm-review-val">
+                    {city}, {state} ({pincode})
+                  </span>
                 </div>
                 {gstNumber && (
                   <div className="asm-review-row">
-                    <span className="asm-review-key">GST Number:</span>
-                    <span className="asm-review-val">{gstNumber}</span>
+                    <span className="asm-review-key">
+                      <CreditCard size={14} /> GST Number:
+                    </span>
+                    <span className="asm-review-val" style={{ fontFamily: "monospace" }}>
+                      {gstNumber}
+                    </span>
                   </div>
                 )}
                 {logoUrl && (
                   <div className="asm-review-row" style={{ alignItems: "center" }}>
-                    <span className="asm-review-key">Store Logo:</span>
+                    <span className="asm-review-key">
+                      <ImageIcon size={14} /> Store Logo:
+                    </span>
                     <span className="asm-review-val" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                       <img
                         src={logoUrl}
@@ -2408,164 +2721,334 @@ export default function AddSupermarket() {
                     </span>
                   </div>
                 )}
+                <div className="asm-review-row" style={{ alignItems: "center" }}>
+                  <span className="asm-review-key">
+                    <Globe size={14} /> Channels:
+                  </span>
+                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                    <span
+                      style={{
+                        padding: "3px 8px",
+                        borderRadius: "6px",
+                        fontSize: "0.75rem",
+                        fontWeight: 700,
+                        backgroundColor: onlineAvailable ? "#dcfce7" : "#fee2e2",
+                        color: onlineAvailable ? "#166534" : "#991b1b",
+                        border: onlineAvailable ? "1px solid #86efac" : "1px solid #fca5a5",
+                      }}
+                    >
+                      Online: {onlineAvailable ? "Available" : "Not Available"}
+                    </span>
+                    <span
+                      style={{
+                        padding: "3px 8px",
+                        borderRadius: "6px",
+                        fontSize: "0.75rem",
+                        fontWeight: 700,
+                        backgroundColor: offlineAvailable ? "#dcfce7" : "#fee2e2",
+                        color: offlineAvailable ? "#166534" : "#991b1b",
+                        border: offlineAvailable ? "1px solid #86efac" : "1px solid #fca5a5",
+                      }}
+                    >
+                      Offline: {offlineAvailable ? "Available" : "Not Available"}
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
 
             {/* Card 2: Admin Credentials */}
-            <div className="asm-review-card">
+            <div className="asm-review-card theme-violet">
               <div className="asm-review-card-header">
                 <div className="asm-review-card-title">
-                  <KeyRound size={16} color="#8b5cf6" />
+                  <div className="asm-card-icon-pill violet">
+                    <KeyRound size={17} />
+                  </div>
                   <span>2. Admin Credentials</span>
                 </div>
                 <button type="button" className="asm-edit-btn" onClick={() => handleJumpToStep(2)}>
                   <span>Edit</span>
                 </button>
               </div>
+
               <div className="asm-review-rows">
                 <div className="asm-review-row">
-                  <span className="asm-review-key">Username:</span>
-                  <span className="asm-review-val" style={{ fontFamily: "monospace" }}>
-                    {adminUsername}
+                  <span className="asm-review-key">
+                    <User size={14} /> Username:
+                  </span>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span className="asm-review-val" style={{ fontFamily: "monospace", color: "#6d28d9" }}>
+                      {adminUsername}
+                    </span>
+                    <button
+                      type="button"
+                      className="asm-copy-pill-btn"
+                      onClick={() => handleCopyText(adminUsername, "admin_user")}
+                      title="Copy Username"
+                    >
+                      {copiedKey === "admin_user" ? <Check size={13} color="#16a34a" /> : <Copy size={13} />}
+                    </button>
+                  </div>
+                </div>
+                <div className="asm-review-row">
+                  <span className="asm-review-key">
+                    <Mail size={14} /> Admin Email:
+                  </span>
+                  <span className="asm-review-val" style={{ fontFamily: "monospace", fontSize: "0.8rem" }}>
+                    {adminEmail || email}
                   </span>
                 </div>
                 <div className="asm-review-row">
-                  <span className="asm-review-key">Admin Email:</span>
-                  <span className="asm-review-val">{adminEmail || email}</span>
+                  <span className="asm-review-key">
+                    <Lock size={14} /> Temp Password:
+                  </span>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span className="asm-review-val" style={{ fontFamily: "monospace", letterSpacing: showReviewPassword ? "0" : "2px" }}>
+                      {showReviewPassword ? adminPassword : "••••••••••••"}
+                    </span>
+                    <button
+                      type="button"
+                      className="asm-copy-pill-btn"
+                      onClick={() => setShowReviewPassword((p) => !p)}
+                      title={showReviewPassword ? "Hide Password" : "Show Password"}
+                    >
+                      {showReviewPassword ? <EyeOff size={13} /> : <Eye size={13} />}
+                    </button>
+                    <button
+                      type="button"
+                      className="asm-copy-pill-btn"
+                      onClick={() => handleCopyText(adminPassword, "admin_pwd")}
+                      title="Copy Password"
+                    >
+                      {copiedKey === "admin_pwd" ? <Check size={13} color="#16a34a" /> : <Copy size={13} />}
+                    </button>
+                  </div>
                 </div>
                 <div className="asm-review-row">
-                  <span className="asm-review-key">Temp Password:</span>
-                  <span className="asm-review-val" style={{ fontFamily: "monospace" }}>
-                    {adminPassword}
+                  <span className="asm-review-key">
+                    <Sparkles size={14} /> Strength:
+                  </span>
+                  <span
+                    style={{
+                      padding: "2px 8px",
+                      borderRadius: "6px",
+                      fontSize: "0.74rem",
+                      fontWeight: 800,
+                      backgroundColor: getPasswordStrength(adminPassword).score >= 3 ? "#dcfce7" : "#fef3c7",
+                      color: getPasswordStrength(adminPassword).score >= 3 ? "#15803d" : "#b45309",
+                    }}
+                  >
+                    {getPasswordStrength(adminPassword).label}
                   </span>
                 </div>
                 <div className="asm-review-row">
-                  <span className="asm-review-key">Dispatch Email:</span>
-                  <span className="asm-review-val">
-                    {sendCredentialsEmail ? "Yes (Enabled)" : "No"}
+                  <span className="asm-review-key">
+                    <Mail size={14} /> Dispatch Email:
+                  </span>
+                  <span className="asm-review-val" style={{ color: sendCredentialsEmail ? "#16a34a" : "#64748b" }}>
+                    {sendCredentialsEmail ? "Yes (Brevo SMTP Enabled)" : "No"}
                   </span>
                 </div>
                 <div className="asm-review-row">
-                  <span className="asm-review-key">Force Password Reset:</span>
-                  <span className="asm-review-val">
-                    {forcePasswordChange ? "Yes (On first login)" : "No"}
+                  <span className="asm-review-key">
+                    <ShieldCheck size={14} /> First Login:
+                  </span>
+                  <span className="asm-review-val" style={{ color: forcePasswordChange ? "#16a34a" : "#64748b" }}>
+                    {forcePasswordChange ? "Mandatory Password Change" : "Optional"}
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* Card 3: Subscription & Billing */}
-            <div className="asm-review-card">
+            {/* Card 3: Subscription Plan */}
+            <div className="asm-review-card theme-amber">
               <div className="asm-review-card-header">
                 <div className="asm-review-card-title">
-                  <Crown size={16} color="#eab308" />
+                  <div className="asm-card-icon-pill amber">
+                    <Crown size={17} />
+                  </div>
                   <span>3. Subscription Plan</span>
                 </div>
                 <button type="button" className="asm-edit-btn" onClick={() => handleJumpToStep(3)}>
                   <span>Edit</span>
                 </button>
               </div>
+
               <div className="asm-review-rows">
                 <div className="asm-review-row">
-                  <span className="asm-review-key">Plan Tier:</span>
-                  <span className="asm-review-val asm-val-tag">{selectedPlanId} Plan</span>
+                  <span className="asm-review-key">
+                    <Crown size={14} /> Plan Tier:
+                  </span>
+                  <span
+                    style={{
+                      padding: "3px 10px",
+                      borderRadius: "6px",
+                      fontSize: "0.78rem",
+                      fontWeight: 800,
+                      background: "#fef3c7",
+                      color: "#b45309",
+                      border: "1px solid #fde68a",
+                    }}
+                  >
+                    ★ {selectedPlanId} Plan
+                  </span>
                 </div>
                 <div className="asm-review-row">
-                  <span className="asm-review-key">Billing Frequency:</span>
+                  <span className="asm-review-key">
+                    <RefreshCw size={14} /> Billing Cycle:
+                  </span>
                   <span className="asm-review-val">{billingCycle}</span>
                 </div>
                 <div className="asm-review-row">
-                  <span className="asm-review-key">Subscription Fee:</span>
-                  <span className="asm-review-val" style={{ fontSize: "1rem", color: "#16a34a" }}>
+                  <span className="asm-review-key">
+                    <CreditCard size={14} /> Subscription Fee:
+                  </span>
+                  <span className="asm-review-val" style={{ fontSize: "1.05rem", color: "#16a34a", fontWeight: 850 }}>
                     ₹{Number(customAmount).toLocaleString("en-IN")}
+                    <small style={{ fontSize: "0.75rem", color: "#64748b", fontWeight: 600 }}> / {billingCycle}</small>
                   </span>
                 </div>
                 <div className="asm-review-row">
-                  <span className="asm-review-key">Start Date:</span>
+                  <span className="asm-review-key">
+                    <CheckCircle2 size={14} /> Start Date:
+                  </span>
                   <span className="asm-review-val">{startDate}</span>
                 </div>
                 <div className="asm-review-row">
-                  <span className="asm-review-key">Expiry Date:</span>
-                  <span className="asm-review-val">{expiryDate}</span>
+                  <span className="asm-review-key">
+                    <CheckCircle2 size={14} /> Expiry Date:
+                  </span>
+                  <span className="asm-review-val" style={{ color: "#d97706" }}>{expiryDate}</span>
                 </div>
                 <div className="asm-review-row">
-                  <span className="asm-review-key">Trial Period:</span>
+                  <span className="asm-review-key">
+                    <Sparkles size={14} /> Free Trial:
+                  </span>
                   <span className="asm-review-val">
-                    {trialPeriodDays ? `${trialPeriodDays} Days Free` : "None"}
+                    {trialPeriodDays ? `${trialPeriodDays} Days Free Trial` : "None (Direct Activation)"}
                   </span>
                 </div>
                 <div className="asm-review-row">
-                  <span className="asm-review-key">Auto Renewal:</span>
-                  <span className="asm-review-val">{autoRenewal ? "Yes" : "No"}</span>
+                  <span className="asm-review-key">
+                    <RefreshCw size={14} /> Auto Renewal:
+                  </span>
+                  <span className="asm-review-val" style={{ color: autoRenewal ? "#16a34a" : "#64748b" }}>
+                    {autoRenewal ? "Yes (Automatic Renewal)" : "No (Manual Renewal)"}
+                  </span>
                 </div>
               </div>
             </div>
 
-            {/* Card 4: Store Configuration */}
-            <div className="asm-review-card">
+            {/* Card 4: Store Operations & System Settings */}
+            <div className="asm-review-card theme-sky">
               <div className="asm-review-card-header">
                 <div className="asm-review-card-title">
-                  <Sliders size={16} color="#0284c7" />
-                  <span>4. Store Configuration</span>
+                  <div className="asm-card-icon-pill sky">
+                    <Sliders size={17} />
+                  </div>
+                  <span>4. Store Operations &amp; Settings</span>
                 </div>
                 <button type="button" className="asm-edit-btn" onClick={() => handleJumpToStep(4)}>
                   <span>Edit</span>
                 </button>
               </div>
+
               <div className="asm-review-rows">
                 <div className="asm-review-row">
-                  <span className="asm-review-key">Store Type:</span>
+                  <span className="asm-review-key">
+                    <Store size={14} /> Store Type:
+                  </span>
                   <span className="asm-review-val">{storeType}</span>
                 </div>
                 <div className="asm-review-row">
-                  <span className="asm-review-key">Currency:</span>
-                  <span className="asm-review-val">{currency} (₹)</span>
+                  <span className="asm-review-key">
+                    <CreditCard size={14} /> Currency:
+                  </span>
+                  <span className="asm-review-val">{currency} (₹ - Indian Rupee)</span>
                 </div>
                 <div className="asm-review-row">
-                  <span className="asm-review-key">Tax / GST:</span>
-                  <span className="asm-review-val">
-                    {taxEnabled ? `${taxRate}% GST Enabled` : "Disabled"}
+                  <span className="asm-review-key">
+                    <Sliders size={14} /> Default GST:
+                  </span>
+                  <span
+                    style={{
+                      padding: "2px 8px",
+                      borderRadius: "6px",
+                      fontSize: "0.76rem",
+                      fontWeight: 800,
+                      backgroundColor: taxEnabled ? "#dbeafe" : "#f1f5f9",
+                      color: taxEnabled ? "#1e40af" : "#64748b",
+                      border: `1px solid ${taxEnabled ? "#bfdbfe" : "#cbd5e1"}`,
+                    }}
+                  >
+                    {taxEnabled ? `${taxRate}% Standard GST Enabled` : "Tax Exempt (0%)"}
                   </span>
                 </div>
                 <div className="asm-review-row">
-                  <span className="asm-review-key">Branch Quota:</span>
-                  <span className="asm-review-val">{branchesCount} Branch(es)</span>
+                  <span className="asm-review-key">
+                    <Building2 size={14} /> Allowed Branches:
+                  </span>
+                  <span className="asm-review-val">{branchesCount} Branch(es) Quota</span>
                 </div>
                 <div className="asm-review-row">
-                  <span className="asm-review-key">Time Zone:</span>
-                  <span className="asm-review-val">{timeZone}</span>
+                  <span className="asm-review-key">
+                    <Globe size={14} /> Time Zone:
+                  </span>
+                  <span className="asm-review-val" style={{ fontFamily: "monospace", fontSize: "0.8rem" }}>
+                    {timeZone}
+                  </span>
                 </div>
                 <div className="asm-review-row">
-                  <span className="asm-review-key">Account Status:</span>
-                  <span className="asm-review-val asm-val-tag">{accountStatus}</span>
+                  <span className="asm-review-key">
+                    <ShieldCheck size={14} /> Initial Status:
+                  </span>
+                  <span
+                    style={{
+                      padding: "3px 10px",
+                      borderRadius: "6px",
+                      fontSize: "0.78rem",
+                      fontWeight: 800,
+                      backgroundColor: accountStatus === "Active" ? "#dcfce7" : "#fee2e2",
+                      color: accountStatus === "Active" ? "#15803d" : "#b91c1c",
+                      border: `1px solid ${accountStatus === "Active" ? "#86efac" : "#fca5a5"}`,
+                    }}
+                  >
+                    {accountStatus} (Instant Activation)
+                  </span>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="asm-form-footer">
+          {/* Bottom Action Footer with Clean Two-Button Layout and Help Text */}
+          <div className="asm-form-footer" style={{ marginTop: "1rem" }}>
             <button type="button" className="asm-btn-prev" onClick={handlePrevStep} disabled={submitting}>
               <ArrowLeft size={16} />
-              <span>Back to Configuration</span>
+              <span>Back to Store Configuration</span>
             </button>
-            <button
-              type="button"
-              className="asm-btn-create"
-              onClick={handleFinalCreateSupermarket}
-              disabled={submitting}
-            >
-              {submitting ? (
-                <>
-                  <RefreshCw size={18} className="spin-icon" />
-                  <span>Provisioning Supermarket...</span>
-                </>
-              ) : (
-                <>
-                  <PlusCircle size={18} />
-                  <span>Create Supermarket</span>
-                </>
-              )}
-            </button>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px" }}>
+              <button
+                type="button"
+                className="asm-btn-create"
+                onClick={handleFinalCreateSupermarket}
+                disabled={submitting}
+              >
+                {submitting ? (
+                  <>
+                    <RefreshCw size={18} className="spin-icon" />
+                    <span>Provisioning Supermarket...</span>
+                  </>
+                ) : (
+                  <>
+                    <PlusCircle size={18} />
+                    <span>Create Supermarket &amp; Credentials</span>
+                  </>
+                )}
+              </button>
+              <span style={{ fontSize: "0.74rem", color: "#64748b" }}>
+                Creates dedicated tenant database isolation &amp; dispatches admin credentials
+              </span>
+            </div>
           </div>
         </div>
       )}
@@ -2697,6 +3180,39 @@ export default function AddSupermarket() {
                 <div className="asm-cred-value-wrap">
                   <span className="asm-cred-value">{createdData.plan || selectedPlanId} ({billingCycle})</span>
                   <span className="asm-val-tag">Paid</span>
+                </div>
+              </div>
+
+              {/* Purchase Channels Availability */}
+              <div className="asm-cred-item" style={{ gridColumn: "1 / -1" }}>
+                <span className="asm-cred-label">Store Availability Modes (Configured)</span>
+                <div style={{ display: "flex", gap: "8px", marginTop: "6px" }}>
+                  <span
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: "6px",
+                      fontSize: "0.8rem",
+                      fontWeight: 700,
+                      backgroundColor: onlineAvailable ? "#dcfce7" : "#fee2e2",
+                      color: onlineAvailable ? "#166534" : "#991b1b",
+                      border: onlineAvailable ? "1px solid #86efac" : "1px solid #fca5a5",
+                    }}
+                  >
+                    Online: {onlineAvailable ? "Available" : "Not Available"}
+                  </span>
+                  <span
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: "6px",
+                      fontSize: "0.8rem",
+                      fontWeight: 700,
+                      backgroundColor: offlineAvailable ? "#dcfce7" : "#fee2e2",
+                      color: offlineAvailable ? "#166534" : "#991b1b",
+                      border: offlineAvailable ? "1px solid #86efac" : "1px solid #fca5a5",
+                    }}
+                  >
+                    Offline: {offlineAvailable ? "Available" : "Not Available"}
+                  </span>
                 </div>
               </div>
             </div>

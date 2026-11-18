@@ -229,6 +229,43 @@ export default function AdminDashboard() {
       socket.on("order-status-update", refresh);
       socket.on("admin:notification", refresh);
       socket.on("platform:stats_updated", refresh);
+      socket.on("supermarket:updated", (data) => {
+        if (data?.supermarket) {
+          const s = data.supermarket;
+          const currentTenantId = currentSupermarket?._id ? String(currentSupermarket._id) : (user?.supermarket?._id ? String(user.supermarket._id) : (typeof user?.supermarket === "string" ? user.supermarket : null));
+          const currentTenantCode = (currentSupermarket?.code || user?.supermarketCode || "").toUpperCase();
+          if ((s._id && String(s._id) === currentTenantId) || (s.code && String(s.code).toUpperCase() === currentTenantCode)) {
+            const onAvail = s.onlineAvailable;
+            const offAvail = s.offlineAvailable;
+            setAvailability({
+              onlineAvailable: onAvail !== undefined ? onAvail : null,
+              offlineAvailable: offAvail !== undefined ? offAvail : null,
+              onlineStatus: onAvail === true ? "Available" : onAvail === false ? "Not Available" : "Not Configured",
+              offlineStatus: offAvail === true ? "Available" : offAvail === false ? "Not Available" : "Not Configured",
+              isConfigured: onAvail !== null && offAvail !== null && onAvail !== undefined && offAvail !== undefined,
+            });
+          }
+        }
+        refresh();
+      });
+      socket.on("supermarket:availability_updated", (data) => {
+        const currentTenantId = currentSupermarket?._id ? String(currentSupermarket._id) : (user?.supermarket?._id ? String(user.supermarket._id) : (typeof user?.supermarket === "string" ? user.supermarket : null));
+        const currentTenantCode = (currentSupermarket?.code || user?.supermarketCode || "").toUpperCase();
+        if (
+          (data?.supermarketId && String(data.supermarketId) === currentTenantId) ||
+          (data?.supermarketCode && String(data.supermarketCode).toUpperCase() === currentTenantCode)
+        ) {
+          const onAvail = data.onlineAvailable;
+          const offAvail = data.offlineAvailable;
+          setAvailability({
+            onlineAvailable: onAvail !== undefined ? onAvail : null,
+            offlineAvailable: offAvail !== undefined ? offAvail : null,
+            onlineStatus: onAvail === true ? "Available" : onAvail === false ? "Not Available" : "Not Configured",
+            offlineStatus: offAvail === true ? "Available" : offAvail === false ? "Not Available" : "Not Configured",
+            isConfigured: onAvail !== null && offAvail !== null && onAvail !== undefined && offAvail !== undefined,
+          });
+        }
+      });
     } catch (_) {}
 
     return () => {

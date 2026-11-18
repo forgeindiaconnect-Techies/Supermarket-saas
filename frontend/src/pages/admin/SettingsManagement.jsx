@@ -608,6 +608,62 @@ export default function SettingsManagement() {
               Dedicated isolated tenant workspace. Profile data is protected.
             </span>
           </div>
+
+          {/* Purchase Channels Availability (Fixed Policy by Super Admin) */}
+          <div
+            style={{
+              width: "100%",
+              marginTop: "12px",
+              background: "#f8fafc",
+              border: "1.5px solid #e2e8f0",
+              borderRadius: "14px",
+              padding: "12px 14px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "8px",
+              textAlign: "left",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: "0.8rem", fontWeight: 800, color: "#334155" }}>
+                Store Purchase Channels
+              </span>
+              <span style={{ fontSize: "0.72rem", color: "#64748b", background: "#e2e8f0", padding: "1px 6px", borderRadius: "4px", fontWeight: 700 }}>
+                Fixed Policy
+              </span>
+            </div>
+            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+              <span
+                style={{
+                  padding: "3px 8px",
+                  borderRadius: "6px",
+                  fontSize: "0.76rem",
+                  fontWeight: 700,
+                  backgroundColor: currentSupermarket?.onlineAvailable === true ? "#dcfce7" : currentSupermarket?.onlineAvailable === false ? "#fee2e2" : "#f1f5f9",
+                  color: currentSupermarket?.onlineAvailable === true ? "#15803d" : currentSupermarket?.onlineAvailable === false ? "#b91c1c" : "#64748b",
+                  border: `1px solid ${currentSupermarket?.onlineAvailable === true ? "#86efac" : currentSupermarket?.onlineAvailable === false ? "#fca5a5" : "#cbd5e1"}`,
+                }}
+              >
+                Online: {currentSupermarket?.onlineAvailable === true ? "Available" : currentSupermarket?.onlineAvailable === false ? "Not Available" : "Not Configured"}
+              </span>
+              <span
+                style={{
+                  padding: "3px 8px",
+                  borderRadius: "6px",
+                  fontSize: "0.76rem",
+                  fontWeight: 700,
+                  backgroundColor: currentSupermarket?.offlineAvailable === true ? "#dcfce7" : currentSupermarket?.offlineAvailable === false ? "#fee2e2" : "#f1f5f9",
+                  color: currentSupermarket?.offlineAvailable === true ? "#15803d" : currentSupermarket?.offlineAvailable === false ? "#b91c1c" : "#64748b",
+                  border: `1px solid ${currentSupermarket?.offlineAvailable === true ? "#86efac" : currentSupermarket?.offlineAvailable === false ? "#fca5a5" : "#cbd5e1"}`,
+                }}
+              >
+                Offline: {currentSupermarket?.offlineAvailable === true ? "Available" : currentSupermarket?.offlineAvailable === false ? "Not Available" : "Not Configured"}
+              </span>
+            </div>
+            <p style={{ margin: 0, fontSize: "0.72rem", color: "#64748b", lineHeight: 1.35 }}>
+              Configured exclusively by Platform Super Admin during onboarding. Store Admin cannot override these channels.
+            </p>
+          </div>
         </div>
 
         {/* Right Column: Edit Profile Form */}

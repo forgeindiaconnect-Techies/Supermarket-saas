@@ -200,7 +200,8 @@ export function exportStyledExcelReport({
     const statusText = isCompleted ? "COMPLETED" : isApproved ? "APPROVED" : isPending ? "PENDING" : "FAILED";
 
     const customerName = ord.customer?.name || "Mobile Shopper";
-    const customerPhone = ord.customer?.phone ? `+91 ${ord.customer.phone}` : "Not provided";
+    const rawDigits1 = ord.customer?.phone ? String(ord.customer.phone).replace(/\D/g, "") : "";
+    const customerPhone = rawDigits1.length >= 10 ? `+91 ${rawDigits1.slice(-10)}` : (rawDigits1 ? `+91 ${rawDigits1}` : "Not provided");
     const customerAddress = ord.customer?.address || "In-Store Checkout";
 
     const itemsSummary = (ord.items || [])
@@ -387,7 +388,8 @@ export function printExecutiveReport({
     const statusClass = isCompleted ? "status-approved" : ord.paymentStatus === "Pending" ? "status-pending" : "status-failed";
 
     const customerName = ord.customer?.name || "Mobile Shopper";
-    const customerPhone = ord.customer?.phone ? `+91 ${ord.customer.phone}` : "Not provided";
+    const rawDigits2 = ord.customer?.phone ? String(ord.customer.phone).replace(/\D/g, "") : "";
+    const customerPhone = rawDigits2.length >= 10 ? `+91 ${rawDigits2.slice(-10)}` : (rawDigits2 ? `+91 ${rawDigits2}` : "Not provided");
 
     const itemsSummary = (ord.items || [])
       .map((it) => `${it.name} (x${it.quantity || 1})`)

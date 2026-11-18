@@ -21,120 +21,7 @@ import "./SuperAdmin.css";
 
 // Offline fallback matrix demonstrating the user's exact requirement:
 // "For example, if one supermarket sells 50 apples, the dashboard should display the supermarket name and the apple sales count separately."
-const DEMO_PRODUCT_SALES = [
-  {
-    supermarketId: "store-real-001",
-    supermarketName: "GrocerEase Flagship - Indiranagar",
-    supermarketCode: "STR-001",
-    productName: "Fresh Red Apples (Washington)",
-    category: "Fruits & Vegetables",
-    barcode: "2001849201948",
-    imageUrl: "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=120&auto=format&fit=crop&q=80",
-    unitsSold: 50,
-    totalRevenue: 9000,
-    avgUnitPrice: 180,
-    remainingStock: 65,
-    stockStatus: "In Stock",
-  },
-  {
-    supermarketId: "store-real-002",
-    supermarketName: "FreshMart Supermarket - Koramangala",
-    supermarketCode: "STR-002",
-    productName: "Fresh Red Apples (Washington)",
-    category: "Fruits & Vegetables",
-    barcode: "2001739104829",
-    imageUrl: "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=120&auto=format&fit=crop&q=80",
-    unitsSold: 24,
-    totalRevenue: 4320,
-    avgUnitPrice: 180,
-    remainingStock: 40,
-    stockStatus: "In Stock",
-  },
-  {
-    supermarketId: "store-real-001",
-    supermarketName: "GrocerEase Flagship - Indiranagar",
-    supermarketCode: "STR-001",
-    productName: "Chocolate",
-    category: "Beverages",
-    barcode: "2002948102948",
-    imageUrl: "https://images.unsplash.com/photo-1549007994-cb92caebd54b?w=120&auto=format&fit=crop&q=80",
-    unitsSold: 18,
-    totalRevenue: 6336,
-    avgUnitPrice: 352,
-    remainingStock: 5,
-    stockStatus: "Low Stock",
-  },
-  {
-    supermarketId: "store-real-002",
-    supermarketName: "FreshMart Supermarket - Koramangala",
-    supermarketCode: "STR-002",
-    productName: "Chocolate",
-    category: "Beverages",
-    barcode: "2002638194029",
-    imageUrl: "https://images.unsplash.com/photo-1549007994-cb92caebd54b?w=120&auto=format&fit=crop&q=80",
-    unitsSold: 8,
-    totalRevenue: 2816,
-    avgUnitPrice: 352,
-    remainingStock: 15,
-    stockStatus: "In Stock",
-  },
-  {
-    supermarketId: "store-real-001",
-    supermarketName: "GrocerEase Flagship - Indiranagar",
-    supermarketCode: "STR-001",
-    productName: "Lays Potato Chips",
-    category: "Snacks",
-    barcode: "2003849102847",
-    imageUrl: "https://images.unsplash.com/photo-1566478989037-eec170784d0b?w=120&auto=format&fit=crop&q=80",
-    unitsSold: 32,
-    totalRevenue: 640,
-    avgUnitPrice: 20,
-    remainingStock: 28,
-    stockStatus: "In Stock",
-  },
-  {
-    supermarketId: "store-real-002",
-    supermarketName: "FreshMart Supermarket - Koramangala",
-    supermarketCode: "STR-002",
-    productName: "Lays Potato Chips",
-    category: "Snacks",
-    barcode: "2003928174920",
-    imageUrl: "https://images.unsplash.com/photo-1566478989037-eec170784d0b?w=120&auto=format&fit=crop&q=80",
-    unitsSold: 15,
-    totalRevenue: 300,
-    avgUnitPrice: 20,
-    remainingStock: 35,
-    stockStatus: "In Stock",
-  },
-  {
-    supermarketId: "store-real-001",
-    supermarketName: "GrocerEase Flagship - Indiranagar",
-    supermarketCode: "STR-001",
-    productName: "Farm Fresh Whole Milk 1L",
-    category: "Dairy",
-    barcode: "2006192840192",
-    imageUrl: "https://images.unsplash.com/photo-1550583724-b2692b85b150?w=120&auto=format&fit=crop&q=80",
-    unitsSold: 28,
-    totalRevenue: 1904,
-    avgUnitPrice: 68,
-    remainingStock: 17,
-    stockStatus: "In Stock",
-  },
-  {
-    supermarketId: "store-real-002",
-    supermarketName: "FreshMart Supermarket - Koramangala",
-    supermarketCode: "STR-002",
-    productName: "Farm Fresh Whole Milk 1L",
-    category: "Dairy",
-    barcode: "2006381920491",
-    imageUrl: "https://images.unsplash.com/photo-1550583724-b2692b85b150?w=120&auto=format&fit=crop&q=80",
-    unitsSold: 12,
-    totalRevenue: 816,
-    avgUnitPrice: 68,
-    remainingStock: 33,
-    stockStatus: "In Stock",
-  },
-];
+const DEMO_PRODUCT_SALES = [];
 
 const CATEGORIES = [
   "All Categories",
@@ -149,7 +36,7 @@ const CATEGORIES = [
 
 export default function ProductWiseSalesReport() {
   const { supermarkets } = useAuth();
-  const [salesData, setSalesData] = useState(DEMO_PRODUCT_SALES);
+  const [salesData, setSalesData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedStore, setSelectedStore] = useState("all");
   const [selectedCategory, setSelectedCategory] = useState("All Categories");
@@ -165,14 +52,14 @@ export default function ProductWiseSalesReport() {
 
       const res = await API.get("/super-admin/product-sales", { params });
       const list = res.data?.productSales || res.data?.sales || [];
-      if (Array.isArray(list) && list.length > 0) {
+      if (Array.isArray(list)) {
         setSalesData(list);
       } else {
-        setSalesData(DEMO_PRODUCT_SALES);
+        setSalesData([]);
       }
     } catch (err) {
-      console.warn("Using offline product sales matrix:", err.message);
-      setSalesData(DEMO_PRODUCT_SALES);
+      console.warn("Product sales fetch notice:", err.message);
+      setSalesData([]);
     } finally {
       setLoading(false);
     }

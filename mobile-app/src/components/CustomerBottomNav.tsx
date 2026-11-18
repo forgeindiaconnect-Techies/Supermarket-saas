@@ -8,15 +8,17 @@ type TabName = "home" | "scan" | "cart" | "orders" | "profile";
 
 export default function CustomerBottomNav({ activeTab }: { activeTab: TabName }) {
   const router = useRouter();
-  const { totalCount } = useCart();
+  const { totalCount, purchaseMode, selectedSupermarket } = useCart();
+
+  const homeRoute = purchaseMode === "online" && selectedSupermarket ? "/catalog" : "/";
 
   const tabs: {
     id: TabName;
     label: string;
     icon: string;
-    route: "/" | "/scanner" | "/cart" | "/orders" | "/profile";
+    route: "/" | "/catalog" | "/scanner" | "/cart" | "/orders" | "/profile";
   }[] = [
-    { id: "home", label: "Home", icon: "⌂", route: "/" },
+    { id: "home", label: purchaseMode === "online" ? "Store" : "Home", icon: "⌂", route: homeRoute as any },
     { id: "scan", label: "Scan", icon: "⚲", route: "/scanner" },
     { id: "cart", label: "Cart", icon: "🛒", route: "/cart" },
     { id: "orders", label: "Orders", icon: "📋", route: "/orders" },

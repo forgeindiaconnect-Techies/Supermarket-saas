@@ -13,6 +13,7 @@ import {
 import * as Print from "expo-print";
 import { OrderRecord } from "../context/CartContext";
 import { buildSupermarketReceiptHtml } from "../utils/receiptGenerator";
+import { formatPhoneNumber } from "../constants/api";
 
 const { width, height } = Dimensions.get("window");
 
@@ -129,7 +130,7 @@ export default function ReceiptModal({ visible, order, onClose }: ReceiptModalPr
               {customerPhone ? (
                 <View style={styles.metaRow}>
                   <Text style={styles.metaLabel}>Mobile Number:</Text>
-                  <Text style={styles.metaValue}>+91 {customerPhone}</Text>
+                  <Text style={styles.metaValue}>{formatPhoneNumber(customerPhone)}</Text>
                 </View>
               ) : null}
               {customerAddress ? (

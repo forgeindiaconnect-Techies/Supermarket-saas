@@ -1,5 +1,32 @@
-import React, { createContext, useContext, useState } from "react";
-import { API_URL } from "../constants/api";
+import React, { createContext, useContext, useState, useEffect } from "react";
+import { API_URL, safeFetch } from "../constants/api";
+
+export type SupermarketInfo = {
+  _id: string;
+  name: string;
+  code: string;
+  city?: string;
+  state?: string;
+  address?: string;
+  pincode?: string;
+  phone?: string;
+  logoUrl?: string;
+  onlineAvailable?: boolean | null;
+  offlineAvailable?: boolean | null;
+  status?: string;
+};
+
+export type CustomerUser = {
+  _id?: string;
+  name: string;
+  phone: string;
+  address?: string;
+  supermarketId?: string;
+  supermarketCode?: string;
+  supermarketName?: string;
+  registeredLocation?: string;
+  token?: string;
+};
 
 export type CartItem = {
   _id: string;
@@ -30,6 +57,10 @@ export type OrderRecord = {
   paymentMethod: string;
   paymentStatus: string;
   exitBarcode: string;
+  purchaseMode?: "ONLINE" | "OFFLINE";
+  supermarket?: string;
+  supermarketCode?: string;
+  supermarketName?: string;
   customer?: {
     name?: string;
     phone?: string;
@@ -60,6 +91,16 @@ type CartContextType = {
   updateRecentOrder: (order: OrderRecord) => void;
   customerInfo: CustomerInfo | null;
   setCustomerInfo: (info: CustomerInfo) => void;
+
+  // Multi-Tenant Purchase Mode & Supermarket Isolation
+  purchaseMode: "online" | "offline" | null;
+  setPurchaseMode: (mode: "online" | "offline" | null) => void;
+  selectedSupermarket: SupermarketInfo | null;
+  setSelectedSupermarket: (store: SupermarketInfo | null) => void;
+  customerUser: CustomerUser | null;
+  setCustomerUser: (user: CustomerUser | null) => void;
+  logoutCustomer: () => void;
+  verifySupermarketMode: (store: SupermarketInfo, mode: "online" | "offline") => Promise<{ allowed: boolean; message: string }>;
 };
 
 const CartContext = createContext<CartContextType | null>(null);
@@ -95,6 +136,97 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [recentOrders, setRecentOrders] = useState<OrderRecord[]>([]);
   const [customerInfo, setCustomerInfo] = useState<CustomerInfo | null>(null);
 
+  // New states for Online vs Offline Purchase Workflows
+  const [purchaseMode, setPurchaseMode] = useState<"online" | "offline" | null>(null);
+  const [selectedSupermarket, setSelectedSupermarketState] = useState<SupermarketInfo | null>(null);
+  const [customerUser, setCustomerUserState] = useState<CustomerUser | null>(null);
+
+  const setSelectedSupermarket = (store: SupermarketInfo | null) => {
+    // If switching to a different supermarket, clear cart to maintain absolute supermarket data isolation
+    if (store && selectedSupermarket && store._id !== selectedSupermarket._id) {
+      setCart([]);
+    }
+    setSelectedSupermarketState(store);
+  };
+
+  const setCustomerUser = (user: CustomerUser | null) => {
+    setCustomerUserState(user);
+    if (user) {
+      setCustomerInfo({
+        name: user.name,
+        phone: user.phone,
+        address: user.address,
+      });
+      if (user.supermarketId) {
+        // Automatically sync customer's connected supermarket
+        setSelectedSupermarketState({
+          _id: user.supermarketId,
+          name: user.supermarketName || "Selected Supermarket",
+          code: user.supermarketCode || "",
+          onlineAvailable: true,
+        });
+      }
+    }
+  };
+
+  const logoutCustomer = () => {
+    setCustomerUserState(null);
+    setCustomerInfo(null);
+    setCart([]);
+  };
+
+  /**
+   * Verify whether the supermarket currently supports the requested purchase mode
+   * Queries the live database configuration set by Super Admin.
+   */
+  const verifySupermarketMode = async (
+    store: SupermarketInfo,
+    mode: "online" | "offline"
+  ): Promise<{ allowed: boolean; message: string }> => {
+    try {
+      if (!API_URL) {
+        // Fallback to local store properties
+        const isOnline = mode === "online" && store.onlineAvailable === true;
+        const isOffline = mode === "offline" && store.offlineAvailable === true;
+        const allowed = isOnline || isOffline;
+        return {
+          allowed,
+          message: allowed
+            ? ""
+            : `This supermarket does not currently support ${mode === "online" ? "Online" : "Offline"} Purchase. Please choose an available option.`,
+        };
+      }
+
+      const res = await safeFetch(`${API_URL}/supermarkets/validate-mode`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          supermarketId: store._id,
+          supermarketCode: store.code,
+          mode,
+        }),
+      }, 5000);
+
+      const data = await res.json();
+      if (data.allowed === true) {
+        return { allowed: true, message: "" };
+      }
+      return {
+        allowed: false,
+        message: data.message || `This supermarket does not currently support ${mode === "online" ? "Online" : "Offline"} Purchase. Please choose an available option.`,
+      };
+    } catch (_) {
+      // Local check fallback
+      const allowed = mode === "online" ? store.onlineAvailable === true : store.offlineAvailable === true;
+      return {
+        allowed,
+        message: allowed
+          ? ""
+          : `This supermarket does not currently support ${mode === "online" ? "Online" : "Offline"} Purchase. Please choose an available option.`,
+      };
+    }
+  };
+
   const addToCart = (product: any, qty: number = 1): boolean => {
     if (!product || product.stock <= 0) return false;
     const addQty = Math.max(1, qty);
@@ -123,6 +255,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     const effectivePrice = finalPrice;
 
     setCart((current) => {
+      // Data isolation check: Ensure cart only contains products from the active supermarket
+      if (selectedSupermarket && product.supermarket) {
+        const prodStoreId = typeof product.supermarket === "object" ? product.supermarket._id : product.supermarket;
+        if (prodStoreId && String(prodStoreId) !== String(selectedSupermarket._id)) {
+          // Different store, reset cart to new store
+          current = [];
+        }
+      }
+
       const existing = current.find((item) => item._id === product._id);
 
       if (existing) {
@@ -139,7 +280,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
                 quantity: item.quantity + addQty,
                 price: originalMrp,
                 discount: discountAmount,
-                effectivePrice: finalPrice,
+                effectivePrice: effectivePrice,
               }
             : item
         );
@@ -150,58 +291,44 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           return current;
         }
 
-        updatedCart = [
-          ...current,
-          {
-            _id: product._id,
-            name: product.name,
-            brand: product.brand || "",
-            category: product.category || "",
-            barcode: product.barcode || "",
-            price: originalMrp,
-            discount: discountAmount,
-            effectivePrice: finalPrice,
-            stock: Number(product.stock),
-            imageUrl: product.imageUrl || "",
-            description: product.description || "",
-            quantity: addQty,
-            supermarket: typeof product.supermarket === "object" ? product.supermarket?._id : product.supermarket || undefined,
-            supermarketCode: typeof product.supermarket === "object" ? product.supermarket?.code : product.supermarketCode || undefined,
-            supermarketName: typeof product.supermarket === "object" ? product.supermarket?.name : product.supermarketName || undefined,
-          },
-        ];
+        const newItem: CartItem = {
+          _id: product._id,
+          name: product.name,
+          brand: product.brand,
+          category: product.category,
+          barcode: product.barcode,
+          price: originalMrp,
+          discount: discountAmount,
+          effectivePrice: effectivePrice,
+          stock: product.stock,
+          imageUrl: product.imageUrl,
+          description: product.description,
+          quantity: addQty,
+          supermarket: product.supermarket || selectedSupermarket?._id,
+          supermarketCode: product.supermarketCode || selectedSupermarket?.code,
+          supermarketName: product.supermarketName || selectedSupermarket?.name,
+        };
+        updatedCart = [...current, newItem];
       }
 
       return updatedCart;
     });
 
     if (success) {
-      const newTotalItems = cart.reduce((sum, it) => sum + it.quantity, 0) + addQty;
-      const newTotalAmount =
-        cart.reduce((sum, it) => sum + it.effectivePrice * it.quantity, 0) +
-        effectivePrice * addQty;
-
-      const targetSupermarketId =
-        typeof product.supermarket === "object"
-          ? product.supermarket?._id
-          : product.supermarket || undefined;
-      const targetSupermarketCode =
-        typeof product.supermarket === "object"
-          ? product.supermarket?.code
-          : product.supermarketCode || undefined;
-
+      const newTotalCount = updatedCart.reduce((s, it) => s + it.quantity, 0);
+      const newTotalAmount = updatedCart.reduce((s, it) => s + it.effectivePrice * it.quantity, 0);
       notifyAdminCartActivity({
         productName: product.name,
         productId: product._id,
         quantity: addQty,
         price: effectivePrice,
         action: "added",
-        totalCartItems: newTotalItems,
+        totalCartItems: newTotalCount,
         totalCartAmount: newTotalAmount,
         customerName: customerInfo?.name,
         customerPhone: customerInfo?.phone,
-        supermarketId: targetSupermarketId,
-        supermarketCode: targetSupermarketCode,
+        supermarketId: product.supermarket || selectedSupermarket?._id,
+        supermarketCode: product.supermarketCode || selectedSupermarket?.code,
       });
     }
 
@@ -209,40 +336,45 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updateQuantity = (id: string, delta: number) => {
-    let affectedItem: CartItem | undefined;
-
     setCart((current) => {
-      const updated = current
-        .map((item) => {
-          if (item._id === id) {
-            affectedItem = item;
-            const newQty = item.quantity + delta;
-            if (newQty > item.stock) return item;
-            return { ...item, quantity: newQty };
-          }
-          return item;
-        })
-        .filter((item) => item.quantity > 0);
+      const item = current.find((it) => it._id === id);
+      if (!item) return current;
 
-      const newTotalItems = updated.reduce((sum, it) => sum + it.quantity, 0);
-      const newTotalAmount = updated.reduce(
-        (sum, it) => sum + it.effectivePrice * it.quantity,
-        0
-      );
+      const newQty = item.quantity + delta;
 
-      if (affectedItem) {
+      let updated: CartItem[];
+      if (newQty <= 0) {
+        updated = current.filter((it) => it._id !== id);
         notifyAdminCartActivity({
-          productName: (affectedItem as CartItem).name,
-          productId: (affectedItem as CartItem)._id,
-          quantity: delta,
-          price: (affectedItem as CartItem).effectivePrice,
-          action: "updated",
-          totalCartItems: newTotalItems,
-          totalCartAmount: newTotalAmount,
+          productName: item.name,
+          productId: item._id,
+          quantity: 0,
+          price: item.effectivePrice,
+          action: "removed",
+          totalCartItems: updated.reduce((s, it) => s + it.quantity, 0),
+          totalCartAmount: updated.reduce((s, it) => s + it.effectivePrice * it.quantity, 0),
           customerName: customerInfo?.name,
           customerPhone: customerInfo?.phone,
-          supermarketId: (affectedItem as CartItem).supermarket,
-          supermarketCode: (affectedItem as CartItem).supermarketCode,
+          supermarketId: item.supermarket || selectedSupermarket?._id,
+          supermarketCode: item.supermarketCode || selectedSupermarket?.code,
+        });
+      } else {
+        if (newQty > item.stock) return current;
+        updated = current.map((it) =>
+          it._id === id ? { ...it, quantity: newQty } : it
+        );
+        notifyAdminCartActivity({
+          productName: item.name,
+          productId: item._id,
+          quantity: newQty,
+          price: item.effectivePrice,
+          action: "updated",
+          totalCartItems: updated.reduce((s, it) => s + it.quantity, 0),
+          totalCartAmount: updated.reduce((s, it) => s + it.effectivePrice * it.quantity, 0),
+          customerName: customerInfo?.name,
+          customerPhone: customerInfo?.phone,
+          supermarketId: item.supermarket || selectedSupermarket?._id,
+          supermarketCode: item.supermarketCode || selectedSupermarket?.code,
         });
       }
 
@@ -254,29 +386,21 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setCart((current) => {
       const item = current.find((it) => it._id === id);
       const updated = current.filter((it) => it._id !== id);
-
       if (item) {
-        const newTotalItems = updated.reduce((sum, it) => sum + it.quantity, 0);
-        const newTotalAmount = updated.reduce(
-          (sum, it) => sum + it.effectivePrice * it.quantity,
-          0
-        );
-
         notifyAdminCartActivity({
           productName: item.name,
           productId: item._id,
-          quantity: item.quantity,
+          quantity: 0,
           price: item.effectivePrice,
           action: "removed",
-          totalCartItems: newTotalItems,
-          totalCartAmount: newTotalAmount,
+          totalCartItems: updated.reduce((s, it) => s + it.quantity, 0),
+          totalCartAmount: updated.reduce((s, it) => s + it.effectivePrice * it.quantity, 0),
           customerName: customerInfo?.name,
           customerPhone: customerInfo?.phone,
-          supermarketId: item.supermarket,
-          supermarketCode: item.supermarketCode,
+          supermarketId: item.supermarket || selectedSupermarket?._id,
+          supermarketCode: item.supermarketCode || selectedSupermarket?.code,
         });
       }
-
       return updated;
     });
   };
@@ -327,6 +451,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         updateRecentOrder,
         customerInfo,
         setCustomerInfo,
+
+        purchaseMode,
+        setPurchaseMode,
+        selectedSupermarket,
+        setSelectedSupermarket,
+        customerUser,
+        setCustomerUser,
+        logoutCustomer,
+        verifySupermarketMode,
       }}
     >
       {children}
@@ -341,4 +474,3 @@ export function useCart() {
   }
   return context;
 }
-

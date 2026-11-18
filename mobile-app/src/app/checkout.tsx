@@ -11,8 +11,10 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useCart } from "../context/CartContext";
+import { useCart, SupermarketInfo } from "../context/CartContext";
 import { Theme } from "../constants/colors";
+import ModeUnavailableModal from "../components/ModeUnavailableModal";
+import SupermarketSearchModal from "../components/SupermarketSearchModal";
 
 const PAYMENT_METHODS = [
   {
@@ -31,21 +33,76 @@ const PAYMENT_METHODS = [
 
 export default function CheckoutScreen() {
   const router = useRouter();
-  const { cart, grossAmount, totalSavings, totalAmount } = useCart();
-  const [selectedMethod, setSelectedMethod] = useState("UPI");
+  const {
+    cart,
+    grossAmount,
+    totalSavings,
+    totalAmount,
+    purchaseMode,
+    selectedSupermarket,
+    setSelectedSupermarket,
+    verifySupermarketMode,
+  } = useCart();
 
-  // Exact real-time price & savings from database (NEVER fake 15% discount)
+  const [selectedMethod, setSelectedMethod] = useState("UPI");
+  const [searchModalVisible, setSearchModalVisible] = useState(false);
+  const [unavailableModal, setUnavailableModal] = useState<{
+    visible: boolean;
+    mode: string;
+    storeName?: string;
+  }>({
+    visible: false,
+    mode: "Offline",
+    storeName: "",
+  });
+
   const displayDiscount = totalSavings;
   const displayTotal = totalAmount;
 
-  const handleProceed = () => {
+  const handleSelectStoreFromModal = async (store: SupermarketInfo) => {
+    const mode = (purchaseMode || "offline") as "online" | "offline";
+    const check = await verifySupermarketMode(store, mode);
+
+    if (!check.allowed) {
+      setSearchModalVisible(false);
+      setUnavailableModal({
+        visible: true,
+        mode: mode === "online" ? "Online" : "Offline",
+        storeName: store.name,
+      });
+      return;
+    }
+
+    setSelectedSupermarket(store);
+    setSearchModalVisible(false);
+  };
+
+  const handleProceed = async () => {
     if (cart.length === 0) {
       Alert.alert("Empty Cart", "Please scan items before proceeding to checkout.");
       return;
     }
 
+    const currentMode = (purchaseMode || "offline") as "online" | "offline";
+
+    // Requirement: Before payment, ask the customer to search for and select the supermarket by its registered name
+    if (!selectedSupermarket) {
+      setSearchModalVisible(true);
+      return;
+    }
+
+    // Strict Super Admin mode verification
+    const check = await verifySupermarketMode(selectedSupermarket, currentMode);
+    if (!check.allowed) {
+      setUnavailableModal({
+        visible: true,
+        mode: currentMode === "online" ? "Online" : "Offline",
+        storeName: selectedSupermarket.name,
+      });
+      return;
+    }
+
     // Always navigate to the Customer Details page when clicking Pay Now
-    // Payment page cannot and will not open until Name & Mobile are provided
     router.push({
       pathname: "/customer-details",
       params: { method: selectedMethod },
@@ -83,8 +140,61 @@ export default function CheckoutScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
         >
+          {/* Supermarket In-Store Verification Card */}
+          <View style={styles.storeSection}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionTitle}>
+                {purchaseMode === "online" ? "Online Supermarket" : "Supermarket Verification"}
+              </Text>
+              <TouchableOpacity
+                onPress={() => setSearchModalVisible(true)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.changeLinkText}>
+                  {selectedSupermarket ? "Change Store" : "Select Store"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {selectedSupermarket ? (
+              <View style={styles.storeCard}>
+                <View style={styles.storeCardIcon}>
+                  <Text style={{ fontSize: 22 }}>🏪</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.storeNameText}>{selectedSupermarket.name}</Text>
+                  <Text style={styles.storeCodeText}>
+                    📍 {selectedSupermarket.city || "Bangalore"} • Code: {selectedSupermarket.code}
+                  </Text>
+                  <View style={styles.storeStatusBadge}>
+                    <Text style={styles.storeStatusBadgeText}>
+                      ✓ {purchaseMode === "online" ? "Online Purchase Verified" : "Offline Checkout Verified"}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={styles.selectStorePrompt}
+                onPress={() => setSearchModalVisible(true)}
+                activeOpacity={0.85}
+              >
+                <Text style={{ fontSize: 24 }}>🏪</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.selectStoreTitle}>
+                    Select Supermarket by Registered Name <Text style={{ color: "#EF4444" }}>*</Text>
+                  </Text>
+                  <Text style={styles.selectStoreSub}>
+                    Required before payment to link transaction exclusively to this store
+                  </Text>
+                </View>
+                <Text style={styles.selectStoreArrow}>›</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
           {/* Order Items Header matching Screen 5 */}
-          <Text style={styles.sectionTitle}>Order Items</Text>
+          <Text style={styles.sectionTitle}>Order Items ({cart.length})</Text>
 
           <View style={styles.itemsList}>
             {cart.map((item) => (
@@ -210,6 +320,38 @@ export default function CheckoutScreen() {
           </TouchableOpacity>
         </ScrollView>
       </View>
+
+      {/* Supermarket Search Modal */}
+      <SupermarketSearchModal
+        visible={searchModalVisible}
+        mode={(purchaseMode || "offline") as any}
+        title="Search Supermarket by Registered Name"
+        subtitle="Select the store where items are being purchased"
+        onSelect={handleSelectStoreFromModal}
+        onUnavailableSelected={(store) => {
+          setSearchModalVisible(false);
+          setUnavailableModal({
+            visible: true,
+            mode: purchaseMode === "online" ? "Online" : "Offline",
+            storeName: store.name,
+          });
+        }}
+        onClose={() => setSearchModalVisible(false)}
+      />
+
+      {/* Mode Unavailable Modal */}
+      <ModeUnavailableModal
+        visible={unavailableModal.visible}
+        mode={unavailableModal.mode}
+        supermarketName={unavailableModal.storeName}
+        onClose={() =>
+          setUnavailableModal({ visible: false, mode: "Offline", storeName: "" })
+        }
+        onSelectAnother={() => {
+          setUnavailableModal({ visible: false, mode: "Offline", storeName: "" });
+          setSearchModalVisible(true);
+        }}
+      />
     </View>
   );
 }
@@ -217,7 +359,7 @@ export default function CheckoutScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#2E0854", // Deep rich purple matching reference
+    backgroundColor: "#2E0854",
   },
   purpleHeader: {
     backgroundColor: "#2E0854",
@@ -255,98 +397,191 @@ const styles = StyleSheet.create({
   },
   whiteSheet: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#F8FAFC",
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     marginTop: -16,
     overflow: "hidden",
   },
   scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 36,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 40,
+  },
+  storeSection: {
+    marginBottom: 20,
+  },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
   },
   sectionTitle: {
-    fontSize: 15,
-    fontWeight: "900",
+    fontSize: 16,
+    fontWeight: "800",
     color: "#1E1B4B",
-    marginBottom: 12,
+  },
+  changeLinkText: {
+    fontSize: 12.5,
+    fontWeight: "700",
+    color: "#4338CA",
+  },
+  storeCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: "#BBF7D0",
+    padding: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  storeCardIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "#F0FDF4",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  storeNameText: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  storeCodeText: {
+    fontSize: 12,
+    color: "#64748B",
+    marginTop: 2,
+  },
+  storeStatusBadge: {
+    alignSelf: "flex-start",
+    backgroundColor: "#DCFCE7",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginTop: 6,
+  },
+  storeStatusBadgeText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#15803D",
+  },
+  selectStorePrompt: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+    borderRadius: 16,
+    padding: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  selectStoreTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  selectStoreSub: {
+    fontSize: 11.5,
+    color: "#64748B",
+    marginTop: 2,
+  },
+  selectStoreArrow: {
+    fontSize: 24,
+    color: "#94A3B8",
+    fontWeight: "300",
   },
   itemsList: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginTop: 8,
     marginBottom: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
   },
   itemRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderColor: "#F1F5F9",
+    borderBottomColor: "#F1F5F9",
   },
   itemThumbBox: {
     width: 48,
     height: 48,
-    borderRadius: 10,
+    borderRadius: 12,
     backgroundColor: "#F8FAFC",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#F1F5F9",
+    marginRight: 12,
+    overflow: "hidden",
   },
   itemThumb: {
-    width: 38,
-    height: 38,
+    width: 40,
+    height: 40,
   },
   itemInfo: {
     flex: 1,
-    marginLeft: 12,
   },
   itemName: {
     fontSize: 14,
-    fontWeight: "800",
-    color: "#1E293B",
-    marginBottom: 2,
+    fontWeight: "700",
+    color: "#1E1B4B",
+    marginBottom: 4,
   },
   itemQtyPrice: {
-    fontSize: 12.5,
+    fontSize: 12,
     color: "#64748B",
     fontWeight: "600",
   },
   itemTotal: {
     fontSize: 14,
     fontWeight: "800",
-    color: "#1E293B",
+    color: "#1E1B4B",
   },
   breakdownBox: {
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderColor: "#F1F5F9",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 16,
     marginBottom: 22,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
   },
   breakdownRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
+    marginBottom: 10,
   },
   breakdownLabel: {
-    fontSize: 14,
-    fontWeight: "600",
+    fontSize: 13,
     color: "#64748B",
+    fontWeight: "600",
   },
   breakdownValue: {
-    fontSize: 14.5,
+    fontSize: 13,
+    color: "#1E1B4B",
     fontWeight: "700",
-    color: "#1E293B",
   },
   discountLabel: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#16A34A", // Vibrant green matching reference
+    fontSize: 13,
+    color: "#059669",
+    fontWeight: "600",
   },
   discountValue: {
-    fontSize: 14.5,
-    fontWeight: "800",
-    color: "#16A34A", // Vibrant green matching reference
+    fontSize: 13,
+    color: "#059669",
+    fontWeight: "700",
   },
   breakdownRowTotal: {
     flexDirection: "row",
@@ -354,40 +589,43 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingTop: 10,
     borderTopWidth: 1,
-    borderColor: "#F1F5F9",
+    borderTopColor: "#F1F5F9",
     marginTop: 4,
   },
   totalLabel: {
     fontSize: 15,
-    fontWeight: "900",
-    color: "#1E293B",
+    fontWeight: "800",
+    color: "#1E1B4B",
   },
   totalValue: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: "900",
-    color: "#1E293B",
+    color: "#1E1B4B",
   },
   paymentCard: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    borderWidth: 1.5,
-    borderColor: "#E2E8F0",
-    overflow: "hidden",
+    borderRadius: 20,
+    marginTop: 8,
     marginBottom: 26,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
   },
   methodRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 14,
     paddingHorizontal: 16,
-    backgroundColor: "#FFFFFF",
+    paddingVertical: 14,
   },
   methodRowSelected: {
-    backgroundColor: "#FAF5FF", // Subtle soft lavender background for selected method
+    backgroundColor: "#FAFAFA",
   },
   methodRowDivider: {
     borderBottomWidth: 1,
-    borderColor: "#F1F5F9",
+    borderBottomColor: "#F1F5F9",
   },
   radioOuter: {
     width: 20,
@@ -397,202 +635,63 @@ const styles = StyleSheet.create({
     borderColor: "#CBD5E1",
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 12,
+    marginRight: 14,
   },
   radioOuterSelected: {
-    borderColor: "#3B0764", // Purple active ring
+    borderColor: "#3B0764",
   },
   radioInner: {
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: "#3B0764", // Purple active center
+    backgroundColor: "#3B0764",
   },
   methodIconBadge: {
-    width: 28,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 10,
+    marginRight: 12,
   },
   upiBadge: {
     backgroundColor: "#7C3AED",
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  upiBadgeText: {
-    color: "#FFFFFF",
-    fontSize: 9,
-    fontWeight: "900",
-    letterSpacing: 0.5,
-  },
-  methodLabel: {
-    fontSize: 13.5,
-    fontWeight: "700",
-    color: "#334155",
-  },
-  methodLabelSelected: {
-    color: "#1E1B4B",
-    fontWeight: "900",
-  },
-  payNowBtn: {
-    backgroundColor: "#3B0764", // Deep rich purple from reference
-    paddingVertical: 16,
-    borderRadius: 28,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#3B0764",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 6,
-  },
-  customerPreviewCard: {
-    backgroundColor: "#FAF5FF",
-    borderRadius: 18,
-    borderWidth: 1.5,
-    borderColor: "#E9D8FD",
-    padding: 16,
-    marginBottom: 24,
-  },
-  customerPreviewRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  badgeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 6,
-  },
-  customerPreviewLabel: {
-    fontSize: 10.5,
-    fontWeight: "900",
-    color: "#7C3AED",
-    letterSpacing: 0.6,
-  },
-  readyBadge: {
-    backgroundColor: "#DCFCE7",
     paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: 6,
   },
-  readyBadgeText: {
-    color: "#166534",
-    fontSize: 10,
+  upiBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 11,
     fontWeight: "800",
   },
-  customerPreviewName: {
-    fontSize: 14.5,
-    fontWeight: "800",
-    color: "#1E293B",
-    marginBottom: 2,
-  },
-  customerPreviewPhone: {
-    fontSize: 13,
-    color: "#475569",
+  methodLabel: {
+    fontSize: 14,
     fontWeight: "600",
-    marginBottom: 2,
+    color: "#334155",
   },
-  customerPreviewAddress: {
-    fontSize: 12,
-    color: "#64748B",
-    fontWeight: "500",
-    marginTop: 2,
+  methodLabelSelected: {
+    color: "#1E1B4B",
+    fontWeight: "700",
   },
-  editDetailsBtn: {
-    backgroundColor: "#FFFFFF",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#CBD5E1",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  editDetailsText: {
-    fontSize: 13,
-    fontWeight: "800",
-    color: "#3B0764",
-  },
-  detailsPromptCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FAF5FF",
-    borderRadius: 18,
-    borderWidth: 1.5,
-    borderColor: "#D8B4FE",
-    borderStyle: "dashed",
-    padding: 14,
-    marginBottom: 24,
-    gap: 12,
-  },
-  promptIconBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: "#FFFFFF",
+  payNowBtn: {
+    backgroundColor: "#F6BC45",
+    paddingVertical: 16,
+    borderRadius: 28,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#E9D8FD",
-  },
-  promptIcon: {
-    fontSize: 22,
-  },
-  promptHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 2,
-  },
-  promptTitle: {
-    fontSize: 13.5,
-    fontWeight: "800",
-    color: "#1E1B4B",
-  },
-  promptRequiredBadge: {
-    backgroundColor: "#FEE2E2",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  promptRequiredText: {
-    fontSize: 9.5,
-    fontWeight: "800",
-    color: "#DC2626",
-  },
-  promptSubtitle: {
-    fontSize: 11.5,
-    color: "#64748B",
-    fontWeight: "500",
-    marginBottom: 4,
-  },
-  promptActionLink: {
-    fontSize: 11.5,
-    color: "#7C3AED",
-    fontWeight: "800",
+    shadowColor: "#F6BC45",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 6,
   },
   payBtnContent: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
     gap: 8,
   },
   lockIcon: {
-    fontSize: 15,
+    fontSize: 16,
   },
   payNowText: {
-    color: "#FFFFFF",
+    color: "#2E0854",
     fontSize: 16,
     fontWeight: "900",
-    letterSpacing: 0.3,
-  },
-  btnDisabled: {
-    opacity: 0.65,
   },
 });

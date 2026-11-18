@@ -1,19 +1,79 @@
+import Constants from "expo-constants";
+import { Platform } from "react-native";
+
 // Supermarket API Configuration & Safe Fetch Helper
 
-const DEFAULT_SERVER_URL = "https://super-market-scan.onrender.com/api";
-
-const RAW_URL = process.env.EXPO_PUBLIC_API_URL || DEFAULT_SERVER_URL;
-
-// Guarantee port 5001 even if Metro bundler cached the old port 5000
-export const API_URL = RAW_URL.replace(":5000", ":5001");
+export const DEFAULT_SERVER_URL = "https://super-market-scan.onrender.com/api";
 
 /**
- * Resilient fetch with AbortController timeout to prevent UI freeze
+ * Dynamically resolves the development host IP address.
+ * On real physical devices, 'localhost' refers to the mobile phone itself, causing
+ * java.net.ConnectException. Expo's Metro bundler exposes the development machine's IP.
+ */
+export function getResolvedHost(): string {
+  try {
+    // 1. Check Expo SDK config hostUri (standard when bundled by Metro over LAN)
+    const hostUri =
+      Constants.expoConfig?.hostUri ||
+      (Constants as any)?.manifest?.debuggerHost ||
+      (Constants as any)?.manifest2?.extra?.expoClient?.hostUri ||
+      (Constants as any)?.expoGoConfig?.debuggerHost;
+
+    if (hostUri && typeof hostUri === "string") {
+      const ip = hostUri.split(":")[0];
+      if (ip && ip !== "localhost" && ip !== "127.0.0.1") {
+        return ip;
+      }
+    }
+
+    // 2. Check linking / experience URL
+    const expUrl = (Constants as any)?.linkingUri || (Constants as any)?.experienceUrl;
+    if (expUrl && typeof expUrl === "string") {
+      const match = expUrl.match(/:\/\/(.*?)(:\d+)?(\/|$)/);
+      if (match && match[1] && match[1] !== "localhost" && match[1] !== "127.0.0.1") {
+        return match[1];
+      }
+    }
+  } catch (_) {}
+
+  // 3. Android emulator fallback (10.0.2.2 maps to PC localhost)
+  if (Platform.OS === "android") {
+    return "10.0.2.2";
+  }
+
+  return "localhost";
+}
+
+/**
+ * Compute the effective API URL based on platform and environment
+ */
+export function computeApiUrl(): string {
+  const envUrl = process.env.EXPO_PUBLIC_API_URL || "";
+  let base = envUrl.trim() || DEFAULT_SERVER_URL;
+
+  // Guarantee port 5001 even if Metro bundler cached port 5000
+  base = base.replace(":5000", ":5001");
+
+  // On native mobile devices, replace localhost/127.0.0.1 with the host machine's LAN IP
+  if (Platform.OS !== "web") {
+    if (base.includes("localhost") || base.includes("127.0.0.1")) {
+      const resolvedHost = getResolvedHost();
+      base = base.replace("localhost", resolvedHost).replace("127.0.0.1", resolvedHost);
+    }
+  }
+
+  return base;
+}
+
+export const API_URL = computeApiUrl();
+
+/**
+ * Resilient fetch with AbortController timeout and automatic fallback
  */
 export async function safeFetch(
   url: string,
   options: RequestInit = {},
-  timeoutMs = 6000
+  timeoutMs = 7000
 ): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -24,8 +84,58 @@ export async function safeFetch(
       signal: controller.signal,
     });
     return res;
+  } catch (primaryErr: any) {
+    // If running on a physical mobile device and the local LAN endpoint is unreachable
+    // (e.g. phone is on cellular mobile data or different Wi-Fi subnet),
+    // automatically attempt fallback to the deployed cloud server
+    if (
+      Platform.OS !== "web" &&
+      API_URL !== DEFAULT_SERVER_URL &&
+      url.startsWith(API_URL)
+    ) {
+      const fallbackUrl = url.replace(API_URL, DEFAULT_SERVER_URL);
+      try {
+        const fallbackRes = await fetch(fallbackUrl, {
+          ...options,
+          signal: controller.signal,
+        });
+        return fallbackRes;
+      } catch (_) {
+        // Fallback also failed; throw original with clear diagnostic info
+      }
+    }
+
+    const host = getResolvedHost();
+    const isLocal = url.includes("localhost") || url.includes("127.0.0.1") || url.includes(host);
+    if (isLocal && Platform.OS === "android") {
+      throw new Error(
+        `Cannot reach backend at ${url}.\n\nEnsure your phone and computer are on the same Wi-Fi network, or connect via USB and run 'adb reverse tcp:5001 tcp:5001'.`
+      );
+    }
+
+    throw primaryErr;
   } finally {
     clearTimeout(timer);
   }
 }
 
+/**
+ * Universal Indian phone formatter: guarantees clean standard '+91 XXXXXXXXXX'
+ * without duplicated '+91 +91' or '+91 91'.
+ */
+export function formatPhoneNumber(phone: string | undefined | null): string {
+  if (!phone) return "";
+  const digits = String(phone).replace(/\D/g, "");
+  if (!digits) return String(phone);
+  const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
+  return `+91 ${last10}`;
+}
+
+/**
+ * Extracts clean 10-digit mobile number digits for API payloads and database storage.
+ */
+export function get10DigitPhone(phone: string | undefined | null): string {
+  if (!phone) return "";
+  const digits = String(phone).replace(/\D/g, "");
+  return digits.length >= 10 ? digits.slice(-10) : digits;
+}
