@@ -1624,8 +1624,31 @@ export default function RegisteredSupermarkets() {
       </section>
 
       {/* 3. Filter Bar & Search */}
-      <div className="sa-table-card">
-        <div className="sa-table-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px", padding: "14px 18px" }}>
+      <div
+        className="sa-table-card"
+        style={{
+          background: "#ffffff",
+          backgroundColor: "#ffffff",
+          borderRadius: "16px",
+          border: "1px solid #e2e8f0",
+          boxShadow: "0 4px 16px rgba(0, 0, 0, 0.05)",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          className="sa-table-header"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: "12px",
+            padding: "16px 20px",
+            background: "#ffffff",
+            backgroundColor: "#ffffff",
+            borderBottom: "1px solid #f1f5f9",
+          }}
+        >
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <Building2 size={18} color="#16a34a" />
             <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 800 }}>
@@ -1661,8 +1684,25 @@ export default function RegisteredSupermarkets() {
         </div>
 
         {/* 4. Table with dedicated View Details Action (NO REDIRECTS) */}
-        <div className="sa-table-responsive" style={{ width: "100%", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-          <table className="sa-data-table" style={{ width: "100%", minWidth: "1150px" }}>
+        <div
+          className="sa-table-responsive"
+          style={{
+            width: "100%",
+            overflowX: "auto",
+            WebkitOverflowScrolling: "touch",
+            background: "#ffffff",
+            backgroundColor: "#ffffff",
+          }}
+        >
+          <table
+            className="sa-data-table"
+            style={{
+              width: "100%",
+              minWidth: "1150px",
+              background: "#ffffff",
+              backgroundColor: "#ffffff",
+            }}
+          >
             <thead>
               <tr>
                 <th>#</th>
@@ -1685,7 +1725,10 @@ export default function RegisteredSupermarkets() {
                 </tr>
               ) : (
                 filteredStores.map((store, idx) => (
-                  <tr key={store._id || store.code}>
+                  <tr
+                    key={store._id || store.code}
+                    style={{ background: "#ffffff", backgroundColor: "#ffffff" }}
+                  >
                     <td><strong>{idx + 1}</strong></td>
 
                     <td>
