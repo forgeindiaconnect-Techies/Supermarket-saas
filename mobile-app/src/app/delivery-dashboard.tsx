@@ -612,6 +612,8 @@ export default function DeliveryDashboardScreen() {
           </Text>
         </TouchableOpacity>
 
+        <View style={styles.navDivider} />
+
         {/* Tab 2: My Deliveries */}
         <TouchableOpacity
           style={
@@ -645,6 +647,8 @@ export default function DeliveryDashboardScreen() {
           </Text>
         </TouchableOpacity>
 
+        <View style={styles.navDivider} />
+
         {/* Tab 3: Support / Reports */}
         <TouchableOpacity
           style={
@@ -677,6 +681,8 @@ export default function DeliveryDashboardScreen() {
             Support
           </Text>
         </TouchableOpacity>
+
+        <View style={styles.navDivider} />
 
         {/* Tab 4: Settings / Profile */}
         <TouchableOpacity
@@ -1082,18 +1088,18 @@ const styles = StyleSheet.create({
 
   // 2. Hero Banner Card (Exact match with reference image)
   heroCard: {
-    height: 150,
-    borderRadius: 20,
+    height: 98,
+    borderRadius: 18,
     overflow: "hidden",
     position: "relative",
     marginBottom: 14,
-    borderWidth: 1.5,
+    borderWidth: 1.2,
     borderColor: "#E9D5FF",
     backgroundColor: "#F3E8FF",
     shadowColor: "#4C1D95",
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.08,
-    shadowRadius: 10,
+    shadowRadius: 8,
     elevation: 3,
   },
   heroBannerImage: {
@@ -1103,18 +1109,18 @@ const styles = StyleSheet.create({
   },
   heroOverlayCard: {
     position: "absolute",
-    top: 10,
-    left: 10,
-    bottom: 10,
-    width: width * 0.54,
-    backgroundColor: "rgba(255, 255, 255, 0.94)",
-    borderRadius: 14,
-    padding: 10,
+    top: 6,
+    left: 6,
+    bottom: 6,
+    width: width * 0.52,
+    backgroundColor: "rgba(255, 255, 255, 0.96)",
+    borderRadius: 12,
+    padding: 7,
     justifyContent: "space-between",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
-    shadowRadius: 6,
+    shadowRadius: 4,
     elevation: 2,
   },
   heroLogoRow: {
@@ -1122,60 +1128,60 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   heroLogoIconCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
+    width: 20,
+    height: 20,
+    borderRadius: 5,
     backgroundColor: "#F3E8FF",
     justifyContent: "center",
     alignItems: "center",
   },
   heroLogoCart: {
-    fontSize: 13,
+    fontSize: 11,
   },
   heroLogoTitle: {
-    fontSize: 9,
+    fontSize: 8.5,
     fontWeight: "900",
     color: "#2E0854",
     letterSpacing: 0.5,
   },
   heroLogoSub: {
-    fontSize: 6.5,
+    fontSize: 6,
     fontWeight: "800",
     color: "#7E22CE",
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
   },
   heroStoreName: {
-    fontSize: 13.5,
-    fontWeight: "800",
+    fontSize: 12,
+    fontWeight: "900",
     color: "#1E1B4B",
-    marginTop: 2,
+    marginTop: 1,
   },
   heroOpsPill: {
     backgroundColor: "#4C1D95",
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 5,
     alignSelf: "flex-start",
   },
   heroOpsPillText: {
     color: "#FFFFFF",
-    fontSize: 8.5,
+    fontSize: 7.5,
     fontWeight: "700",
   },
   heroStaffStatusRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 2,
+    marginTop: 1,
   },
   heroLiveGreenDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
     backgroundColor: "#22C55E",
-    marginRight: 5,
+    marginRight: 4,
   },
   heroStaffStatusText: {
-    fontSize: 9.5,
+    fontSize: 8.5,
     color: "#374151",
     fontWeight: "600",
   },
@@ -1358,11 +1364,11 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    borderWidth: 3,
+    borderWidth: 2.5,
     borderColor: "#4C1D95",
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#EDE9FE",
+    backgroundColor: "#FFFFFF",
   },
   completionCircleText: {
     fontSize: 11,
@@ -1672,14 +1678,19 @@ const styles = StyleSheet.create({
     justifyContent: "space-around",
     alignItems: "center",
     paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderTopWidth: 1,
+    paddingHorizontal: 8,
+    borderTopWidth: 1.5,
     borderTopColor: "#EDE9FE",
     shadowColor: "#4C1D95",
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.08,
     shadowRadius: 10,
     elevation: 8,
+  },
+  navDivider: {
+    width: 1,
+    height: 20,
+    backgroundColor: "#DDD6FE",
   },
   bottomNavTab: {
     alignItems: "center",

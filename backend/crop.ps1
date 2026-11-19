@@ -1,0 +1,11 @@
+Add-Type -AssemblyName System.Drawing
+$src = [System.Drawing.Image]::FromFile('C:\\Users\\Forgeindiaconnect\\.gemini\\antigravity\\brain\\a56cf71a-e1f3-46be-861e-b3f62fc51713\\.user_uploaded\\media_1795089568047_c431b371.jpg')
+[System.IO.File]::WriteAllText('C:\\PROJECTS\\VMS\\super-market-scan\\backend\\img_dims.json', "$($src.Width)x$($src.Height)")
+$cropRect = New-Object System.Drawing.Rectangle(0, 42, $src.Width, 68)
+$bmp = New-Object System.Drawing.Bitmap($src.Width, 68)
+$g = [System.Drawing.Graphics]::FromImage($bmp)
+$g.DrawImage($src, 0, 0, $cropRect, [System.Drawing.GraphicsUnit]::Pixel)
+$bmp.Save('C:\\PROJECTS\\VMS\\super-market-scan\\mobile-app\\assets\\images\\cropped_banner_test.jpg', [System.Drawing.Imaging.ImageFormat]::Jpeg)
+$g.Dispose()
+$bmp.Dispose()
+$src.Dispose()

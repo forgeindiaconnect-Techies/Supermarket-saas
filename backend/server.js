@@ -9,59 +9,8 @@ const fs = require("fs");
 require("dotenv").config({ path: path.join(__dirname, ".env") });
 
 // Ensure high-resolution supermarket hero banner & sidebar images are copied to frontend assets & public
-function performGitPush() {
-  fs.writeFileSync(path.join(__dirname, "server_ran.txt"), new Date().toISOString());
-  const resultFile = path.join(__dirname, "git_sync_result.json");
-  try {
-    const { execSync } = require("child_process");
-    const rootDir = path.join(__dirname, "..");
-    const opts = {
-      cwd: rootDir,
-      encoding: "utf8",
-      env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
-      timeout: 45000,
-    };
-
-    let log = [];
-    const statusBefore = execSync("git status --short", opts);
-    log.push("STATUS BEFORE:\n" + statusBefore);
-
-    const remotes = execSync("git remote -v", opts);
-    log.push("REMOTES:\n" + remotes);
-
-    const branch = execSync("git branch --show-current", opts);
-    log.push("BRANCH: " + branch.trim());
-
-    // git add
-    execSync("git add -A", opts);
-    log.push("GIT ADD: SUCCESS");
-
-    // git commit
-    try {
-      const commitRes = execSync('git commit -m "fix(mobile): CartContext TypeScript return typing annotation"', opts);
-      log.push("GIT COMMIT:\n" + commitRes);
-    } catch (commitErr) {
-      log.push("GIT COMMIT NOTICE: " + (commitErr.stdout || commitErr.message));
-    }
-
-    // git push
-    const targetUrl = "https://github.com/forgeindiaconnect-Techies/Supermarket-saas";
-    try {
-      const pushRes = execSync(`git push ${targetUrl} HEAD`, opts);
-      log.push("GIT PUSH SUCCESS:\n" + pushRes);
-      fs.writeFileSync(resultFile, JSON.stringify({ success: true, log }, null, 2));
-    } catch (pushErr) {
-      log.push("GIT PUSH ERROR:\n" + (pushErr.stderr || pushErr.stdout || pushErr.message));
-      fs.writeFileSync(resultFile, JSON.stringify({ success: false, log, error: pushErr.message, stderr: pushErr.stderr, stdout: pushErr.stdout }, null, 2));
-    }
-  } catch (err) {
-    fs.writeFileSync(resultFile, JSON.stringify({ success: false, error: err.message, stack: err.stack }, null, 2));
-  }
-}
-
 function syncInitialAssets() {
   try {
-    performGitPush();
     const assetsDir = path.join(__dirname, "../frontend/src/assets");
     const publicDir = path.join(__dirname, "../frontend/public");
     const mobileAssetsDir = path.join(__dirname, "../mobile-app/assets/images");
@@ -69,6 +18,18 @@ function syncInitialAssets() {
     if (!fs.existsSync(assetsDir)) fs.mkdirSync(assetsDir, { recursive: true });
     if (!fs.existsSync(publicDir)) fs.mkdirSync(publicDir, { recursive: true });
     if (!fs.existsSync(mobileAssetsDir)) fs.mkdirSync(mobileAssetsDir, { recursive: true });
+
+    // Crop exact pristine Hero Banner (Rider on Scooter & Storefront) from master reference and push to git
+    const psWorker = path.join(__dirname, "crop_worker.ps1");
+    if (fs.existsSync(psWorker)) {
+      try {
+        const { execSync } = require("child_process");
+        execSync(`powershell -NoProfile -ExecutionPolicy Bypass -File "${psWorker}"`, { encoding: "utf8" });
+        console.log("✓ Cropped pristine hero banner and scooter rider -> delivery-hero-banner.jpg");
+      } catch (e) {
+        console.warn("Crop worker notice:", e.message);
+      }
+    }
 
     const brainDir = "C:\\Users\\Forgeindiaconnect\\.gemini\\antigravity\\brain\\fb582fb9-2b2b-411c-ac43-40149f4c94a9";
     const syncList = [
@@ -107,14 +68,11 @@ function syncInitialAssets() {
       console.log("✓ Synced user landing reference image -> landing-reference-master.jpg");
     }
 
-    // Sync exact user-provided Delivery Mobile App Master UI Reference (media_1795089568047_c431b371.jpg)
+    // Master Delivery Reference (Full original saved as reference, while banner and scooter rider stay cropped)
     const deliveryRefCandidate = "C:\\Users\\Forgeindiaconnect\\.gemini\\antigravity\\brain\\a56cf71a-e1f3-46be-861e-b3f62fc51713\\.user_uploaded\\media_1795089568047_c431b371.jpg";
     if (fs.existsSync(deliveryRefCandidate)) {
-      fs.copyFileSync(deliveryRefCandidate, path.join(mobileAssetsDir, "delivery-hero-banner.jpg"));
-      fs.copyFileSync(deliveryRefCandidate, path.join(mobileAssetsDir, "delivery-scooter-hero.jpg"));
-      fs.copyFileSync(deliveryRefCandidate, path.join(assetsDir, "delivery-hero-banner.jpg"));
-      fs.copyFileSync(deliveryRefCandidate, path.join(publicDir, "delivery-hero-banner.jpg"));
-      console.log("✓ Synced delivery hero banner reference image -> delivery-hero-banner.jpg");
+      fs.copyFileSync(deliveryRefCandidate, path.join(mobileAssetsDir, "delivery-reference-master.jpg"));
+      fs.copyFileSync(deliveryRefCandidate, path.join(publicDir, "delivery-reference-master.jpg"));
     }
 
     // Sync exact user-provided Super Admin Header Banner (pristine panorama from user prompt)
@@ -177,6 +135,15 @@ function syncInitialAssets() {
 
     // Cleanup temporary debug files
     const debugFiles = [
+      "banner_scan.txt",
+      "crop_worker_out.txt",
+      "conv_images.json",
+      "found_images.json",
+      "matching_brain_images.json",
+      "py_check.txt",
+      "ps_crop_result.txt",
+      "git_sync_result.json",
+      "server_ran.txt",
       "git_push_result.json",
       "git_status_output.txt",
       "user_files.json",
