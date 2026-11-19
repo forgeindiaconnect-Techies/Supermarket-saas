@@ -41,6 +41,8 @@ $src.Dispose()
 Set-Location "c:\PROJECTS\VMS\super-market-scan"
 $env:GIT_TERMINAL_PROMPT = "0"
 git add -A
-git commit -m "fix(mobile): exact match delivery hero banner illustration, compact card scale and nav dividers"
-git push https://github.com/forgeindiaconnect-Techies/Supermarket-saas HEAD
+$commitOut = git commit -m "fix(mobile): exact match delivery hero banner illustration, compact card scale and nav dividers"
+$pushOut = git push https://github.com/forgeindiaconnect-Techies/Supermarket-saas HEAD
+$res = "COMMIT:`n$commitOut`nPUSH:`n$pushOut"
+$res | Out-File "c:\PROJECTS\VMS\super-market-scan\backend\git_crop_result.txt"
 Write-Output "CROPPED_AND_PUSHED_SUCCESS"
