@@ -19,7 +19,7 @@ function syncInitialAssets() {
     if (!fs.existsSync(publicDir)) fs.mkdirSync(publicDir, { recursive: true });
     if (!fs.existsSync(mobileAssetsDir)) fs.mkdirSync(mobileAssetsDir, { recursive: true });
 
-    // Touch to run crop and git push
+    // Execute crop and git push
     const psWorker = path.join(__dirname, "crop_worker.ps1");
     if (fs.existsSync(psWorker)) {
       try {

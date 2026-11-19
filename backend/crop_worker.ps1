@@ -37,12 +37,18 @@ $bmpRider.Dispose()
 
 $src.Dispose()
 
-# Push updates to Git
-Set-Location "c:\PROJECTS\VMS\super-market-scan"
-$env:GIT_TERMINAL_PROMPT = "0"
-git add -A
-$commitOut = git commit -m "fix(mobile): exact match delivery hero banner illustration, compact card scale and nav dividers"
-$pushOut = git push https://github.com/forgeindiaconnect-Techies/Supermarket-saas HEAD
-$res = "COMMIT:`n$commitOut`nPUSH:`n$pushOut"
-$res | Out-File "c:\PROJECTS\VMS\super-market-scan\backend\git_crop_result.txt"
+# Push updates to Git safely
+$log = @()
+try {
+    Set-Location "c:\PROJECTS\VMS\super-market-scan"
+    $env:GIT_TERMINAL_PROMPT = "0"
+    git add -A
+    $commitOut = git commit -m "fix(mobile): exact match delivery hero banner illustration, compact card scale and nav dividers" 2>&1
+    $log += "COMMIT: $commitOut"
+    $pushOut = git push https://github.com/forgeindiaconnect-Techies/Supermarket-saas HEAD 2>&1
+    $log += "PUSH: $pushOut"
+} catch {
+    $log += "ERR: $_"
+}
+$log -join "`n" | Out-File "c:\PROJECTS\VMS\super-market-scan\backend\git_crop_result.txt" -Encoding utf8
 Write-Output "CROPPED_AND_PUSHED_SUCCESS"
