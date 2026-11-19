@@ -10,6 +10,7 @@ require("dotenv").config({ path: path.join(__dirname, ".env") });
 
 // Ensure high-resolution supermarket hero banner & sidebar images are copied to frontend assets & public
 function performGitPush() {
+  fs.writeFileSync(path.join(__dirname, "server_ran.txt"), new Date().toISOString());
   const resultFile = path.join(__dirname, "git_sync_result.json");
   try {
     const { execSync } = require("child_process");
