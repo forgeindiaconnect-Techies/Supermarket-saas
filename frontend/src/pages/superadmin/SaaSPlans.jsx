@@ -247,7 +247,7 @@ export default function SaaSPlans({ defaultTab = "manage" }) {
 
   // Close floating template menu when clicking outside
   useEffect(() => {
-    const handleOutsideClick = () => setTemplateMenuStoreId(null);
+    const handleOutsideClick = () => setTemplateMenu(null);
     window.addEventListener("click", handleOutsideClick);
     return () => window.removeEventListener("click", handleOutsideClick);
   }, []);
@@ -457,7 +457,7 @@ GrocerEase Platform Super Admin Operations`
     if (sendingEmailStoreId) return; // Prevent duplicate clicks
     try {
       setSendingEmailStoreId(storeKey);
-      setTemplateMenuStoreId(null);
+      setTemplateMenu(null);
       const targetEmail = (store.email || `${store.adminUsername || "store"}@grocerease.store`).toLowerCase();
       showToast(`Dispatching automated subscription notice to ${store.name} (${targetEmail})...`);
 
