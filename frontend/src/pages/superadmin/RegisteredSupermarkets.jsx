@@ -1202,19 +1202,19 @@ export default function RegisteredSupermarkets() {
 
                 {/* Products Table matching Image 1 */}
                 <div className="sa-table-responsive" style={{ width: "100%", maxWidth: "100%", overflowX: "auto", display: "block", WebkitOverflowScrolling: "touch" }}>
-                  <table className="sa-data-table" style={{ width: "max-content", minWidth: "1080px", borderCollapse: "collapse" }}>
+                  <table className="sa-data-table" style={{ width: "100%", minWidth: "860px", borderCollapse: "collapse" }}>
                     <thead>
                       <tr>
-                        <th style={{ minWidth: "46px", width: "46px", textAlign: "center", whiteSpace: "nowrap" }}>#</th>
-                        <th style={{ minWidth: "220px", width: "220px", whiteSpace: "nowrap" }}>Product Name</th>
-                        <th style={{ minWidth: "140px", width: "140px", whiteSpace: "nowrap" }}>Category</th>
-                        <th style={{ minWidth: "130px", width: "130px", whiteSpace: "nowrap" }}>Barcode</th>
-                        <th style={{ minWidth: "95px", width: "95px", textAlign: "right", whiteSpace: "nowrap" }}>Unit Price</th>
-                        <th style={{ minWidth: "110px", width: "110px", textAlign: "center", whiteSpace: "nowrap" }}>Sold Quantity</th>
-                        <th style={{ minWidth: "120px", width: "120px", textAlign: "center", whiteSpace: "nowrap" }}>Available Stock</th>
-                        <th style={{ minWidth: "120px", width: "120px", textAlign: "center", whiteSpace: "nowrap" }}>Remaining Stock</th>
-                        <th style={{ minWidth: "110px", width: "110px", textAlign: "center", whiteSpace: "nowrap" }}>Stock Status</th>
-                        <th style={{ minWidth: "120px", width: "120px", textAlign: "right", whiteSpace: "nowrap" }}>Total Revenue</th>
+                        <th style={{ width: "4%", minWidth: "36px", textAlign: "center", whiteSpace: "nowrap" }}>#</th>
+                        <th style={{ width: "24%", minWidth: "180px", whiteSpace: "nowrap" }}>Product Name</th>
+                        <th style={{ width: "12%", minWidth: "110px", whiteSpace: "nowrap" }}>Category</th>
+                        <th style={{ width: "12%", minWidth: "110px", whiteSpace: "nowrap" }}>Barcode</th>
+                        <th style={{ width: "9%", minWidth: "85px", textAlign: "right", whiteSpace: "nowrap" }}>Unit Price</th>
+                        <th style={{ width: "8%", minWidth: "75px", textAlign: "center", whiteSpace: "nowrap" }}>Sold Qty</th>
+                        <th style={{ width: "8%", minWidth: "75px", textAlign: "center", whiteSpace: "nowrap" }}>Available</th>
+                        <th style={{ width: "8%", minWidth: "75px", textAlign: "center", whiteSpace: "nowrap" }}>Remaining</th>
+                        <th style={{ width: "7%", minWidth: "75px", textAlign: "center", whiteSpace: "nowrap" }}>Status</th>
+                        <th style={{ width: "8%", minWidth: "85px", textAlign: "right", paddingRight: "16px", whiteSpace: "nowrap" }}>Revenue</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1347,7 +1347,7 @@ export default function RegisteredSupermarkets() {
                               </span>
                             </td>
 
-                            <td style={{ textAlign: "right" }}>
+                            <td style={{ textAlign: "right", paddingRight: "20px" }}>
                               <strong style={{ color: "#1e293b", fontSize: "13px" }}>₹{Number(p.price || 0).toLocaleString("en-IN")}</strong>
                             </td>
 
@@ -1400,7 +1400,7 @@ export default function RegisteredSupermarkets() {
                               </span>
                             </td>
 
-                            <td style={{ textAlign: "right" }}>
+                            <td style={{ textAlign: "right", paddingRight: "20px" }}>
                               <strong style={{ color: "#166534", fontSize: "13px", fontWeight: 800 }}>
                                 ₹{(p.totalRevenue || 0).toLocaleString("en-IN")}
                               </strong>
@@ -1430,17 +1430,17 @@ export default function RegisteredSupermarkets() {
                 </span>
               </div>
 
-              <div className="sa-table-responsive" style={{ width: "100%", maxWidth: "100%", overflowX: "auto", display: "block", WebkitOverflowScrolling: "touch" }}>
-                <table className="sa-data-table" style={{ width: "max-content", minWidth: "820px", borderCollapse: "collapse" }}>
+              <div className="sa-table-responsive" style={{ width: "100%", overflowX: "auto", display: "block", WebkitOverflowScrolling: "touch" }}>
+                <table className="sa-data-table" style={{ width: "100%", minWidth: "100%", tableLayout: "fixed", borderCollapse: "collapse" }}>
                   <thead>
-                    <tr>
-                      <th style={{ minWidth: "120px", whiteSpace: "nowrap" }}>Order #</th>
-                      <th style={{ minWidth: "170px", whiteSpace: "nowrap" }}>Customer Details</th>
-                      <th style={{ minWidth: "110px", whiteSpace: "nowrap" }}>Items Count</th>
-                      <th style={{ minWidth: "110px", whiteSpace: "nowrap" }}>Total Amount</th>
-                      <th style={{ minWidth: "130px", whiteSpace: "nowrap" }}>Payment Method</th>
-                      <th style={{ minWidth: "110px", whiteSpace: "nowrap" }}>Status</th>
-                      <th style={{ minWidth: "160px", textAlign: "right", whiteSpace: "nowrap" }}>Date &amp; Time</th>
+                    <tr style={{ background: "#f8fafc" }}>
+                      <th style={{ width: "18%", textAlign: "left", paddingLeft: "20px", whiteSpace: "nowrap" }}>Order #</th>
+                      <th style={{ width: "24%", textAlign: "left", whiteSpace: "nowrap" }}>Customer Details</th>
+                      <th style={{ width: "12%", textAlign: "left", whiteSpace: "nowrap" }}>Items Count</th>
+                      <th style={{ width: "14%", textAlign: "left", whiteSpace: "nowrap" }}>Total Amount</th>
+                      <th style={{ width: "12%", textAlign: "left", whiteSpace: "nowrap" }}>Payment Method</th>
+                      <th style={{ width: "10%", textAlign: "left", whiteSpace: "nowrap" }}>Status</th>
+                      <th style={{ width: "10%", textAlign: "right", paddingRight: "20px", whiteSpace: "nowrap" }}>Date &amp; Time</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1468,7 +1468,7 @@ export default function RegisteredSupermarkets() {
                     ) : (
                       recentOrders.map((ord) => (
                         <tr key={ord._id || ord.orderNumber}>
-                          <td>
+                          <td style={{ paddingLeft: "20px" }}>
                             <strong style={{ fontFamily: "monospace", color: "#166534" }}>
                               {ord.orderNumber}
                             </strong>
@@ -1513,7 +1513,7 @@ export default function RegisteredSupermarkets() {
                             </span>
                           </td>
 
-                          <td style={{ textAlign: "right" }}>
+                          <td style={{ textAlign: "right", paddingRight: "20px" }}>
                             <span style={{ fontSize: "12px", color: "#64748b" }}>
                               {ord.createdAt
                                 ? new Date(ord.createdAt).toLocaleString("en-IN", {
@@ -1698,22 +1698,22 @@ export default function RegisteredSupermarkets() {
             className="sa-data-table"
             style={{
               width: "100%",
-              minWidth: "1150px",
+              minWidth: "940px",
               background: "#ffffff",
               backgroundColor: "#ffffff",
             }}
           >
             <thead>
               <tr>
-                <th>#</th>
-                <th>Supermarket Details</th>
-                <th>Branch Code</th>
-                <th>Location</th>
-                <th>Admin Username</th>
-                <th>Assigned Plan</th>
-                <th>Status</th>
-                <th>Registered Date</th>
-                <th style={{ textAlign: "center", width: "160px", minWidth: "150px", paddingRight: "20px" }}>Action</th>
+                <th style={{ width: "3%", minWidth: "30px", textAlign: "center" }}>#</th>
+                <th style={{ width: "23%", minWidth: "190px" }}>Supermarket Details</th>
+                <th style={{ width: "10%", minWidth: "90px" }}>Branch Code</th>
+                <th style={{ width: "12%", minWidth: "110px" }}>Location</th>
+                <th style={{ width: "11%", minWidth: "95px" }}>Admin Username</th>
+                <th style={{ width: "10%", minWidth: "90px" }}>Assigned Plan</th>
+                <th style={{ width: "9%", minWidth: "80px" }}>Status</th>
+                <th style={{ width: "10%", minWidth: "95px" }}>Registered Date</th>
+                <th style={{ width: "12%", minWidth: "160px", textAlign: "right", paddingRight: "18px" }}>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -1729,7 +1729,7 @@ export default function RegisteredSupermarkets() {
                     key={store._id || store.code}
                     style={{ background: "#ffffff", backgroundColor: "#ffffff" }}
                   >
-                    <td><strong>{idx + 1}</strong></td>
+                    <td style={{ textAlign: "center" }}><strong>{idx + 1}</strong></td>
 
                     <td>
                       <div
@@ -1775,19 +1775,19 @@ export default function RegisteredSupermarkets() {
                           <small style={{ color: "#64748B" }}>
                             {store.email || `${store.adminUsername}@store.com`}
                           </small>
-                          <div style={{ display: "flex", gap: "4px", marginTop: "3px" }}>
+                          <div style={{ display: "flex", gap: "4px", marginTop: "3px", flexWrap: "wrap" }}>
                             <span
                               style={{
                                 fontSize: "10px",
                                 padding: "1px 6px",
                                 borderRadius: "4px",
                                 fontWeight: 700,
-                                background: store.onlineAvailable === true ? "#dcfce7" : store.onlineAvailable === false ? "#fee2e2" : "#f1f5f9",
-                                color: store.onlineAvailable === true ? "#15803d" : store.onlineAvailable === false ? "#b91c1c" : "#64748b",
-                                border: `1px solid ${store.onlineAvailable === true ? "#86efac" : store.onlineAvailable === false ? "#fca5a5" : "#cbd5e1"}`,
+                                background: (store.onlineDeliveryAvailable === true || store.onlineAvailable === true) ? "#dcfce7" : "#fee2e2",
+                                color: (store.onlineDeliveryAvailable === true || store.onlineAvailable === true) ? "#15803d" : "#b91c1c",
+                                border: `1px solid ${(store.onlineDeliveryAvailable === true || store.onlineAvailable === true) ? "#86efac" : "#fca5a5"}`,
                               }}
                             >
-                              Online: {store.onlineAvailable === true ? "Available" : store.onlineAvailable === false ? "Not Available" : "Not Configured"}
+                              Online Delivery: {(store.onlineDeliveryAvailable === true || store.onlineAvailable === true) ? "Available" : "Disabled"}
                             </span>
                             <span
                               style={{
@@ -1795,13 +1795,29 @@ export default function RegisteredSupermarkets() {
                                 padding: "1px 6px",
                                 borderRadius: "4px",
                                 fontWeight: 700,
-                                background: store.offlineAvailable === true ? "#dcfce7" : store.offlineAvailable === false ? "#fee2e2" : "#f1f5f9",
-                                color: store.offlineAvailable === true ? "#15803d" : store.offlineAvailable === false ? "#b91c1c" : "#64748b",
-                                border: `1px solid ${store.offlineAvailable === true ? "#86efac" : store.offlineAvailable === false ? "#fca5a5" : "#cbd5e1"}`,
+                                background: (store.selfPickupAvailable === true || store.offlineAvailable === true) ? "#dcfce7" : "#fee2e2",
+                                color: (store.selfPickupAvailable === true || store.offlineAvailable === true) ? "#15803d" : "#b91c1c",
+                                border: `1px solid ${(store.selfPickupAvailable === true || store.offlineAvailable === true) ? "#86efac" : "#fca5a5"}`,
                               }}
                             >
-                              Offline: {store.offlineAvailable === true ? "Available" : store.offlineAvailable === false ? "Not Available" : "Not Configured"}
+                              Self Pickup: {(store.selfPickupAvailable === true || store.offlineAvailable === true) ? "Available" : "Disabled"}
                             </span>
+                            {(store.onlineDeliveryAvailable === true || store.onlineAvailable === true) && (
+                              <span
+                                style={{
+                                  fontSize: "10px",
+                                  padding: "1px 6px",
+                                  borderRadius: "4px",
+                                  fontWeight: 700,
+                                  background: "#ede9fe",
+                                  color: "#6d28d9",
+                                  border: "1px solid #c4b5fd",
+                                }}
+                                title="Dedicated Delivery Dashboard enabled in Mobile App"
+                              >
+                                🚚 Delivery Dashboard Active
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1867,7 +1883,7 @@ export default function RegisteredSupermarkets() {
                       </span>
                     </td>
 
-                    <td style={{ textAlign: "center", width: "190px", minWidth: "180px", paddingRight: "20px", whiteSpace: "nowrap" }}>
+                    <td style={{ textAlign: "right", width: "12%", minWidth: "160px", paddingRight: "18px", whiteSpace: "nowrap" }}>
                       {/* Prominent View Details Button */}
                       <button
                         type="button"

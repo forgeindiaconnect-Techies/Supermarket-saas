@@ -4,11 +4,11 @@ import { useRouter } from "expo-router";
 import { useCart } from "../context/CartContext";
 import { Theme } from "../constants/colors";
 
-type TabName = "home" | "scan" | "cart" | "orders" | "profile";
+type TabName = "home" | "scan" | "cart" | "orders" | "profile" | "delivery";
 
 export default function CustomerBottomNav({ activeTab }: { activeTab: TabName }) {
   const router = useRouter();
-  const { totalCount, purchaseMode, selectedSupermarket } = useCart();
+  const { totalCount, purchaseMode, selectedSupermarket, deliveryUser } = useCart();
 
   const homeRoute = purchaseMode === "online" && selectedSupermarket ? "/catalog" : "/";
 
@@ -16,14 +16,24 @@ export default function CustomerBottomNav({ activeTab }: { activeTab: TabName })
     id: TabName;
     label: string;
     icon: string;
-    route: "/" | "/catalog" | "/scanner" | "/cart" | "/orders" | "/profile";
+    route: any;
   }[] = [
-    { id: "home", label: purchaseMode === "online" ? "Store" : "Home", icon: "⌂", route: homeRoute as any },
+    { id: "home", label: purchaseMode === "online" ? "Store" : "Home", icon: "⌂", route: homeRoute },
     { id: "scan", label: "Scan", icon: "⚲", route: "/scanner" },
     { id: "cart", label: "Cart", icon: "🛒", route: "/cart" },
     { id: "orders", label: "Orders", icon: "📋", route: "/orders" },
     { id: "profile", label: "Profile", icon: "👤", route: "/profile" },
   ];
+
+  // For authorized delivery personnel, surface the dedicated Delivery Fleet tab
+  if (deliveryUser) {
+    tabs.push({
+      id: "delivery",
+      label: "Delivery",
+      icon: "🚚",
+      route: "/delivery-dashboard",
+    });
+  }
 
   return (
     <View style={styles.navBar}>

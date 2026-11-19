@@ -14,6 +14,8 @@ import {
   MessageSquare,
   LogOut,
   X,
+  Truck,
+  Store,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
@@ -49,6 +51,46 @@ export default function Sidebar({ isOpen, onClose }) {
     : "Smart Supermarket";
   const storeLogo = currentSupermarket?.logoUrl;
   const storeTagline = currentSupermarket?.tagline || "Smart Shopping";
+
+  // Purchase Availability Configuration
+  const isOnlineDelivery = Boolean(
+    currentSupermarket?.onlineDeliveryAvailable ??
+    (currentSupermarket?.onlineAvailable && !currentSupermarket?.offlineAvailable)
+  );
+  const isSelfPickup = Boolean(
+    currentSupermarket?.selfPickupAvailable ??
+    currentSupermarket?.offlineAvailable
+  );
+
+  // Exact Sidebar Visibility Matrix:
+  // - Online Delivery only: Show Delivery
+  // - Self Pickup only: Show Delivery and Pickup (because Self Pickup offers both Doorstep Delivery & Store Collection)
+  // - Both enabled: Show Delivery and Pickup
+  // - Both disabled: Neither tab shown
+  const showDelivery = isOnlineDelivery || isSelfPickup;
+  const showPickup = isSelfPickup;
+
+  // Build dynamic navigation items
+  const dynamicNavItems = [];
+  navItems.forEach((item) => {
+    dynamicNavItems.push(item);
+    if (item.path === "/admin/orders") {
+      if (showDelivery) {
+        dynamicNavItems.push({
+          path: "/admin/delivery",
+          label: "Delivery",
+          icon: Truck,
+        });
+      }
+      if (showPickup) {
+        dynamicNavItems.push({
+          path: "/admin/pickup",
+          label: "Pickup",
+          icon: Store,
+        });
+      }
+    }
+  });
 
   return (
     <aside className={`admin-sidebar ${isOpen ? "open" : ""}`}>
@@ -101,9 +143,9 @@ export default function Sidebar({ isOpen, onClose }) {
         </button>
       </div>
 
-      {/* 2. Permanent Navigation Items */}
+      {/* 2. Dynamic Navigation Items */}
       <nav className="sidebar-nav">
-        {navItems.map((item) => {
+        {dynamicNavItems.map((item) => {
           const Icon = item.icon;
           const isActive = item.end
             ? location.pathname === "/admin" || location.pathname === "/admin/"

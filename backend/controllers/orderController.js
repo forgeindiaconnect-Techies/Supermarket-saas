@@ -223,6 +223,56 @@ exports.checkout = async (req, res) => {
     const rawCustomerPhone = (customer?.phone || "").replace(/\D/g, "").slice(-10);
     const cleanCustomerPhone = rawCustomerPhone ? `+91 ${rawCustomerPhone}` : "";
 
+    // Safely associate with authenticated customer account (Never create duplicate customer records)
+    const Customer = require("../models/Customer");
+    let customerDoc = null;
+    if (customer?.customerId && String(customer.customerId).match(/^[0-9a-fA-F]{24}$/)) {
+      customerDoc = await Customer.findById(customer.customerId);
+    }
+    if (!customerDoc && rawCustomerPhone) {
+      customerDoc = await Customer.findOne({ phone: rawCustomerPhone });
+    }
+
+    // Auto-create customer account if first time checking out with phone number
+    if (!customerDoc && rawCustomerPhone && rawCustomerPhone.length === 10) {
+      try {
+        const regType = purchaseMode === "ONLINE" ? "ONLINE" : "OFFLINE";
+        customerDoc = await Customer.create({
+          name: (customer?.name || "Shopper").trim(),
+          phone: rawCustomerPhone,
+          email: (customer?.email || "").trim().toLowerCase(),
+          address: (customer?.address || "").trim(),
+          supermarket: verifiedStore ? verifiedStore._id : resolvedSupermarketId,
+          supermarketCode: verifiedStore ? verifiedStore.code : resolvedSupermarketCode,
+          supermarketName: verifiedStore ? verifiedStore.name : resolvedSupermarketName,
+          registeredLocation: verifiedStore ? `${verifiedStore.city}, ${verifiedStore.state || ""}`.trim() : "",
+          registrationType: regType,
+        });
+      } catch (err) {
+        customerDoc = await Customer.findOne({ phone: rawCustomerPhone }).catch(() => null);
+      }
+    }
+
+    // Preserve and ensure registrationType on legacy customer document
+    if (customerDoc && !customerDoc.registrationType) {
+      customerDoc.registrationType = purchaseMode === "ONLINE" ? "ONLINE" : "OFFLINE";
+      await customerDoc.save().catch(() => {});
+    }
+
+    // If customer updated their address during checkout, update existing customer document
+    if (customerDoc && customer?.address && customer.address.trim() && customerDoc.address !== customer.address.trim()) {
+      customerDoc.address = customer.address.trim();
+      await customerDoc.save().catch(() => {});
+    }
+
+    const finalCustomerName = (customer?.name || customerDoc?.name || "Mobile Shopper").trim();
+    const finalCustomerAddress = (customer?.address || customerDoc?.address || "").trim();
+
+    const nowTime = new Date();
+    const etaDate = new Date(nowTime.getTime() + 35 * 60 * 1000);
+    const defaultEtaTime = etaDate.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+    const defaultEtaDate = etaDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+
     const order = await Order.create({
       orderNumber,
       items: verifiedItems,
@@ -235,11 +285,34 @@ exports.checkout = async (req, res) => {
       paymentStatus,
       paymentId,
       purchaseMode,
+      orderType: req.body.orderType || (purchaseMode === "ONLINE" ? "DELIVERY" : "IN_STORE"),
+      pickupDate: req.body.pickupDate || "",
+      pickupTimeSlot: req.body.pickupTimeSlot || "",
+      pickupStatus: req.body.pickupStatus || "Pending",
+      deliveryStatus: req.body.deliveryStatus || "New",
+      deliveryAddress: finalCustomerAddress,
+      deliveryPhone: cleanCustomerPhone,
+      deliveryCustomerName: finalCustomerName,
+      deliveryNotes: req.body.deliveryNotes || "",
+      orderConfirmedAt: nowTime,
+      estimatedDeliveryTime: req.body.estimatedDeliveryTime || defaultEtaTime,
+      estimatedDeliveryDate: req.body.estimatedDeliveryDate || defaultEtaDate,
+      trackingTimeline: [
+        {
+          status: "Confirmed",
+          title: "Order Confirmed",
+          description: "Your order has been received and confirmed.",
+          timestamp: nowTime,
+          updatedBy: "Customer Checkout",
+          role: "CUSTOMER",
+        },
+      ],
       customer: {
-        name: customer?.name || "Mobile Shopper",
+        customerId: customerDoc ? customerDoc._id : null,
+        name: finalCustomerName,
         phone: cleanCustomerPhone,
-        email: customer?.email || "",
-        address: customer?.address || "",
+        email: customer?.email || customerDoc?.email || "",
+        address: finalCustomerAddress,
       },
       exitBarcode,
       inventoryDeducted,
@@ -456,13 +529,16 @@ exports.getCartActivity = async (req, res) => {
 };
 
 // Get all orders (Strict Multi-Tenant Scoping & Real-Time only)
+// Store Admin Order Tab: Strictly ONLINE registrations only.
 exports.getOrders = async (req, res) => {
   try {
     const filter = {};
+    const Customer = require("../models/Customer");
 
     if (req.user && req.user.role === "STORE_ADMIN") {
+      const tenantStoreId = req.user.supermarket?._id || req.user.supermarket || req.supermarketId;
       const orConditions = [];
-      if (req.supermarketId) orConditions.push({ supermarket: req.supermarketId });
+      if (tenantStoreId) orConditions.push({ supermarket: tenantStoreId });
       if (req.supermarketCode && req.supermarketCode !== "DEFAULT" && req.supermarketCode !== "ALL") {
         orConditions.push({ supermarketCode: req.supermarketCode });
       }
@@ -470,6 +546,30 @@ exports.getOrders = async (req, res) => {
         filter.$or = orConditions;
       } else {
         return res.status(200).json({ success: true, count: 0, orders: [] });
+      }
+
+      // MANDATORY SEPARATION: Order tab displays ONLY customers who registered through ONLINE shopping flow
+      filter.purchaseMode = "ONLINE";
+
+      // Query offline registered customers for this tenant to strictly exclude them at database level
+      if (tenantStoreId) {
+        const offlineCusts = await Customer.find({
+          supermarket: tenantStoreId,
+          registrationType: "OFFLINE",
+        }).select("_id phone");
+
+        const offlineCustIds = offlineCusts.map((c) => c._id);
+        const offlineCleanPhones = offlineCusts
+          .map((c) => (c.phone || "").replace(/\D/g, "").slice(-10))
+          .filter((p) => p && p.length === 10);
+
+        if (offlineCustIds.length > 0) {
+          filter["customer.customerId"] = { $nin: offlineCustIds };
+        }
+        if (offlineCleanPhones.length > 0) {
+          const phoneRegexes = offlineCleanPhones.map((p) => new RegExp(p));
+          filter["customer.phone"] = { $nin: phoneRegexes };
+        }
       }
     } else if (req.supermarketId || req.query.supermarketId || req.headers["x-supermarket-id"]) {
       const targetStoreId = req.supermarketId || req.query.supermarketId || req.headers["x-supermarket-id"];
@@ -483,6 +583,11 @@ exports.getOrders = async (req, res) => {
       }
       if (orConditions.length > 0) {
         filter.$or = orConditions;
+      }
+
+      // If online-only source requested
+      if (req.query.registrationType === "ONLINE" || req.query.source === "ONLINE") {
+        filter.purchaseMode = "ONLINE";
       }
     } else if (req.query.phone || req.headers["x-customer-phone"]) {
       const cleanPhone = (req.query.phone || req.headers["x-customer-phone"]).replace(/\D/g, "").slice(-10);
@@ -498,24 +603,42 @@ exports.getOrders = async (req, res) => {
       filter["customer.phone"] = { $regex: cleanPhone };
     }
 
-    const orders = await Order.find(filter).sort({ createdAt: -1 });
+    const orders = await Order.find(filter)
+      .populate({
+        path: "customer.customerId",
+        select: "name phone email address registrationType registeredLocation createdAt status",
+      })
+      .sort({ createdAt: -1 });
 
-    // Ensure no mock order slips through
+    // Ensure no mock order slips through and no OFFLINE registered customer slips through
     const genuineOrders = orders.filter((order) => {
       const orderNum = String(order.orderNumber || "").toUpperCase();
       const custName = String(order.customer?.name || "").toLowerCase().trim();
       const total = Number(order.totalAmount || 0);
-      return !(
+
+      const isMock =
         ["ORD-948102-1001", "ORD-772109-2001", "ORD-289409", "ORD-289410"].includes(orderNum) ||
         ["kavitha r", "vikram mehta", "arun kumar", "priya sharma", "neha patel", "rahul verma"].includes(custName) ||
         total === 510 ||
-        total === 9450
-      );
+        total === 9450;
+
+      if (isMock) return false;
+
+      // If Store Admin order query, double-check that customer was not registered OFFLINE
+      if (req.user && req.user.role === "STORE_ADMIN") {
+        if (order.purchaseMode === "OFFLINE") return false;
+        if (order.customer?.customerId && typeof order.customer.customerId === "object") {
+          if (order.customer.customerId.registrationType === "OFFLINE") return false;
+        }
+      }
+
+      return true;
     });
 
     return res.status(200).json({
       success: true,
       count: genuineOrders.length,
+      registrationType: req.user?.role === "STORE_ADMIN" ? "ONLINE" : undefined,
       orders: genuineOrders,
     });
   } catch (error) {
@@ -625,7 +748,134 @@ exports.getNotifications = async (req, res) => {
   }
 };
 
-// Get order by ID or orderNumber
+// Helper to build Amazon-style 5-stage tracking lifecycle
+function formatTrackingData(order) {
+  const dStatus = String(order.deliveryStatus || "New").toLowerCase();
+
+  // Stage 1: Order Confirmed
+  const stage1Completed = true;
+  const stage1Active = dStatus === "new" || dStatus === "pending";
+  const stage1Time = order.orderConfirmedAt || order.createdAt;
+
+  // Stage 2: Preparing Your Order
+  const isPreparingOrPast = [
+    "preparing",
+    "assigned",
+    "accepted",
+    "orderpickedup",
+    "outfordelivery",
+    "delivered",
+  ].includes(dStatus);
+  const stage2Completed = isPreparingOrPast && dStatus !== "preparing";
+  const stage2Active = dStatus === "preparing";
+  const stage2Time = order.preparingAt || (isPreparingOrPast ? order.updatedAt : null);
+
+  // Stage 3: Delivery Partner Assigned
+  const isAssignedOrPast = [
+    "assigned",
+    "accepted",
+    "orderpickedup",
+    "outfordelivery",
+    "delivered",
+  ].includes(dStatus);
+  const stage3Completed = isAssignedOrPast && dStatus !== "assigned" && dStatus !== "accepted";
+  const stage3Active = dStatus === "assigned" || dStatus === "accepted";
+  const stage3Time = order.assignedAt || order.deliveryAcceptedAt || null;
+
+  // Stage 4: Out for Delivery
+  const isOutOrDelivered = ["outfordelivery", "delivered"].includes(dStatus);
+  const stage4Completed = dStatus === "delivered";
+  const stage4Active = dStatus === "outfordelivery" || dStatus === "orderpickedup";
+  const stage4Time = order.deliveryOutAt || order.pickedUpAt || null;
+
+  // Stage 5: Delivered
+  const stage5Completed = dStatus === "delivered";
+  const stage5Active = false;
+  const stage5Time = order.deliveryCompletedAt || order.completedAt || null;
+
+  const stages = [
+    {
+      step: 1,
+      id: "CONFIRMED",
+      title: "Order Confirmed",
+      description: "Your order has been received and confirmed.",
+      isCompleted: stage1Completed,
+      isActive: stage1Active,
+      isPending: false,
+      timestamp: stage1Time,
+    },
+    {
+      step: 2,
+      id: "PREPARING",
+      title: "Preparing Your Order",
+      description: "Supermarket staff is packing your items fresh from the shelves.",
+      isCompleted: stage2Completed,
+      isActive: stage2Active,
+      isPending: !isPreparingOrPast,
+      timestamp: stage2Time,
+    },
+    {
+      step: 3,
+      id: "ASSIGNED",
+      title: "Delivery Partner Assigned",
+      description: order.assignedStaffName
+        ? `${order.assignedStaffName} has been assigned to deliver your order.`
+        : "Dedicated delivery partner will be assigned shortly.",
+      isCompleted: stage3Completed,
+      isActive: stage3Active,
+      isPending: !isAssignedOrPast,
+      timestamp: stage3Time,
+    },
+    {
+      step: 4,
+      id: "OUT_FOR_DELIVERY",
+      title: "Out for Delivery",
+      description: "Your delivery partner is on the way to your doorstep.",
+      isCompleted: stage4Completed,
+      isActive: stage4Active,
+      isPending: !isOutOrDelivered,
+      timestamp: stage4Time,
+    },
+    {
+      step: 5,
+      id: "DELIVERED",
+      title: "Delivered",
+      description: "Your package has been safely handed over.",
+      isCompleted: stage5Completed,
+      isActive: stage5Active,
+      isPending: !stage5Completed,
+      timestamp: stage5Time,
+    },
+  ];
+
+  // Delivery Partner Information: Strictly hidden until assignment is completed!
+  let deliveryPartner = null;
+  const hasStaff = Boolean(order.assignedStaff || order.assignedStaffName);
+  if (isAssignedOrPast && hasStaff) {
+    const staffObj = typeof order.assignedStaff === "object" ? order.assignedStaff : null;
+    deliveryPartner = {
+      _id: staffObj?._id || order.assignedStaff || null,
+      name: order.assignedStaffName || staffObj?.name || "Delivery Partner",
+      phone: order.assignedStaffPhone || staffObj?.phone || "",
+      photoUrl: staffObj?.photoUrl || "",
+      status: dStatus === "delivered" ? "Delivered" : dStatus === "outfordelivery" ? "Out for Delivery" : "Assigned",
+    };
+  }
+
+  const createdAtDate = order.createdAt ? new Date(order.createdAt) : new Date();
+  const etaTarget = new Date(createdAtDate.getTime() + 35 * 60 * 1000);
+  const estimatedDeliveryTime = order.estimatedDeliveryTime || etaTarget.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+  const estimatedDeliveryDate = order.estimatedDeliveryDate || etaTarget.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+
+  return {
+    stages,
+    deliveryPartner,
+    estimatedDeliveryTime,
+    estimatedDeliveryDate,
+  };
+}
+
+// Get order by ID or orderNumber (with populated tracking & partner details)
 exports.getOrderById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -637,7 +887,13 @@ exports.getOrderById = async (req, res) => {
       query.supermarket = req.supermarketId;
     }
 
-    const order = await Order.findOne(query);
+    const order = await Order.findOne(query)
+      .populate("assignedStaff", "name username phone email status photoUrl")
+      .populate("supermarket", "name code address city state phone email logoUrl")
+      .populate({
+        path: "customer.customerId",
+        select: "name phone email address registrationType",
+      });
 
     if (!order) {
       return res.status(404).json({
@@ -646,14 +902,71 @@ exports.getOrderById = async (req, res) => {
       });
     }
 
+    const trackingMeta = formatTrackingData(order);
+
     return res.status(200).json({
       success: true,
       order,
+      tracking: trackingMeta,
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
       message: "Failed to fetch order",
+      error: error.message,
+    });
+  }
+};
+
+// Dedicated Amazon-Style Customer Real-Time Order Tracking Endpoint
+exports.getOrderTracking = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const query = {
+      $or: [{ _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null }, { orderNumber: id }],
+    };
+
+    const order = await Order.findOne(query)
+      .populate("assignedStaff", "name username phone email status photoUrl")
+      .populate("supermarket", "name code address city state phone email logoUrl");
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    const trackingMeta = formatTrackingData(order);
+
+    return res.status(200).json({
+      success: true,
+      orderNumber: order.orderNumber,
+      orderId: order._id,
+      deliveryStatus: order.deliveryStatus,
+      paymentStatus: order.paymentStatus,
+      paymentMethod: order.paymentMethod,
+      totalAmount: order.totalAmount,
+      totalItems: order.totalItems,
+      items: order.items,
+      deliveryAddress: order.deliveryAddress,
+      deliveryPhone: order.deliveryPhone,
+      deliveryCustomerName: order.deliveryCustomerName || order.customer?.name,
+      supermarket: order.supermarket,
+      supermarketName: order.supermarketName,
+      createdAt: order.createdAt,
+      stages: trackingMeta.stages,
+      deliveryPartner: trackingMeta.deliveryPartner,
+      estimatedDeliveryTime: trackingMeta.estimatedDeliveryTime,
+      estimatedDeliveryDate: trackingMeta.estimatedDeliveryDate,
+      order,
+    });
+  } catch (error) {
+    console.error("Order tracking error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch order tracking details",
       error: error.message,
     });
   }
@@ -1312,6 +1625,343 @@ exports.deleteOrder = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to delete order.",
+      error: error.message,
+    });
+  }
+};
+
+// Update Self-Pickup status (Pending, ReadyForPickup, Completed, Cancelled)
+exports.updatePickupStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { pickupStatus, estimatedReadyTime, estimatedReadyDate, instructions } = req.body;
+
+    const validStatuses = ["New", "Pending", "Preparing", "ReadyForPickup", "Completed", "Cancelled"];
+    if (pickupStatus && !validStatuses.includes(pickupStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid pickup status. Allowed: ${validStatuses.join(", ")}`,
+      });
+    }
+
+    let query = null;
+    if (mongoose.Types.ObjectId.isValid(id) && /^[0-9a-fA-F]{24}$/.test(id)) {
+      query = { _id: id };
+    } else {
+      query = { $or: [{ orderNumber: id }, { exitBarcode: id }] };
+    }
+
+    if (req.supermarketId) {
+      query.supermarket = req.supermarketId;
+    }
+
+    const order = await Order.findOne(query);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    if (pickupStatus) {
+      order.pickupStatus = pickupStatus;
+    }
+    if (estimatedReadyTime) {
+      order.estimatedReadyTime = estimatedReadyTime;
+    }
+    if (estimatedReadyDate) {
+      order.estimatedReadyDate = estimatedReadyDate;
+    }
+    if (instructions) {
+      order.pickupInstructions = instructions;
+    }
+    if (pickupStatus === "ReadyForPickup") {
+      order.pickupReadyNotificationSent = true;
+    }
+    if (pickupStatus === "Completed") {
+      order.customerPickupConfirmed = true;
+      order.customerPickupCompletedAt = new Date();
+      order.completedAt = new Date();
+      if (order.paymentStatus === "Pending" || order.paymentStatus === "Approved") {
+        order.paymentStatus = "Completed";
+      }
+    }
+
+    await order.save();
+
+    try {
+      const io = req.app?.get("io");
+      if (io) {
+        io.emit("order:updated", { order });
+        if (pickupStatus === "ReadyForPickup") {
+          io.emit("order:pickup_ready", {
+            orderId: order._id,
+            orderNumber: order.orderNumber,
+            estimatedReadyTime: order.estimatedReadyTime,
+            estimatedReadyDate: order.estimatedReadyDate,
+            message: `Your order will be ready for pickup at ${order.estimatedReadyTime || "the scheduled time"}. Please visit the store and collect your products.`,
+          });
+        }
+      }
+    } catch (_) {}
+
+    return res.status(200).json({
+      success: true,
+      message: `Pickup status updated to "${pickupStatus}" for Order #${order.orderNumber}.`,
+      order,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update pickup status",
+      error: error.message,
+    });
+  }
+};
+
+// Customer selects Option A (Deliver to My Doorstep) or Option B (Collect from Store) after Self Pickup payment
+exports.setFulfillmentChoice = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { fulfillmentChoice, deliveryAddress, deliveryPhone } = req.body;
+
+    if (!["DOORSTEP_DELIVERY", "STORE_COLLECTION"].includes(fulfillmentChoice)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid fulfillment choice. Must be 'DOORSTEP_DELIVERY' or 'STORE_COLLECTION'.",
+      });
+    }
+
+    let query = null;
+    if (mongoose.Types.ObjectId.isValid(id) && /^[0-9a-fA-F]{24}$/.test(id)) {
+      query = { _id: id };
+    } else {
+      query = { $or: [{ orderNumber: id }, { exitBarcode: id }] };
+    }
+
+    const order = await Order.findOne(query);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    if (fulfillmentChoice === "DOORSTEP_DELIVERY") {
+      order.orderType = "SELF_PICKUP_DOORSTEP";
+      order.fulfillmentChoice = "DOORSTEP_DELIVERY";
+      order.deliveryStatus = "New";
+      if (deliveryAddress && deliveryAddress.trim()) {
+        order.deliveryAddress = deliveryAddress.trim();
+        if (order.customer) order.customer.address = deliveryAddress.trim();
+      }
+      if (deliveryPhone && deliveryPhone.trim()) {
+        order.deliveryPhone = deliveryPhone.trim();
+      }
+    } else {
+      order.orderType = "SELF_PICKUP_STORE_COLLECTION";
+      order.fulfillmentChoice = "STORE_COLLECTION";
+      order.pickupStatus = "New";
+    }
+
+    await order.save();
+
+    try {
+      const io = req.app?.get("io");
+      if (io) {
+        io.emit("order:updated", { order });
+        io.emit("order:fulfillment_chosen", {
+          orderId: order._id,
+          orderNumber: order.orderNumber,
+          fulfillmentChoice,
+          orderType: order.orderType,
+        });
+      }
+    } catch (_) {}
+
+    return res.status(200).json({
+      success: true,
+      message: fulfillmentChoice === "DOORSTEP_DELIVERY"
+        ? "Doorstep delivery selected. Order dispatched to Store Admin Delivery team."
+        : "Store collection selected. Order sent to Store Admin for packing & pickup preparation.",
+      order,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to set fulfillment choice",
+      error: error.message,
+    });
+  }
+};
+
+// Store Admin sets estimated pickup-ready date/time and sends notification to customer
+exports.setPickupReady = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { estimatedReadyTime = "5:30 PM", estimatedReadyDate = "Today", instructions = "Please visit the store and collect your products." } = req.body;
+
+    let query = null;
+    if (mongoose.Types.ObjectId.isValid(id) && /^[0-9a-fA-F]{24}$/.test(id)) {
+      query = { _id: id };
+    } else {
+      query = { $or: [{ orderNumber: id }, { exitBarcode: id }] };
+    }
+
+    const order = await Order.findOne(query);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    order.pickupStatus = "ReadyForPickup";
+    order.estimatedReadyTime = estimatedReadyTime.trim();
+    order.estimatedReadyDate = estimatedReadyDate.trim();
+    order.pickupInstructions = instructions.trim();
+    order.pickupReadyNotificationSent = true;
+    await order.save();
+
+    const notifMessage = `Your order will be ready for pickup at ${order.estimatedReadyTime}. Please visit the store and collect your products.`;
+
+    try {
+      const io = req.app?.get("io");
+      if (io) {
+        io.emit("order:updated", { order });
+        io.emit("order:pickup_ready", {
+          orderId: order._id,
+          orderNumber: order.orderNumber,
+          estimatedReadyTime: order.estimatedReadyTime,
+          estimatedReadyDate: order.estimatedReadyDate,
+          message: notifMessage,
+        });
+      }
+    } catch (_) {}
+
+    return res.status(200).json({
+      success: true,
+      message: `Pickup ready notification sent to customer for Order #${order.orderNumber}.`,
+      notifMessage,
+      order,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to mark order as ready for pickup",
+      error: error.message,
+    });
+  }
+};
+
+// Customer physically collects order and clicks Complete in mobile app
+exports.customerCompletePickup = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    let query = null;
+    if (mongoose.Types.ObjectId.isValid(id) && /^[0-9a-fA-F]{24}$/.test(id)) {
+      query = { _id: id };
+    } else {
+      query = { $or: [{ orderNumber: id }, { exitBarcode: id }] };
+    }
+
+    const order = await Order.findOne(query);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    order.pickupStatus = "Completed";
+    order.paymentStatus = "Completed";
+    order.customerPickupConfirmed = true;
+    order.customerPickupCompletedAt = new Date();
+    order.completedAt = new Date();
+
+    // Deduct stock if not already done
+    try {
+      await deductOrderInventory(order);
+    } catch (_) {}
+
+    await order.save();
+
+    try {
+      const io = req.app?.get("io");
+      if (io) {
+        io.emit("order:updated", { order });
+        io.emit("order:pickup_completed", {
+          orderId: order._id,
+          orderNumber: order.orderNumber,
+          customerName: order.customer?.name || "Customer",
+          collectedAt: order.customerPickupCompletedAt,
+        });
+      }
+    } catch (_) {}
+
+    return res.status(200).json({
+      success: true,
+      message: `Order #${order.orderNumber} successfully marked as Completed & Collected!`,
+      order,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to complete pickup",
+      error: error.message,
+    });
+  }
+};
+
+// Update Delivery status (Pending, Assigned, PickedUp, OutForDelivery, Delivered, Failed)
+exports.updateDeliveryStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { deliveryStatus, assignedStaffName } = req.body;
+
+    let query = null;
+    if (mongoose.Types.ObjectId.isValid(id) && /^[0-9a-fA-F]{24}$/.test(id)) {
+      query = { _id: id };
+    } else {
+      query = { $or: [{ orderNumber: id }, { exitBarcode: id }] };
+    }
+
+    if (req.supermarketId) {
+      query.supermarket = req.supermarketId;
+    }
+
+    const order = await Order.findOne(query);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    if (deliveryStatus) order.deliveryStatus = deliveryStatus;
+    if (assignedStaffName) order.assignedStaffName = assignedStaffName;
+    if (deliveryStatus === "Delivered" && order.paymentStatus === "Pending") {
+      order.paymentStatus = "Completed";
+    }
+    await order.save();
+
+    try {
+      const io = req.app?.get("io");
+      if (io) {
+        io.emit("order:updated", { order });
+      }
+    } catch (_) {}
+
+    return res.status(200).json({
+      success: true,
+      message: `Delivery status updated for Order #${order.orderNumber}.`,
+      order,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update delivery status",
       error: error.message,
     });
   }

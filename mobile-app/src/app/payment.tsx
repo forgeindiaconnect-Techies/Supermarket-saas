@@ -75,12 +75,22 @@ export default function SecurePaymentScreen() {
     method = "UPI",
     customerName,
     customerPhone,
+    customerEmail,
     customerAddress,
+    customerId,
+    fulfillmentType,
+    pickupDate,
+    pickupTimeSlot,
   } = useLocalSearchParams<{
     method?: string;
     customerName?: string;
     customerPhone?: string;
+    customerEmail?: string;
     customerAddress?: string;
+    customerId?: string;
+    fulfillmentType?: string;
+    pickupDate?: string;
+    pickupTimeSlot?: string;
   }>();
   const {
     cart,
@@ -88,15 +98,32 @@ export default function SecurePaymentScreen() {
     clearCart,
     addRecentOrder,
     customerInfo,
+    customerUser,
     selectedSupermarket,
     purchaseMode,
   } = useCart();
 
-  // Resolved Customer Details (checking route params and CartContext)
-  const effectiveName = (customerName || customerInfo?.name || "").trim();
-  const rawPhoneDigits = (customerPhone || customerInfo?.phone || "").replace(/\D/g, "");
+  // Resolved Customer Details (checking route params, authenticated customerUser, and customerInfo)
+  const effectiveName = (
+    customerName ||
+    customerUser?.name ||
+    customerInfo?.name ||
+    ""
+  ).trim();
+  const rawPhoneDigits = (
+    customerPhone ||
+    customerUser?.phone ||
+    customerInfo?.phone ||
+    ""
+  ).replace(/\D/g, "");
   const effectivePhone = rawPhoneDigits.length >= 10 ? rawPhoneDigits.slice(-10) : rawPhoneDigits;
-  const effectiveAddress = (customerAddress || customerInfo?.address || "").trim();
+  const effectiveAddress = (
+    customerAddress ||
+    customerUser?.address ||
+    customerInfo?.address ||
+    ""
+  ).trim();
+  const effectiveCustomerId = customerId || customerUser?._id;
 
   const [secondsLeft, setSecondsLeft] = useState(300); // 5 minutes countdown
   const [processing, setProcessing] = useState(false);
@@ -107,27 +134,20 @@ export default function SecurePaymentScreen() {
   const [expiry, setExpiry] = useState("08/28");
   const [cvv, setCvv] = useState("•••");
 
-  // Constant Rule: Payment page MUST NOT open until Name & 10-digit Phone are provided
+  // Constant Rule: Payment requires customer name and phone; if missing, redirect to checkout
   useEffect(() => {
     if (!effectiveName || effectivePhone.length !== 10) {
       Alert.alert(
         "Customer Details Required",
-        "Please fill in your Customer Name and a valid 10-digit Mobile Number before opening the payment page.",
+        "Please confirm your Customer Name and a valid 10-digit Mobile Number before opening the payment page.",
         [
           {
-            text: "Enter Details",
-            onPress: () =>
-              router.replace({
-                pathname: "/customer-details",
-                params: { method },
-              }),
+            text: "Back to Checkout",
+            onPress: () => router.replace("/checkout"),
           },
         ]
       );
-      router.replace({
-        pathname: "/customer-details",
-        params: { method },
-      });
+      router.replace("/checkout");
     }
   }, [effectiveName, effectivePhone]);
 
@@ -179,9 +199,14 @@ export default function SecurePaymentScreen() {
         })),
         paymentMethod: method === "Card" ? "Card" : "UPI",
         purchaseMode: currentMode,
+        orderType: fulfillmentType || (currentMode === "ONLINE" ? "DELIVERY" : "IN_STORE"),
+        pickupDate: pickupDate || "",
+        pickupTimeSlot: pickupTimeSlot || "",
         customer: {
+          customerId: effectiveCustomerId,
           name: effectiveName,
           phone: effectivePhone,
+          email: (customerEmail || customerUser?.email || "").trim().toLowerCase(),
           address: effectiveAddress,
         },
         supermarketId: resolvedStoreId,

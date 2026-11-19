@@ -31,6 +31,8 @@ import ScanAndEnter from "./pages/admin/ScanAndEnter";
 import InventoryManagement from "./pages/admin/InventoryManagement";
 import BarcodeManagement from "./pages/admin/BarcodeManagement";
 import OrdersManagement from "./pages/admin/OrdersManagement";
+import DeliveryManagement from "./pages/admin/DeliveryManagement";
+import PickupManagement from "./pages/admin/PickupManagement";
 import CustomersManagement from "./pages/admin/CustomersManagement";
 import ReportsManagement from "./pages/admin/ReportsManagement";
 import SettingsManagement from "./pages/admin/SettingsManagement";
@@ -118,6 +120,8 @@ export default function App() {
             <Route path="inventory" element={<InventoryManagement />} />
             <Route path="barcodes" element={<BarcodeManagement />} />
             <Route path="orders" element={<OrdersManagement />} />
+            <Route path="delivery" element={<DeliveryManagement />} />
+            <Route path="pickup" element={<PickupManagement />} />
             <Route path="customers" element={<CustomersManagement />} />
             <Route path="reports" element={<ReportsManagement />} />
             <Route path="analytics" element={<ReportsManagement />} />

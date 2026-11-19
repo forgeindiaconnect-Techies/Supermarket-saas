@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useMemo } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   View,
   Text,
@@ -10,43 +10,221 @@ import {
   Dimensions,
   Animated,
   Platform,
+  Alert,
+  TextInput,
+  Modal as RNModal,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useCart, OrderRecord } from "../context/CartContext";
-import { API_URL, safeFetch, formatPhoneNumber } from "../constants/api";
-import { generateAndShareReceipt } from "../utils/receiptGenerator";
+import { API_URL, safeFetch } from "../constants/api";
 import ReceiptModal from "../components/ReceiptModal";
 
 const { width } = Dimensions.get("window");
 
 const PENDING_IMG = require("@/assets/images/payment-pending.jpg");
-const APPROVED_IMG = require("@/assets/images/payment-approved.jpg");
 
+// =========================================================================
+// 3D HIGH-FIDELITY CELEBRATION ILLUSTRATION MATCHING REFERENCE IMAGE 2
+// =========================================================================
+function PaymentSuccessIllustration() {
+  return (
+    <View style={illustStyles.container}>
+      {/* 1. Radiating Sunburst Celebration Rays */}
+      <View style={illustStyles.raysWrapper}>
+        <View style={[illustStyles.ray, { transform: [{ rotate: "-65deg" }, { translateY: -46 }], backgroundColor: "#F59E0B" }]} />
+        <View style={[illustStyles.ray, { transform: [{ rotate: "-45deg" }, { translateY: -48 }], backgroundColor: "#8B5CF6" }]} />
+        <View style={[illustStyles.ray, { transform: [{ rotate: "-25deg" }, { translateY: -50 }], backgroundColor: "#22C55E" }]} />
+        <View style={[illustStyles.ray, { transform: [{ rotate: "-10deg" }, { translateY: -52 }], backgroundColor: "#38BDF8" }]} />
+        <View style={[illustStyles.ray, { transform: [{ rotate: "8deg" }, { translateY: -52 }], backgroundColor: "#FBBF24" }]} />
+        <View style={[illustStyles.ray, { transform: [{ rotate: "25deg" }, { translateY: -50 }], backgroundColor: "#EC4899" }]} />
+        <View style={[illustStyles.ray, { transform: [{ rotate: "45deg" }, { translateY: -48 }], backgroundColor: "#10B981" }]} />
+        <View style={[illustStyles.ray, { transform: [{ rotate: "65deg" }, { translateY: -46 }], backgroundColor: "#F59E0B" }]} />
+      </View>
+
+      {/* Floating Confetti Elements */}
+      <View style={[illustStyles.confettiBar, { top: 12, left: 28, backgroundColor: "#38BDF8", transform: [{ rotate: "30deg" }] }]} />
+      <View style={[illustStyles.confettiBar, { top: 20, right: 34, backgroundColor: "#F59E0B", transform: [{ rotate: "-22deg" }] }]} />
+      <View style={[illustStyles.confettiDot, { top: 40, left: 16, backgroundColor: "#A855F7" }]} />
+      <View style={[illustStyles.confettiDot, { top: 46, right: 20, backgroundColor: "#22C55E" }]} />
+
+      {/* 2. Centered Vibrant Green Glowing Checkmark Circle */}
+      <View style={illustStyles.centerCheckCircleOuter}>
+        <View style={illustStyles.centerCheckCircle}>
+          <Text style={illustStyles.centerCheckmarkText}>✓</Text>
+        </View>
+      </View>
+
+      {/* 3. Left: Purple GrocerEase Grocery Shopping Bag */}
+      <View style={illustStyles.bagContainer}>
+        {/* White Curved Bag Handles */}
+        <View style={illustStyles.bagHandles} />
+        {/* Purple 3D Bag Body */}
+        <View style={illustStyles.bagBody}>
+          <Text style={illustStyles.bagCartGlyph}>🛒</Text>
+          <Text style={illustStyles.bagBrandText}>GrocerEase</Text>
+        </View>
+      </View>
+
+      {/* 4. Right: Silver Wire Shopping Cart with Fresh Groceries */}
+      <View style={illustStyles.cartContainer}>
+        {/* Food Items Peeking from Top of Basket */}
+        <View style={illustStyles.groceriesRow}>
+          <Text style={illustStyles.foodItem}>🍅</Text>
+          <Text style={illustStyles.foodItem}>🥬</Text>
+          <Text style={illustStyles.foodItem}>🥛</Text>
+          <Text style={illustStyles.foodItem}>🥖</Text>
+        </View>
+
+        {/* Wire Cart Mesh Basket */}
+        <View style={illustStyles.wireBasket}>
+          <View style={illustStyles.wireHLine1} />
+          <View style={illustStyles.wireHLine2} />
+          <View style={illustStyles.wireVLine1} />
+          <View style={illustStyles.wireVLine2} />
+        </View>
+
+        {/* Chassis & Little Rolling Wheels */}
+        <View style={illustStyles.cartWheelsRow}>
+          <View style={illustStyles.cartWheel} />
+          <View style={illustStyles.cartWheel} />
+        </View>
+      </View>
+
+      {/* Soft Ground Shadow */}
+      <View style={illustStyles.groundShadow} />
+    </View>
+  );
+}
+
+// =========================================================================
+// MAIN PAYMENT STATUS & CONFIRMATION SCREEN
+// =========================================================================
 export default function PaymentSuccessScreen() {
   const router = useRouter();
-  const { orderId, method } = useLocalSearchParams<{
+  const { orderId, method, status: queryStatus } = useLocalSearchParams<{
     orderId?: string;
     method?: string;
+    status?: string;
   }>();
-  const { recentOrders, updateRecentOrder, customerInfo } = useCart();
+  const { recentOrders, updateRecentOrder, customerUser } = useCart();
 
   const [order, setOrder] = useState<OrderRecord | null>(null);
   const [loading, setLoading] = useState(true);
-  const [downloading, setDownloading] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
-  const [manualRefreshing, setManualRefreshing] = useState(false);
 
-  // Pulse animation for live sync status
+  // Self Pickup 2-Choice Fulfillment States
+  const [chosenFulfillment, setChosenFulfillment] = useState<string>("");
+  const [doorstepModalOpen, setDoorstepModalOpen] = useState(false);
+  const [doorstepAddress, setDoorstepAddress] = useState("");
+  const [savingFulfillment, setSavingFulfillment] = useState(false);
+
+  useEffect(() => {
+    if ((order as any)?.fulfillmentChoice) {
+      setChosenFulfillment((order as any).fulfillmentChoice);
+    }
+  }, [order]);
+
+  const handleChooseDoorstep = () => {
+    const existing = (order as any)?.deliveryAddress || (order as any)?.customer?.address || customerUser?.address || "";
+    setDoorstepAddress(existing);
+    setDoorstepModalOpen(true);
+  };
+
+  const handleConfirmDoorstep = async () => {
+    const targetId = order?._id || orderId;
+    if (!targetId || !API_URL) return;
+    if (!doorstepAddress.trim()) {
+      Alert.alert("Address Needed", "Please enter your delivery street address.");
+      return;
+    }
+    setSavingFulfillment(true);
+    try {
+      const res = await safeFetch(`${API_URL}/orders/${targetId}/fulfillment-choice`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fulfillmentChoice: "DOORSTEP_DELIVERY",
+          deliveryAddress: doorstepAddress.trim(),
+        }),
+      }, 5000);
+      const data = await res.json();
+      if (data?.success && data?.order) {
+        setOrder(data.order);
+        updateRecentOrder(data.order);
+        setChosenFulfillment("DOORSTEP_DELIVERY");
+        setDoorstepModalOpen(false);
+        Alert.alert(
+          "Doorstep Delivery Confirmed",
+          "Your order has been routed to the store delivery fleet. Delivery staff will deliver to your address."
+        );
+      }
+    } catch (_) {
+      setChosenFulfillment("DOORSTEP_DELIVERY");
+      setDoorstepModalOpen(false);
+    } finally {
+      setSavingFulfillment(false);
+    }
+  };
+
+  const handleChooseStoreCollection = async () => {
+    const targetId = order?._id || orderId;
+    if (!targetId || !API_URL) return;
+    setSavingFulfillment(true);
+    try {
+      const res = await safeFetch(`${API_URL}/orders/${targetId}/fulfillment-choice`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fulfillmentChoice: "STORE_COLLECTION",
+        }),
+      }, 5000);
+      const data = await res.json();
+      if (data?.success && data?.order) {
+        setOrder(data.order);
+        updateRecentOrder(data.order);
+        setChosenFulfillment("STORE_COLLECTION");
+        Alert.alert(
+          "Store Collection Confirmed",
+          "The supermarket will pack your order and set an estimated pickup time. You can collect it at the counter and tap Complete when received."
+        );
+      }
+    } catch (_) {
+      setChosenFulfillment("STORE_COLLECTION");
+    } finally {
+      setSavingFulfillment(false);
+    }
+  };
+
+  const handleCustomerCompletePickup = async () => {
+    const targetId = order?._id || orderId;
+    if (!targetId || !API_URL) return;
+    try {
+      const res = await safeFetch(`${API_URL}/orders/${targetId}/customer-complete-pickup`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+      }, 5000);
+      const data = await res.json();
+      if (data?.success && data?.order) {
+        setOrder(data.order);
+        updateRecentOrder(data.order);
+        Alert.alert(
+          "Pickup Completed!",
+          "Thank you for shopping with GrocerEase! Store Admin has been notified that you collected your order."
+        );
+      }
+    } catch (_) {}
+  };
+
+  // Pulse animation for pending live verification indicator
   const pulseAnim = useRef(new Animated.Value(1)).current;
-  const haloAnim = useRef(new Animated.Value(0.85)).current;
 
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
-          toValue: 0.35,
+          toValue: 0.4,
           duration: 900,
           useNativeDriver: true,
         }),
@@ -57,22 +235,7 @@ export default function PaymentSuccessScreen() {
         }),
       ])
     ).start();
-
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(haloAnim, {
-          toValue: 1.25,
-          duration: 1400,
-          useNativeDriver: true,
-        }),
-        Animated.timing(haloAnim, {
-          toValue: 0.85,
-          duration: 1400,
-          useNativeDriver: true,
-        }),
-      ])
-    ).start();
-  }, [pulseAnim, haloAnim]);
+  }, [pulseAnim]);
 
   // Initial load & Real-time Live Polling every 2.0s
   useEffect(() => {
@@ -104,7 +267,7 @@ export default function PaymentSuccessScreen() {
           updateRecentOrder(data.order);
         }
       } catch (_) {
-        // silent fail during polling
+        // silent fail during background polling
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -122,380 +285,496 @@ export default function PaymentSuccessScreen() {
     };
   }, [orderId]);
 
-  const handleManualRefresh = async () => {
-    const targetId = orderId || (recentOrders.length > 0 ? recentOrders[0]._id : null);
-    if (!targetId || !API_URL) return;
-    setManualRefreshing(true);
-    try {
-      const res = await safeFetch(`${API_URL}/orders/${targetId}?_t=${Date.now()}`, {}, 4000);
-      const data = await res.json();
-      if (data?.success && data?.order) {
-        setOrder(data.order);
-        updateRecentOrder(data.order);
-      }
-    } catch (_) {
-    } finally {
-      setTimeout(() => setManualRefreshing(false), 500);
-    }
-  };
+  // Determine current status (Pending vs Approved/Successful)
+  const effectiveStatus = (
+    queryStatus ||
+    order?.paymentStatus ||
+    (method === "Cash" ? "Pending" : "Completed")
+  ).toLowerCase();
 
-  const currentStatus = order?.paymentStatus || (method === "Cash" ? "Pending" : "Pending");
+  const isPending = effectiveStatus === "pending";
 
-  const isPending = currentStatus === "Pending";
-  const isApproved = currentStatus === "Approved" || currentStatus === "Completed";
+  const isSelfPickupOrder =
+    (order as any)?.orderType === "SELF_PICKUP" ||
+    (order as any)?.orderType === "SELF_PICKUP_DOORSTEP" ||
+    (order as any)?.orderType === "SELF_PICKUP_STORE_COLLECTION" ||
+    (order as any)?.fulfillmentChoice === "PENDING_SELECTION" ||
+    (order as any)?.fulfillmentChoice === "DOORSTEP_DELIVERY" ||
+    (order as any)?.fulfillmentChoice === "STORE_COLLECTION" ||
+    Boolean((order as any)?.pickupStatus);
 
-  const orderNum = order?.orderNumber || (orderId ? `ORD-${orderId.slice(-6)}` : "#SSM20250430");
-  const amount = Number(order?.totalAmount || 140);
-  const payMethod = order?.paymentMethod || method || "Card";
-  const exitBarcode = order?.exitBarcode || "EXIT-78239718";
-  const itemCount = order?.items?.length || 1;
-  const customerName = (order as any)?.customer?.name || customerInfo?.name || "";
-  const customerPhone = (order as any)?.customer?.phone || customerInfo?.phone || "";
-  const customerAddress = (order as any)?.customer?.address || customerInfo?.address || "";
-
-  const handleDownloadReceipt = () => {
-    if (!order) return;
-    setShowReceiptModal(true);
-  };
+  const orderNum = order?.orderNumber || (orderId ? `ORD-${orderId.slice(-6).toUpperCase()}` : "ORD-028427-8859");
+  const amount = Number(order?.totalAmount || 0);
+  const payMethod = order?.paymentMethod || method || "UPI";
 
   return (
     <View style={styles.safeArea}>
       <StatusBar style="light" />
 
-      {/* Top Header matching App Design */}
+      {/* Top Bar matching Exact Reference Mockup (Deep Purple) */}
       <View style={styles.purpleHeader}>
         <SafeAreaView edges={["top"]} style={styles.purpleHeaderSafe}>
           <View style={styles.headerRow}>
+            {/* Left Circular Back Button */}
             <TouchableOpacity
-              style={styles.headerBtn}
+              style={styles.headerCircleBtn}
               onPress={() => router.replace("/orders")}
               activeOpacity={0.7}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Text style={styles.headerBackArrow}>‹</Text>
+              <Text style={styles.headerBackChevron}>‹</Text>
             </TouchableOpacity>
 
+            {/* Header Title */}
             <Text style={styles.headerTitle}>
-              {isPending ? "Payment Verification" : "Payment Successful"}
+              {isPending ? "Payment Status" : "Payment Successful"}
             </Text>
 
+            {/* Right Circular Receipt Action Button */}
             <TouchableOpacity
-              style={styles.headerBtn}
-              onPress={handleDownloadReceipt}
+              style={styles.headerCircleBtn}
+              onPress={() => setShowReceiptModal(true)}
               activeOpacity={0.7}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Text style={styles.receiptIcon}>🧾</Text>
+              <Text style={styles.headerReceiptIcon}>📄</Text>
             </TouchableOpacity>
           </View>
         </SafeAreaView>
       </View>
 
-      {/* Main Curved White Container Sheet matching App Theme */}
-      <View style={styles.whiteSheet}>
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
-        >
+      {/* Main Content Area on Soft Lavender Canvas */}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
         {isPending ? (
           /* ========================================================================= */
-          /* 1. PAYMENT PENDING STATE: HARMONIZED MOBILE APP PURPLE THEME             */
+          /* 1. PAYMENT PENDING / UNDER VERIFICATION (EXACT MATCH TO IMAGE 1)         */
           /* ========================================================================= */
           <>
-            {/* Hero Card */}
-            <View style={styles.heroCard}>
-              <View style={styles.heroImageContainerPending}>
+            {/* 1. Main Status Card */}
+            <View style={styles.mainWhiteCard}>
+              {/* 3D Smartphone & Terminal Illustration */}
+              <View style={styles.heroIllustWrap}>
                 <Image
                   source={PENDING_IMG}
-                  style={styles.hero3DImage}
+                  style={styles.heroIllustImg}
                   resizeMode="contain"
                 />
               </View>
 
-              <Text style={styles.heroTitlePending}>Payment Under Verification</Text>
+              {/* Status Title */}
+              <Text style={styles.pendingTitle}>Payment Under Verification</Text>
 
-              <View style={styles.statusPillPending}>
-                <Animated.View
-                  style={[styles.statusLiveDotPurple, { opacity: pulseAnim }]}
-                />
-                <Text style={styles.statusPillTextPending}>
-                  Awaiting Super Admin Clearance
-                </Text>
-              </View>
-            </View>
-
-            {/* Step-by-Step Verification Stepper Card */}
-            <View style={styles.stepperCard}>
-              <Text style={styles.stepperCardTitle}>Verification Progress</Text>
-              <View style={styles.stepperRow}>
-                {/* Step 1: Placed */}
-                <View style={styles.stepItem}>
-                  <View style={[styles.stepCircle, styles.stepCircleDone]}>
-                    <Text style={styles.stepDoneCheck}>✓</Text>
-                  </View>
-                  <Text style={styles.stepLabelDone}>Order Placed</Text>
-                </View>
-
-                {/* Line 1 */}
-                <View style={[styles.stepLine, styles.stepLineActive]} />
-
-                {/* Step 2: Store Approval */}
-                <View style={styles.stepItem}>
-                  <Animated.View
-                    style={[
-                      styles.stepCircle,
-                      styles.stepCirclePending,
-                      { opacity: pulseAnim },
-                    ]}
-                  >
-                    <Text style={styles.stepPendingIcon}>⏳</Text>
-                  </Animated.View>
-                  <Text style={styles.stepLabelPending}>Admin Approval</Text>
-                </View>
-
-                {/* Line 2 */}
-                <View style={[styles.stepLine, styles.stepLineInactive]} />
-
-                {/* Step 3: Turnstile Exit */}
-                <View style={styles.stepItem}>
-                  <View style={[styles.stepCircle, styles.stepCircleInactive]}>
-                    <Text style={styles.stepInactiveIcon}>🚪</Text>
-                  </View>
-                  <Text style={styles.stepLabelInactive}>Gate Unlocks</Text>
-                </View>
-              </View>
-            </View>
-
-            {/* Store Clearance Instructions Card (Purple & Soft Lavender Theme) */}
-            <View style={styles.noticeCardPending}>
-              <View style={styles.noticeHeaderRow}>
-                <Text style={styles.noticeIcon}>🔔</Text>
-                <Text style={styles.noticeTitle}>Store Clearance Notice</Text>
-              </View>
-              <Text style={styles.noticeBody}>
-                {payMethod === "Cash"
-                  ? `Please present ₹${amount.toFixed(2)} in Cash at the supermarket cashier counter. Staff will approve your order and release your turnstile pass in real-time.`
-                  : `Your ${payMethod} payment of ₹${amount.toFixed(2)} is pending approval. Super Admin is verifying the transaction.`}
+              {/* Subtitle */}
+              <Text style={styles.pendingSubtitle}>
+                Your payment has been received{"\n"}and is awaiting confirmation.
               </Text>
-              <View style={styles.autoUpdatePill}>
-                <Text style={styles.autoUpdateFlash}>⚡</Text>
-                <Text style={styles.autoUpdateText}>
-                  This screen updates automatically once approved
+
+              {/* Status Pill Badge */}
+              <View style={styles.pendingPillBadge}>
+                <Text style={styles.pendingPillClock}>🕒</Text>
+                <Text style={styles.pendingPillText}>Pending Approval</Text>
+              </View>
+
+              {/* 3-Step Horizontal Stepper */}
+              <View style={styles.stepperContainer}>
+                <View style={styles.stepperRow}>
+                  {/* Step 1: Order Placed */}
+                  <View style={styles.stepCol}>
+                    <View style={styles.stepCircleDone}>
+                      <Text style={styles.stepCheckmarkDone}>✓</Text>
+                    </View>
+                    <Text style={styles.stepLabelDone}>Order Placed</Text>
+                  </View>
+
+                  {/* Connecting Line 1 */}
+                  <View style={styles.stepLineGreen} />
+
+                  {/* Step 2: Payment Verification */}
+                  <View style={styles.stepCol}>
+                    <Animated.View
+                      style={[
+                        styles.stepCirclePending,
+                        { opacity: pulseAnim },
+                      ]}
+                    >
+                      <Text style={styles.stepHourglassIcon}>⌛</Text>
+                    </Animated.View>
+                    <Text style={styles.stepLabelPending}>
+                      Payment{"\n"}Verification
+                    </Text>
+                  </View>
+
+                  {/* Connecting Line 2 */}
+                  <View style={styles.stepLineGray} />
+
+                  {/* Step 3: Order Confirmed */}
+                  <View style={styles.stepCol}>
+                    <View style={styles.stepCircleInactive}>
+                      <Text style={styles.stepCheckmarkInactive}>✓</Text>
+                    </View>
+                    <Text style={styles.stepLabelInactive}>Order Confirmed</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            {/* 2. Middle Alert Notification Card (Cream / Yellow) */}
+            <View style={styles.alertBannerCard}>
+              <View style={styles.alertBellWrap}>
+                <Text style={styles.alertBellIcon}>🔔</Text>
+              </View>
+
+              <View style={styles.alertDivider} />
+
+              <View style={styles.alertTextWrap}>
+                <Text style={styles.alertLine1}>We're verifying your payment.</Text>
+                <Text style={styles.alertLine2}>
+                  This page will update automatically once confirmed.
                 </Text>
               </View>
             </View>
 
-            {/* Order Details Breakdown Card */}
+            {/* 3. Order Summary Card (White Card with Cart Icon) */}
             <View style={styles.orderSummaryCard}>
-              <View style={styles.orderSummaryTopRow}>
-                <View>
-                  <Text style={styles.orderNumberTitle}>Order {orderNum}</Text>
-                  <Text style={styles.orderItemCountText}>{itemCount} Item(s) in Cart</Text>
-                </View>
-                <Text style={styles.orderGrandTotalAmountPending}>
-                  ₹{amount.toFixed(2)}
+              <View style={styles.summaryCartCircle}>
+                <Text style={styles.summaryCartIcon}>🛒</Text>
+              </View>
+
+              <View style={styles.summaryDivider} />
+
+              <View style={styles.summaryDetailsCol}>
+                <Text style={styles.summaryOrderText}>
+                  Order ID: <Text style={styles.summaryOrderVal}>{orderNum}</Text>
+                </Text>
+                <Text style={styles.summaryAmountText}>
+                  Amount: <Text style={styles.summaryAmountVal}>₹{amount.toFixed(2)}</Text>
+                </Text>
+                <Text style={styles.summaryPaymentText}>
+                  Payment: <Text style={styles.summaryPaymentVal}>{payMethod}</Text>
                 </Text>
               </View>
-              <View style={styles.orderInfoGrid}>
-                <View style={styles.orderGridItem}>
-                  <Text style={styles.gridItemLabel}>Payment Method</Text>
-                  <Text style={styles.gridItemValue}>
-                    {payMethod === "Cash" ? "💵 Cash at Exit" : (payMethod === "Card" ? "💳 Card" : "⚡ UPI")} (Pending)
-                  </Text>
-                </View>
-                <View style={styles.orderGridItem}>
-                  <Text style={styles.gridItemLabel}>Live Verification</Text>
-                  <Text style={styles.gridItemValue}>⏳ Checking with Admin...</Text>
-                </View>
-              </View>
 
-              {customerName ? (
-                <View style={styles.customerDetailCard}>
-                  <View style={styles.customerDetailHeader}>
-                    <Text style={styles.customerDetailLabel}>REGISTERED SHOPPER</Text>
-                    <View style={styles.verifiedShopperBadge}>
-                      <Text style={styles.verifiedShopperText}>✓ Verified</Text>
-                    </View>
-                  </View>
-                  <View style={styles.customerDetailRow}>
-                    <View style={styles.customerAvatarSmall}>
-                      <Text style={{ fontSize: 13 }}>👤</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.customerNameBold}>{customerName}</Text>
-                      {customerPhone ? (
-                        <Text style={styles.customerPhoneBold}>📱 {formatPhoneNumber(customerPhone)}</Text>
-                      ) : null}
-                      {customerAddress ? (
-                        <Text style={styles.customerAddressText} numberOfLines={2}>
-                          📍 {customerAddress}
-                        </Text>
-                      ) : null}
-                    </View>
-                  </View>
-                </View>
-              ) : null}
+              <TouchableOpacity
+                onPress={() => setShowReceiptModal(true)}
+                activeOpacity={0.7}
+                style={styles.summaryViewLinkWrap}
+              >
+                <Text style={styles.summaryViewLinkText}>View Order Details &gt;</Text>
+              </TouchableOpacity>
             </View>
 
-            {/* Action Button: Single Full-Width Primary Action (Screen auto-polls backend status) */}
-            <View style={styles.actionButtonsContainer}>
-              <TouchableOpacity
-                style={styles.viewOrdersSecondaryBtn}
-                onPress={() => router.replace("/orders")}
-                activeOpacity={0.88}
-              >
-                <Text style={styles.viewOrdersSecondaryBtnText}>View in My Orders →</Text>
-              </TouchableOpacity>
+            {/* 4. Bottom Warning Notice */}
+            <View style={styles.bottomWarningRow}>
+              <View style={styles.warningIconCircle}>
+                <Text style={styles.warningIconExclamation}>!</Text>
+              </View>
+              <Text style={styles.bottomWarningText}>
+                Please do not make another payment.
+              </Text>
             </View>
           </>
         ) : (
           /* ========================================================================= */
-          /* 2. PAYMENT APPROVED STATE: PROPER, COMPLETE & APP-BRANDED DESIGN         */
+          /* 2. PAYMENT SUCCESSFUL (EXACT MATCH TO IMAGE 2)                            */
           /* ========================================================================= */
           <>
-            {/* Celebratory Hero Card */}
-            <View style={styles.heroSuccessCard}>
-              <View style={styles.heroImageContainerApproved}>
-                <Image
-                  source={APPROVED_IMG}
-                  style={styles.hero3DImage}
-                  resizeMode="contain"
-                />
-              </View>
+            {/* 1. Main Status Card */}
+            <View style={styles.mainWhiteCard}>
+              {/* Celebration 3D Confetti & Cart Illustration */}
+              <PaymentSuccessIllustration />
 
-              <Text style={styles.heroTitleApproved}>Turnstile Gate Unlocked!</Text>
+              {/* Status Title */}
+              <Text style={styles.successTitle}>Payment Successful!</Text>
 
-              <View style={styles.statusPillApproved}>
-                <Text style={styles.statusLiveDotGreen}>✓</Text>
-                <Text style={styles.statusPillTextApproved}>
-                  Payment Approved by Super Admin
-                </Text>
+              {/* Subtitle */}
+              <Text style={styles.successSubtitle}>
+                Your payment has been confirmed successfully.
+              </Text>
+
+              {/* Total Amount Paid Box */}
+              <View style={styles.amountPaidBox}>
+                {/* Decorative Green Accent Sparks */}
+                <View style={styles.amountSparkLeft}>
+                  <Text style={styles.amountSparkGlyph}>\ /</Text>
+                </View>
+                <View style={styles.amountSparkRight}>
+                  <Text style={styles.amountSparkGlyph}>\ /</Text>
+                </View>
+
+                {/* Amount Label */}
+                <Text style={styles.amountPaidLabel}>TOTAL AMOUNT PAID</Text>
+
+                {/* Amount Value */}
+                <Text style={styles.amountPaidValue}>₹{amount.toFixed(2)}</Text>
+
+                {/* Order Confirmed Pill */}
+                <View style={styles.orderConfirmedPill}>
+                  <View style={styles.confirmedCheckBadge}>
+                    <Text style={styles.confirmedCheckGlyph}>✓</Text>
+                  </View>
+                  <Text style={styles.orderConfirmedText}>Order Confirmed</Text>
+                </View>
               </View>
             </View>
 
-            {/* Amount Paid Showcase Card */}
-            <View style={styles.paidAmountCard}>
-              <Text style={styles.paidAmountLabel}>TOTAL AMOUNT PAID</Text>
-              <Text style={styles.paidAmountValue}>₹{amount.toFixed(2)}</Text>
-              {Number(order?.discountAmount || 0) > 0 && (
-                <View style={styles.savingsTagSuccess}>
-                  <Text style={styles.savingsTagText}>
-                    ★ You Saved ₹{Number(order?.discountAmount).toFixed(2)} on this order
-                  </Text>
+            {/* 2. Order Details Section */}
+            <View style={styles.orderDetailsSection}>
+              {/* Section Header */}
+              <View style={styles.orderDetailsHeaderRow}>
+                <View style={styles.orderReceiptCircle}>
+                  <Text style={styles.orderReceiptGlyph}>📋</Text>
                 </View>
-              )}
-              {customerName ? (
-                <Text style={styles.paidByText}>
-                  Paid by {customerName} • {payMethod === "Cash" ? "Cash at Exit" : payMethod}
-                </Text>
-              ) : (
-                <Text style={styles.paidByText}>
-                  Paid via {payMethod === "Cash" ? "Cash at Exit" : payMethod}
-                </Text>
-              )}
-            </View>
-
-            {/* Smart Turnstile Exit Pass Card */}
-            <View style={styles.smartPassCard}>
-              <View style={styles.passHeaderRow}>
-                <View style={styles.passBrandGroup}>
-                  <Text style={styles.passBrandIcon}>🛒</Text>
-                  <View>
-                    <Text style={styles.passStoreName}>GROCEREASE SUPERMARKET</Text>
-                    <Text style={styles.passSubtitle}>SMART TURNSTILE EXIT PASS</Text>
-                  </View>
-                </View>
-                <View style={styles.gateUnlockedBadge}>
-                  <Text style={styles.gateUnlockedText}>GATE 1–4 UNLOCKED</Text>
-                </View>
+                <Text style={styles.orderDetailsTitle}>Order Details</Text>
               </View>
 
-              <View style={styles.passBody}>
-                <Text style={styles.passInstructions}>
-                  Super Admin has verified and approved your {payMethod} payment. You can now walk to Exit Turnstiles 1–4 to complete your exit.
-                </Text>
-
-                <View style={styles.passBadgesRow}>
-                  <View style={styles.passTag}>
-                    <Text style={styles.passTagText}>📍 Exit Turnstile 1–4</Text>
-                  </View>
-                  <View style={styles.passTag}>
-                    <Text style={styles.passTagText}>⚡ Auto-Sensor Active</Text>
-                  </View>
-                </View>
-
-                {customerName ? (
-                  <View style={styles.passCustomerCard}>
-                    <View style={styles.passCustomerHeader}>
-                      <Text style={styles.passCustomerLabel}>VERIFIED SHOPPER</Text>
-                      <View style={styles.verifiedShopperBadge}>
-                        <Text style={styles.verifiedShopperText}>✓ Exit Authorized</Text>
-                      </View>
-                    </View>
-                    <View style={styles.customerDetailRow}>
-                      <View style={styles.customerAvatarSmall}>
-                        <Text style={{ fontSize: 13 }}>👤</Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.customerNameBold}>{customerName}</Text>
-                        {customerPhone ? (
-                          <Text style={styles.customerPhoneBold}>📱 {formatPhoneNumber(customerPhone)}</Text>
-                        ) : null}
-                      </View>
+              {/* Order Details Lavender Card */}
+              <View style={styles.orderDetailsCard}>
+                {/* Left Column: Order ID & Payment Method */}
+                <View style={styles.orderColLeft}>
+                  {/* Order ID Row */}
+                  <View style={styles.metaRow}>
+                    <Text style={styles.metaIconGlyph}>#</Text>
+                    <View>
+                      <Text style={styles.metaLabel}>Order ID</Text>
+                      <Text style={styles.metaValue}>{orderNum}</Text>
                     </View>
                   </View>
-                ) : null}
 
-                <View style={styles.passOrderMetaRow}>
-                  <Text style={styles.passMetaText}>Order: {orderNum}</Text>
-                  <Text style={styles.passMetaText}>
-                    {(order as any)?.paymentId || (order as any)?.transactionId || `TXN-${orderNum.replace(/^ORD-/, "")}`}
-                  </Text>
+                  {/* Payment Method Row */}
+                  <View style={[styles.metaRow, { marginTop: 12 }]}>
+                    <Text style={styles.metaIconGlyph}>💳</Text>
+                    <View>
+                      <Text style={styles.metaLabel}>Payment Method</Text>
+                      <Text style={styles.metaValue}>{payMethod}</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Vertical Divider Line */}
+                <View style={styles.orderColDivider} />
+
+                {/* Right Column: Payment Status */}
+                <View style={styles.orderColRight}>
+                  <View style={styles.metaRow}>
+                    <View style={styles.statusCheckCirclePurple}>
+                      <Text style={styles.statusCheckGlyphWhite}>✓</Text>
+                    </View>
+                    <View>
+                      <Text style={styles.metaLabel}>Payment Status</Text>
+                      <Text style={styles.statusValueGreen}>Successful</Text>
+                    </View>
+                  </View>
                 </View>
               </View>
             </View>
 
-            {/* Warm Supermarket Closing Message */}
-            <View style={styles.thankYouCard}>
-              <Text style={styles.thankYouIcon}>🛍️</Text>
-              <Text style={styles.thankYouTitle}>Thank You! Visit Again</Text>
-              <Text style={styles.thankYouSubText}>
-                We hope you enjoyed autonomous shopping at GrocerEase Supermarket.
-              </Text>
-              <Text style={styles.thankYouPolicyText}>
-                Original tax invoice is available in your orders anytime.
-              </Text>
-            </View>
+            {/* 2b. Self Pickup 2-Choice Fulfillment Flow (Option A: Doorstep vs Option B: Collect from Store) */}
+            {isSelfPickupOrder && (
+              <View style={styles.fulfillmentChoiceSection}>
+                <View style={styles.choiceHeaderRow}>
+                  <Text style={styles.choiceHeaderEmoji}>📦</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.choiceHeaderTitle}>Choose Fulfillment Method</Text>
+                    <Text style={styles.choiceHeaderSubtitle}>
+                      {chosenFulfillment === "DOORSTEP_DELIVERY"
+                        ? "Option A: Doorstep Delivery Selected"
+                        : chosenFulfillment === "STORE_COLLECTION"
+                        ? "Option B: Store Collection Selected"
+                        : "Please select how you would like to receive your items:"}
+                    </Text>
+                  </View>
+                </View>
 
-            {/* Action Buttons */}
-            <View style={styles.successActionsContainer}>
+                {/* Option A: Deliver to My Doorstep */}
+                <TouchableOpacity
+                  style={[
+                    styles.choiceCard,
+                    chosenFulfillment === "DOORSTEP_DELIVERY" && styles.choiceCardActive,
+                  ]}
+                  onPress={handleChooseDoorstep}
+                  activeOpacity={0.85}
+                  disabled={savingFulfillment}
+                >
+                  <View style={styles.choiceIconCircle}>
+                    <Text style={styles.choiceIconEmoji}>🚚</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.choiceCardTitle}>Option A: Deliver to My Doorstep</Text>
+                    <Text style={styles.choiceCardDesc}>
+                      Delivery staff will bring your groceries directly to your doorstep address.
+                    </Text>
+                    {chosenFulfillment === "DOORSTEP_DELIVERY" && (
+                      <View style={styles.choiceActivePill}>
+                        <Text style={styles.choiceActivePillText}>✓ Doorstep Delivery Active</Text>
+                      </View>
+                    )}
+                  </View>
+                </TouchableOpacity>
+
+                {/* Option B: Collect from Store */}
+                <TouchableOpacity
+                  style={[
+                    styles.choiceCard,
+                    chosenFulfillment === "STORE_COLLECTION" && styles.choiceCardActive,
+                  ]}
+                  onPress={handleChooseStoreCollection}
+                  activeOpacity={0.85}
+                  disabled={savingFulfillment}
+                >
+                  <View style={styles.choiceIconCircle}>
+                    <Text style={styles.choiceIconEmoji}>🏬</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.choiceCardTitle}>Option B: Collect from Store</Text>
+                    <Text style={styles.choiceCardDesc}>
+                      Collect your order from the supermarket counter. Tap Complete when collected.
+                    </Text>
+                    {chosenFulfillment === "STORE_COLLECTION" && (
+                      <View style={styles.choiceActivePill}>
+                        <Text style={styles.choiceActivePillText}>✓ Store Pickup Active</Text>
+                      </View>
+                    )}
+                  </View>
+                </TouchableOpacity>
+
+                {/* Live Store Pickup Notification & Customer Complete Button */}
+                {chosenFulfillment === "STORE_COLLECTION" && (
+                  <View style={styles.pickupStatusBox}>
+                    {(order as any)?.estimatedReadyTime ? (
+                      <View style={styles.pickupReadyBanner}>
+                        <Text style={styles.pickupReadyBell}>🔔</Text>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.pickupReadyTitle}>
+                            Your order will be ready for pickup at {(order as any)?.estimatedReadyTime} ({(order as any)?.estimatedReadyDate || "Today"}).
+                          </Text>
+                          <Text style={styles.pickupReadySub}>
+                            {(order as any)?.pickupInstructions || "Please visit the store and collect your products."}
+                          </Text>
+                        </View>
+                      </View>
+                    ) : (
+                      <Text style={styles.pickupWaitingText}>
+                        ⏳ Supermarket is preparing your order. You will receive an estimated collection time notification here shortly.
+                      </Text>
+                    )}
+
+                    {(order as any)?.customerPickupConfirmed ? (
+                      <View style={styles.pickupDoneBadge}>
+                        <Text style={styles.pickupDoneText}>✓ Order Collected from Store (Completed)</Text>
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        style={styles.pickupCompleteBtn}
+                        onPress={handleCustomerCompletePickup}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={styles.pickupCompleteBtnText}>✓ Complete (Collected from Store)</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* 3. Action Buttons matching Image 2 & Live Order Tracking */}
+            <View style={styles.successActionsWrap}>
+              {/* Prominent Track My Order Button (Amazon Style) */}
               <TouchableOpacity
-                style={styles.viewTaxInvoicePrimaryBtn}
-                onPress={handleDownloadReceipt}
+                style={styles.trackMyOrderBtn}
+                onPress={() => {
+                  const targetId = order?._id || orderId;
+                  router.push({
+                    pathname: "/order-tracking",
+                    params: { orderId: targetId },
+                  });
+                }}
                 activeOpacity={0.88}
               >
-                <Text style={styles.receiptActionIcon}>🧾</Text>
-                <Text style={styles.viewTaxInvoiceBtnText}>View / Print Tax Receipt</Text>
+                <Text style={styles.trackOrderBtnIcon}>🚚</Text>
+                <Text style={styles.trackMyOrderBtnText}>Track My Order Live</Text>
               </TouchableOpacity>
 
+              {/* View Order Details Button (Solid Deep Purple) */}
               <TouchableOpacity
-                style={styles.continueShoppingBtn}
+                style={styles.primaryViewOrderBtn}
+                onPress={() => setShowReceiptModal(true)}
+                activeOpacity={0.88}
+              >
+                <Text style={styles.primaryBtnIcon}>📄</Text>
+                <Text style={styles.primaryViewOrderBtnText}>View Order Details</Text>
+              </TouchableOpacity>
+
+              {/* Continue Shopping Button (White with Purple Border) */}
+              <TouchableOpacity
+                style={styles.secondaryContinueBtn}
                 onPress={() => router.replace("/scanner")}
                 activeOpacity={0.85}
               >
-                <Text style={styles.continueShoppingBtnText}>Continue Shopping 🛒</Text>
+                <Text style={styles.secondaryBtnIcon}>🛒</Text>
+                <Text style={styles.secondaryContinueBtnText}>Continue Shopping</Text>
               </TouchableOpacity>
+            </View>
 
-              <TouchableOpacity
-                style={styles.viewMyOrdersBtn}
-                onPress={() => router.replace("/orders")}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.viewMyOrdersBtnText}>View in My Orders →</Text>
-              </TouchableOpacity>
+            {/* Bottom Soft Decorative Wave Curve */}
+            <View style={styles.bottomWaveDecor}>
+              <View style={styles.waveArc} />
             </View>
           </>
         )}
       </ScrollView>
-    </View>
+
+      {/* Doorstep Delivery Address Input Modal */}
+      <RNModal
+        visible={doorstepModalOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          if (!savingFulfillment) {
+            setDoorstepModalOpen(false);
+          }
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCardContent}>
+            <Text style={styles.modalHeading}>Confirm Doorstep Delivery Address</Text>
+            <Text style={styles.modalSubheading}>
+              Please verify or enter the street address where our delivery staff should bring your items.
+            </Text>
+
+            <TextInput
+              style={styles.addressInput}
+              value={doorstepAddress}
+              onChangeText={setDoorstepAddress}
+              multiline
+              numberOfLines={3}
+              placeholder="Door No, Street Name, Apartment / Landmark, City"
+              placeholderTextColor="#94A3B8"
+            />
+
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setDoorstepModalOpen(false)}
+                disabled={savingFulfillment}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalConfirmBtn}
+                onPress={handleConfirmDoorstep}
+                disabled={savingFulfillment}
+              >
+                <Text style={styles.modalConfirmText}>
+                  {savingFulfillment ? "Confirming..." : "Confirm Doorstep Delivery"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </RNModal>
 
       {/* Interactive In-App Real-Time Tax Receipt Modal */}
       <ReceiptModal
@@ -507,14 +786,17 @@ export default function PaymentSuccessScreen() {
   );
 }
 
+// =========================================================================
+// STYLES - PIXEL PERFECT REPLICA OF USER REFERENCE MOCKUPS
+// =========================================================================
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#2E0854", // Consistent deep purple matching all screens
+    backgroundColor: "#2E0854", // Deep signature purple header background
   },
   purpleHeader: {
     backgroundColor: "#2E0854",
-    paddingBottom: 22,
+    paddingBottom: 16,
   },
   purpleHeaderSafe: {
     backgroundColor: "#2E0854",
@@ -523,771 +805,1027 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
+    paddingHorizontal: 18,
     paddingTop: Platform.OS === "android" ? 10 : 6,
   },
-  headerBtn: {
+  headerCircleBtn: {
     width: 38,
     height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 19,
-    backgroundColor: "rgba(255, 255, 255, 0.15)",
   },
-  headerBackArrow: {
+  headerBackChevron: {
     color: "#FFFFFF",
-    fontSize: 28,
-    fontWeight: "400",
-    marginTop: -2,
+    fontSize: 26,
+    fontWeight: "600",
+    marginTop: -3,
   },
   headerTitle: {
     color: "#FFFFFF",
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "800",
+    letterSpacing: -0.2,
   },
-  receiptIcon: {
-    fontSize: 18,
-  },
-  whiteSheet: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    marginTop: -16,
-    overflow: "hidden",
+  headerReceiptIcon: {
+    fontSize: 16,
   },
   scrollContent: {
-    paddingHorizontal: 18,
-    paddingTop: 20,
-    paddingBottom: 40,
-    alignItems: "center",
+    backgroundColor: "#F4EFFE", // Soft lavender background matching reference canvas
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 36,
   },
 
-  /* ========================================================================= */
-  /* PAYMENT VERIFICATION (PENDING) STYLES - APP PURPLE THEME                  */
-  /* ========================================================================= */
-  heroCard: {
+  /* ---------------- Main White Status Card ---------------- */
+  mainWhiteCard: {
     width: "100%",
     backgroundColor: "#FFFFFF",
     borderRadius: 24,
-    paddingTop: 22,
-    paddingBottom: 20,
+    paddingTop: 16,
+    paddingBottom: 22,
     paddingHorizontal: 18,
     alignItems: "center",
-    marginBottom: 16,
-    shadowColor: "#2E0854",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 4,
-    borderWidth: 1,
-    borderColor: "#E9D8FD",
-  },
-  heroImageContainerPending: {
-    width: 175,
-    height: 175,
-    borderRadius: 24,
-    backgroundColor: "#FAF5FF", // Soft lavender matching app design
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 16,
-    borderWidth: 1.5,
-    borderColor: "#E9D8FD",
-    overflow: "hidden",
     shadowColor: "#3B0764",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
     elevation: 3,
   },
-  hero3DImage: {
+
+  /* Pending Hero Image */
+  heroIllustWrap: {
+    width: "100%",
+    height: 145,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 10,
+  },
+  heroIllustImg: {
     width: "100%",
     height: "100%",
   },
-  heroTitlePending: {
-    fontSize: 22,
-    fontWeight: "900",
-    color: "#2E0854", // App brand deep purple
+
+  /* Pending Headings */
+  pendingTitle: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: "#1E1B4B", // Deep navy-purple
     textAlign: "center",
     letterSpacing: -0.3,
-    marginBottom: 8,
+    marginTop: 4,
   },
-  statusPillPending: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    backgroundColor: "#FAF5FF",
-    borderWidth: 1.5,
-    borderColor: "#E9D8FD",
-    gap: 7,
-  },
-  statusLiveDotPurple: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#7C3AED",
-  },
-  statusPillTextPending: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: "#581C87",
+  pendingSubtitle: {
+    fontSize: 13,
+    fontWeight: "500",
+    color: "#64748B",
+    textAlign: "center",
+    lineHeight: 18,
+    marginTop: 6,
   },
 
-  /* Stepper Card */
-  stepperCard: {
-    width: "100%",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    padding: 16,
-    marginBottom: 16,
+  /* Pending Pill Badge */
+  pendingPillBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#FEF9C3", // Light yellow
     borderWidth: 1,
-    borderColor: "#E9D8FD",
-    shadowColor: "#2E0854",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    elevation: 2,
+    borderColor: "#FDE68A",
+    borderRadius: 20,
+    paddingVertical: 5,
+    paddingHorizontal: 14,
+    marginTop: 12,
   },
-  stepperCardTitle: {
-    fontSize: 11,
-    fontWeight: "800",
-    color: "#7C3AED",
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-    marginBottom: 14,
-    textAlign: "center",
+  pendingPillClock: {
+    fontSize: 12,
+  },
+  pendingPillText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#B45309", // Amber brown
+  },
+
+  /* Horizontal Stepper */
+  stepperContainer: {
+    width: "100%",
+    marginTop: 22,
+    paddingHorizontal: 6,
   },
   stepperRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 4,
   },
-  stepItem: {
+  stepCol: {
     alignItems: "center",
-    width: 78,
+    width: 76,
   },
-  stepCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+  stepCircleDone: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#16A34A",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 6,
   },
-  stepCircleDone: {
-    backgroundColor: "#ECFDF5",
-    borderWidth: 2,
-    borderColor: "#10B981",
-  },
-  stepDoneCheck: {
-    fontSize: 16,
-    fontWeight: "900",
-    color: "#059669",
-  },
-  stepCirclePending: {
-    backgroundColor: "#FAF5FF",
-    borderWidth: 2,
-    borderColor: "#7C3AED",
-  },
-  stepPendingIcon: {
-    fontSize: 15,
-  },
-  stepCircleInactive: {
-    backgroundColor: "#F8FAFC",
-    borderWidth: 1.5,
-    borderColor: "#E2E8F0",
-  },
-  stepInactiveIcon: {
-    fontSize: 15,
-  },
-  stepLine: {
-    flex: 1,
-    height: 2.5,
-    marginBottom: 20,
-  },
-  stepLineActive: {
-    backgroundColor: "#10B981",
-  },
-  stepLineInactive: {
-    backgroundColor: "#E2E8F0",
+  stepCheckmarkDone: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "800",
   },
   stepLabelDone: {
-    fontSize: 10.5,
+    fontSize: 11,
     fontWeight: "700",
-    color: "#059669",
+    color: "#15803D",
     textAlign: "center",
+  },
+  stepLineGreen: {
+    flex: 1,
+    height: 2,
+    backgroundColor: "#16A34A",
+    marginBottom: 20,
+  },
+  stepCirclePending: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#FEF3C7",
+    borderWidth: 1.5,
+    borderColor: "#F59E0B",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 6,
+  },
+  stepHourglassIcon: {
+    fontSize: 13,
   },
   stepLabelPending: {
-    fontSize: 10.5,
-    fontWeight: "800",
-    color: "#581C87",
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#B45309",
     textAlign: "center",
+    lineHeight: 14,
+  },
+  stepLineGray: {
+    flex: 1,
+    height: 2,
+    backgroundColor: "#E2E8F0",
+    marginBottom: 20,
+  },
+  stepCircleInactive: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#F1F5F9",
+    borderWidth: 1.5,
+    borderColor: "#CBD5E1",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 6,
+  },
+  stepCheckmarkInactive: {
+    color: "#94A3B8",
+    fontSize: 13,
+    fontWeight: "700",
   },
   stepLabelInactive: {
-    fontSize: 10.5,
+    fontSize: 11,
     fontWeight: "600",
     color: "#94A3B8",
     textAlign: "center",
   },
 
-  /* Notice Card (Pending) - Lavender Theme */
-  noticeCardPending: {
+  /* ---------------- Middle Alert Banner (Cream / Yellow) ---------------- */
+  alertBannerCard: {
     width: "100%",
-    backgroundColor: "#FAF5FF",
-    borderRadius: 18,
-    borderWidth: 1.5,
-    borderColor: "#E9D8FD",
-    padding: 16,
-    marginBottom: 16,
-  },
-  noticeHeaderRow: {
+    backgroundColor: "#FFFBEB",
+    borderWidth: 1,
+    borderColor: "#FEF08A",
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     flexDirection: "row",
     alignItems: "center",
-    gap: 7,
-    marginBottom: 8,
+    marginTop: 14,
   },
-  noticeIcon: {
-    fontSize: 16,
+  alertBellWrap: {
+    width: 32,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  noticeTitle: {
-    fontSize: 13.5,
-    fontWeight: "800",
-    color: "#3B0764",
+  alertBellIcon: {
+    fontSize: 22,
   },
-  noticeBody: {
+  alertDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: "#FDE68A",
+    marginHorizontal: 12,
+  },
+  alertTextWrap: {
+    flex: 1,
+  },
+  alertLine1: {
     fontSize: 12.5,
-    color: "#334155",
-    lineHeight: 18,
-    marginBottom: 12,
+    fontWeight: "600",
+    color: "#78350F",
   },
-  autoUpdatePill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "#F3E8FF",
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-    alignSelf: "flex-start",
-  },
-  autoUpdateFlash: {
+  alertLine2: {
     fontSize: 12,
-    color: "#7C3AED",
-  },
-  autoUpdateText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#581C87",
+    fontWeight: "500",
+    color: "#78350F",
+    marginTop: 2,
   },
 
-  /* Order Summary Card */
+  /* ---------------- Order Summary Card ---------------- */
   orderSummaryCard: {
     width: "100%",
     backgroundColor: "#FFFFFF",
     borderRadius: 18,
-    borderWidth: 1.5,
-    borderColor: "#E9D8FD",
-    padding: 16,
-    marginBottom: 20,
-    shadowColor: "#2E0854",
-    shadowOffset: { width: 0, height: 4 },
+    borderWidth: 1,
+    borderColor: "#EDE9FE",
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 14,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
-    shadowRadius: 10,
+    shadowRadius: 8,
     elevation: 2,
   },
-  orderSummaryTopRow: {
-    flexDirection: "row",
+  summaryCartCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#F3E8FF",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F1F5F9",
-    marginBottom: 12,
+    justifyContent: "center",
   },
-  orderNumberTitle: {
-    fontSize: 13,
-    fontWeight: "800",
-    color: "#1E293B",
+  summaryCartIcon: {
+    fontSize: 18,
   },
-  orderItemCountText: {
-    fontSize: 11.5,
-    color: "#64748B",
-    fontWeight: "500",
-    marginTop: 2,
+  summaryDivider: {
+    width: 1,
+    height: 38,
+    backgroundColor: "#F1F5F9",
+    marginHorizontal: 12,
   },
-  orderGrandTotalAmountPending: {
-    fontSize: 26,
-    fontWeight: "900",
-    color: "#3B0764", // App brand deep purple
-  },
-  orderInfoGrid: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  orderGridItem: {
+  summaryDetailsCol: {
     flex: 1,
   },
-  gridItemLabel: {
-    fontSize: 11,
-    color: "#64748B",
-    fontWeight: "600",
-    marginBottom: 2,
-  },
-  gridItemValue: {
+  summaryOrderText: {
     fontSize: 12.5,
-    color: "#0F172A",
+    fontWeight: "600",
+    color: "#334155",
+  },
+  summaryOrderVal: {
+    fontWeight: "800",
+    color: "#1E1B4B",
+  },
+  summaryAmountText: {
+    fontSize: 12.5,
+    fontWeight: "600",
+    color: "#334155",
+    marginTop: 2,
+  },
+  summaryAmountVal: {
+    fontSize: 14.5,
+    fontWeight: "800",
+    color: "#15803D", // Green
+  },
+  summaryPaymentText: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#64748B",
+    marginTop: 2,
+  },
+  summaryPaymentVal: {
     fontWeight: "700",
+    color: "#1E1B4B",
+  },
+  summaryViewLinkWrap: {
+    paddingLeft: 4,
+  },
+  summaryViewLinkText: {
+    fontSize: 11.5,
+    fontWeight: "700",
+    color: "#6B21A8", // Purple link
+    textDecorationLine: "underline",
   },
 
-  /* Registered Shopper Detail Card */
-  customerDetailCard: {
-    marginTop: 14,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#E9D8FD",
-    backgroundColor: "#FAF5FF",
-    borderRadius: 14,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "#E9D8FD",
-  },
-  customerDetailHeader: {
+  /* ---------------- Bottom Warning Row ---------------- */
+  bottomWarningRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "center",
+    gap: 6,
+    marginTop: 18,
+  },
+  warningIconCircle: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.5,
+    borderColor: "#6B21A8",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  warningIconExclamation: {
+    color: "#6B21A8",
+    fontSize: 11,
+    fontWeight: "800",
+    marginTop: -1,
+  },
+  bottomWarningText: {
+    fontSize: 12.5,
+    fontWeight: "700",
+    color: "#6B21A8",
+  },
+
+  /* ========================================================================= */
+  /* SUCCESS STATE STYLES (MATCHING REFERENCE IMAGE 2)                         */
+  /* ========================================================================= */
+  successTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#16A34A", // Vibrant Green
+    textAlign: "center",
+    marginTop: 12,
+    letterSpacing: -0.3,
+  },
+  successSubtitle: {
+    fontSize: 13.5,
+    fontWeight: "500",
+    color: "#64748B",
+    textAlign: "center",
+    marginTop: 6,
+  },
+
+  /* Total Amount Paid Box */
+  amountPaidBox: {
+    width: "100%",
+    backgroundColor: "#F0FDF4",
+    borderWidth: 1,
+    borderColor: "#DCFCE7",
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    alignItems: "center",
+    marginTop: 16,
+    position: "relative",
+  },
+  amountSparkLeft: {
+    position: "absolute",
+    left: 18,
+    top: 26,
+  },
+  amountSparkRight: {
+    position: "absolute",
+    right: 18,
+    top: 26,
+  },
+  amountSparkGlyph: {
+    fontSize: 14,
+    color: "#22C55E",
+    fontWeight: "800",
+    letterSpacing: 2,
+  },
+  amountPaidLabel: {
+    fontSize: 11.5,
+    fontWeight: "800",
+    color: "#6B21A8",
+    letterSpacing: 0.6,
+  },
+  amountPaidValue: {
+    fontSize: 32,
+    fontWeight: "900",
+    color: "#15803D",
+    marginVertical: 4,
+    letterSpacing: -0.5,
+  },
+  orderConfirmedPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#86EFAC",
+    borderRadius: 20,
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+    marginTop: 2,
+  },
+  confirmedCheckBadge: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: "#16A34A",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  confirmedCheckGlyph: {
+    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: "900",
+  },
+  orderConfirmedText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#15803D",
+  },
+
+  /* Order Details Section */
+  orderDetailsSection: {
+    width: "100%",
+    marginTop: 18,
+  },
+  orderDetailsHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
     marginBottom: 8,
   },
-  customerDetailLabel: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: "#7C3AED",
-    letterSpacing: 0.8,
+  orderReceiptCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#F3E8FF",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  verifiedShopperBadge: {
+  orderReceiptGlyph: {
+    fontSize: 14,
+  },
+  orderDetailsTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#1E1B4B",
+  },
+  orderDetailsCard: {
+    width: "100%",
+    backgroundColor: "#FAF5FF",
+    borderWidth: 1,
+    borderColor: "#EDE9FE",
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  orderColLeft: {
+    flex: 1.2,
+  },
+  orderColDivider: {
+    width: 1,
+    height: 48,
+    backgroundColor: "#E2E8F0",
+    marginHorizontal: 10,
+  },
+  orderColRight: {
+    flex: 1,
+    paddingLeft: 4,
+  },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  metaIconGlyph: {
+    fontSize: 15,
+    color: "#7C3AED",
+    fontWeight: "700",
+    width: 18,
+    textAlign: "center",
+  },
+  metaLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#64748B",
+  },
+  metaValue: {
+    fontSize: 12.5,
+    fontWeight: "800",
+    color: "#0F172A",
+    marginTop: 1,
+  },
+  statusCheckCirclePurple: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#7C3AED",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  statusCheckGlyphWhite: {
+    color: "#FFFFFF",
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  statusValueGreen: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#16A34A",
+    marginTop: 1,
+  },
+
+  /* Action Buttons (Success Screen) */
+  successActionsWrap: {
+    width: "100%",
+    marginTop: 20,
+    gap: 12,
+  },
+  trackMyOrderBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    width: "100%",
+    paddingVertical: 15,
+    backgroundColor: "#059669", // Vibrant Emerald Green / Amazon live tracker
+    borderRadius: 26,
+    shadowColor: "#059669",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  trackOrderBtnIcon: {
+    fontSize: 18,
+  },
+  trackMyOrderBtnText: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    letterSpacing: -0.2,
+  },
+  primaryViewOrderBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    width: "100%",
+    paddingVertical: 15,
+    backgroundColor: "#4C1D95", // Deep violet button
+    borderRadius: 26,
+    shadowColor: "#4C1D95",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  primaryBtnIcon: {
+    fontSize: 16,
+  },
+  primaryViewOrderBtnText: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#FFFFFF",
+  },
+  secondaryContinueBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    width: "100%",
+    paddingVertical: 15,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
+    borderColor: "#4C1D95",
+    borderRadius: 26,
+  },
+  secondaryBtnIcon: {
+    fontSize: 16,
+  },
+  secondaryContinueBtnText: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#4C1D95",
+  },
+
+  /* Bottom Decorative Soft Wave */
+  bottomWaveDecor: {
+    width: "100%",
+    height: 28,
+    marginTop: 16,
+    overflow: "hidden",
+    alignItems: "center",
+  },
+  waveArc: {
+    width: "120%",
+    height: 48,
+    borderRadius: 30,
+    backgroundColor: "#EDE9FE",
+    opacity: 0.5,
+  },
+
+  /* Self Pickup 2-Choice Fulfillment Styles */
+  fulfillmentChoiceSection: {
+    width: "100%",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 16,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+    gap: 12,
+  },
+  choiceHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 4,
+  },
+  choiceHeaderEmoji: {
+    fontSize: 24,
+  },
+  choiceHeaderTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  choiceHeaderSubtitle: {
+    fontSize: 12,
+    color: "#64748B",
+    marginTop: 2,
+  },
+  choiceCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+    borderRadius: 14,
+    padding: 14,
+  },
+  choiceCardActive: {
+    backgroundColor: "#F0FDF4",
+    borderColor: "#059669",
+  },
+  choiceIconCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  choiceIconEmoji: {
+    fontSize: 20,
+  },
+  choiceCardTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#0F172A",
+  },
+  choiceCardDesc: {
+    fontSize: 11.5,
+    color: "#64748B",
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  choiceActivePill: {
+    alignSelf: "flex-start",
     backgroundColor: "#DCFCE7",
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 6,
+    marginTop: 6,
+  },
+  choiceActivePillText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#15803D",
+  },
+  pickupStatusBox: {
+    backgroundColor: "#FAF5FF",
     borderWidth: 1,
-    borderColor: "#86EFAC",
-  },
-  verifiedShopperText: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: "#059669",
-  },
-  customerDetailRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
+    borderColor: "#E9D5FF",
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 4,
     gap: 10,
   },
-  customerAvatarSmall: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: "#EDE9FE",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#DDD6FE",
-  },
-  customerNameBold: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#1E1B4B",
-    letterSpacing: -0.2,
-  },
-  customerPhoneBold: {
-    fontSize: 12.5,
-    fontWeight: "700",
-    color: "#475569",
-    marginTop: 2,
-  },
-  customerAddressText: {
-    fontSize: 11.5,
-    fontWeight: "500",
-    color: "#64748B",
-    marginTop: 3,
-    lineHeight: 16,
-  },
-
-  /* Action Buttons (Pending) */
-  actionButtonsContainer: {
-    width: "100%",
-    gap: 12,
-  },
-  refreshStatusBtn: {
+  pickupReadyBanner: {
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    width: "100%",
-    paddingVertical: 14,
-    backgroundColor: "#FAF5FF",
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: "#3B0764",
-    shadowColor: "#3B0764",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 2,
+    gap: 10,
+    alignItems: "flex-start",
   },
-  refreshIcon: {
-    fontSize: 16,
-    marginRight: 8,
-  },
-  refreshBtnText: {
-    fontSize: 14.5,
-    fontWeight: "800",
-    color: "#3B0764",
-  },
-  viewOrdersSecondaryBtn: {
-    alignItems: "center",
-    justifyContent: "center",
-    width: "100%",
-    paddingVertical: 14,
-    backgroundColor: "#3B0764",
-    borderRadius: 14,
-    shadowColor: "#3B0764",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  viewOrdersSecondaryBtnText: {
-    fontSize: 14.5,
-    fontWeight: "800",
-    color: "#FFFFFF",
-  },
-
-  /* ========================================================================= */
-  /* PAYMENT SUCCESSFUL (APPROVED) STYLES - PROPER & COMPLETE DESIGN          */
-  /* ========================================================================= */
-  heroSuccessCard: {
-    width: "100%",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 24,
-    paddingTop: 22,
-    paddingBottom: 20,
-    paddingHorizontal: 18,
-    alignItems: "center",
-    marginBottom: 16,
-    shadowColor: "#2E0854",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 4,
-    borderWidth: 1,
-    borderColor: "#E9D8FD",
-  },
-  heroImageContainerApproved: {
-    width: 185,
-    height: 185,
-    borderRadius: 24,
-    backgroundColor: "#F0FDF4",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 16,
-    borderWidth: 1.5,
-    borderColor: "#86EFAC",
-    overflow: "hidden",
-    shadowColor: "#10B981",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    elevation: 3,
-  },
-  heroTitleApproved: {
-    fontSize: 24,
-    fontWeight: "900",
-    color: "#2E0854",
-    textAlign: "center",
-    letterSpacing: -0.3,
-    marginBottom: 8,
-  },
-  statusPillApproved: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    backgroundColor: "#DCFCE7",
-    borderWidth: 1,
-    borderColor: "#86EFAC",
-    gap: 6,
-  },
-  statusLiveDotGreen: {
-    fontSize: 12,
-    fontWeight: "900",
-    color: "#059669",
-  },
-  statusPillTextApproved: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: "#047857",
-  },
-
-  /* Paid Amount Card */
-  paidAmountCard: {
-    width: "100%",
-    backgroundColor: "#FAF5FF",
-    borderRadius: 18,
-    borderWidth: 1.5,
-    borderColor: "#E9D8FD",
-    paddingVertical: 18,
-    paddingHorizontal: 18,
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  paidAmountLabel: {
-    fontSize: 11,
-    fontWeight: "800",
-    color: "#7C3AED",
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-    marginBottom: 4,
-  },
-  paidAmountValue: {
-    fontSize: 34,
-    fontWeight: "900",
-    color: "#15803D",
-    letterSpacing: -0.5,
-  },
-  savingsTagSuccess: {
-    backgroundColor: "#DCFCE7",
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 6,
-    marginTop: 6,
-    borderWidth: 1,
-    borderColor: "#86EFAC",
-  },
-  savingsTagText: {
-    fontSize: 11.5,
-    fontWeight: "800",
-    color: "#15803D",
-  },
-  paidByText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#475569",
-    marginTop: 6,
-  },
-
-  /* Smart Turnstile Pass Card */
-  smartPassCard: {
-    width: "100%",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: "#86EFAC",
-    marginBottom: 16,
-    overflow: "hidden",
-    shadowColor: "#059669",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 3,
-  },
-  passHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: "#F0FDF4",
-    borderBottomWidth: 1,
-    borderBottomColor: "#DCFCE7",
-  },
-  passBrandGroup: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  passBrandIcon: {
+  pickupReadyBell: {
     fontSize: 20,
   },
-  passStoreName: {
-    fontSize: 12,
-    fontWeight: "900",
-    color: "#14532D",
-    letterSpacing: 0.5,
+  pickupReadyTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#6B21A8",
   },
-  passSubtitle: {
-    fontSize: 9.5,
-    fontWeight: "800",
-    color: "#16A34A",
-    letterSpacing: 0.6,
-  },
-  gateUnlockedBadge: {
-    backgroundColor: "#DCFCE7",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "#86EFAC",
-  },
-  gateUnlockedText: {
-    fontSize: 10,
-    fontWeight: "900",
-    color: "#15803D",
-  },
-  passBody: {
-    padding: 16,
-  },
-  passInstructions: {
-    fontSize: 12.5,
-    color: "#334155",
-    lineHeight: 18,
-    marginBottom: 12,
-  },
-  passBadgesRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 12,
-  },
-  passTag: {
-    backgroundColor: "#DCFCE7",
-    paddingVertical: 4,
-    paddingHorizontal: 9,
-    borderRadius: 6,
-  },
-  passTagText: {
-    fontSize: 11,
-    fontWeight: "800",
-    color: "#15803D",
-  },
-  passCustomerCard: {
-    backgroundColor: "#FAF5FF",
-    borderRadius: 14,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "#E9D8FD",
-    marginBottom: 10,
-  },
-  passCustomerHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 8,
-  },
-  passCustomerLabel: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: "#7C3AED",
-    letterSpacing: 0.8,
-  },
-  passOrderMetaRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    borderTopWidth: 1,
-    borderTopColor: "#F1F5F9",
-    paddingTop: 8,
-    marginTop: 4,
-  },
-  passMetaText: {
+  pickupReadySub: {
     fontSize: 11.5,
-    color: "#475569",
-    fontWeight: "700",
-    letterSpacing: 0.3,
+    color: "#7E22CE",
+    marginTop: 2,
   },
-
-  /* Thank You Card */
-  thankYouCard: {
-    width: "100%",
-    backgroundColor: "#FAF5FF",
-    borderRadius: 18,
-    borderWidth: 1.5,
-    borderColor: "#E9D8FD",
-    padding: 18,
+  pickupWaitingText: {
+    fontSize: 12,
+    color: "#7E22CE",
+    fontStyle: "italic",
+    textAlign: "center",
+  },
+  pickupDoneBadge: {
+    backgroundColor: "#DCFCE7",
+    padding: 8,
+    borderRadius: 8,
     alignItems: "center",
-    marginBottom: 20,
   },
-  thankYouIcon: {
-    fontSize: 24,
-    marginBottom: 4,
+  pickupDoneText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#15803D",
   },
-  thankYouTitle: {
-    fontSize: 19,
-    fontWeight: "900",
-    color: "#2E0854",
-    marginBottom: 4,
-    textAlign: "center",
+  pickupCompleteBtn: {
+    backgroundColor: "#059669",
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  thankYouSubText: {
-    fontSize: 12.5,
-    color: "#475569",
-    textAlign: "center",
-    marginBottom: 4,
+  pickupCompleteBtnText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700",
   },
-  thankYouPolicyText: {
-    fontSize: 11,
-    color: "#7C3AED",
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    padding: 20,
+  },
+  modalCardContent: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 20,
+  },
+  modalHeading: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  modalSubheading: {
+    fontSize: 12,
+    color: "#64748B",
+    marginTop: 4,
+    marginBottom: 14,
+    lineHeight: 16,
+  },
+  addressInput: {
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 13.5,
+    color: "#0F172A",
+    minHeight: 80,
+    textAlignVertical: "top",
+  },
+  modalBtnRow: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 10,
+    marginTop: 16,
+  },
+  modalCancelBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: "#F1F5F9",
+  },
+  modalCancelText: {
+    fontSize: 13,
     fontWeight: "600",
-    textAlign: "center",
+    color: "#64748B",
+  },
+  modalConfirmBtn: {
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: "#059669",
+  },
+  modalConfirmText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+});
+
+// =========================================================================
+// ILLUSTRATION STYLES (MATCHING REFERENCE IMAGE 2)
+// =========================================================================
+const illustStyles = StyleSheet.create({
+  container: {
+    width: "100%",
+    height: 150,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
   },
 
-  /* Success Action Buttons */
-  successActionsContainer: {
-    width: "100%",
-    gap: 12,
-    marginBottom: 10,
+  /* Sunburst Celebration Rays */
+  raysWrapper: {
+    position: "absolute",
+    top: 45,
+    width: 220,
+    height: 110,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  viewTaxInvoicePrimaryBtn: {
+  ray: {
+    position: "absolute",
+    width: 3.5,
+    height: 14,
+    borderRadius: 2,
+  },
+  confettiBar: {
+    position: "absolute",
+    width: 4,
+    height: 10,
+    borderRadius: 2,
+  },
+  confettiDot: {
+    position: "absolute",
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+
+  /* Center Green Checkmark Badge */
+  centerCheckCircleOuter: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "#DCFCE7",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 10,
+    shadowColor: "#16A34A",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  centerCheckCircle: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: "#22C55E",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  centerCheckmarkText: {
+    color: "#FFFFFF",
+    fontSize: 34,
+    fontWeight: "900",
+  },
+
+  /* Left Purple Bag */
+  bagContainer: {
+    position: "absolute",
+    left: 20,
+    bottom: 10,
+    width: 74,
+    alignItems: "center",
+    zIndex: 8,
+  },
+  bagHandles: {
+    width: 26,
+    height: 14,
+    borderTopLeftRadius: 10,
+    borderTopRightRadius: 10,
+    borderWidth: 3,
+    borderColor: "#DDD6FE",
+    marginBottom: -2,
+  },
+  bagBody: {
+    width: 72,
+    height: 70,
+    backgroundColor: "#7C3AED",
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#4C1D95",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  bagCartGlyph: {
+    fontSize: 16,
+  },
+  bagBrandText: {
+    color: "#FFFFFF",
+    fontSize: 8.5,
+    fontWeight: "800",
+    letterSpacing: 0.3,
+    marginTop: 2,
+  },
+
+  /* Right Shopping Cart */
+  cartContainer: {
+    position: "absolute",
+    right: 20,
+    bottom: 8,
+    width: 76,
+    alignItems: "center",
+    zIndex: 8,
+  },
+  groceriesRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    width: "100%",
-    paddingVertical: 15,
-    backgroundColor: "#3B0764",
-    borderRadius: 16,
-    shadowColor: "#3B0764",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 4,
-    gap: 8,
+    gap: 1,
+    marginBottom: -4,
+    zIndex: 2,
   },
-  receiptActionIcon: {
-    fontSize: 18,
+  foodItem: {
+    fontSize: 13,
   },
-  viewTaxInvoiceBtnText: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: "#FFFFFF",
-    letterSpacing: 0.2,
-  },
-  continueShoppingBtn: {
-    alignItems: "center",
-    justifyContent: "center",
-    width: "100%",
-    paddingVertical: 14,
-    backgroundColor: "#FAF5FF",
-    borderRadius: 16,
+  wireBasket: {
+    width: 70,
+    height: 50,
+    backgroundColor: "#F8FAFC",
     borderWidth: 1.5,
-    borderColor: "#3B0764",
+    borderColor: "#94A3B8",
+    borderRadius: 8,
+    position: "relative",
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  continueShoppingBtnText: {
-    fontSize: 14.5,
-    fontWeight: "800",
-    color: "#3B0764",
+  wireHLine1: {
+    position: "absolute",
+    top: 15,
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: "#CBD5E1",
   },
-  viewMyOrdersBtn: {
-    alignItems: "center",
-    justifyContent: "center",
-    width: "100%",
-    paddingVertical: 14,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: "#CBD5E1",
+  wireHLine2: {
+    position: "absolute",
+    top: 32,
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: "#CBD5E1",
   },
-  viewMyOrdersBtnText: {
-    fontSize: 14.5,
-    fontWeight: "700",
-    color: "#475569",
+  wireVLine1: {
+    position: "absolute",
+    left: 22,
+    top: 0,
+    bottom: 0,
+    width: 1,
+    backgroundColor: "#CBD5E1",
+  },
+  wireVLine2: {
+    position: "absolute",
+    right: 22,
+    top: 0,
+    bottom: 0,
+    width: 1,
+    backgroundColor: "#CBD5E1",
+  },
+  cartWheelsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    width: 54,
+    marginTop: 3,
+  },
+  cartWheel: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#334155",
+  },
+
+  /* Ground Shadow */
+  groundShadow: {
+    position: "absolute",
+    bottom: 2,
+    width: "75%",
+    height: 10,
+    borderRadius: 15,
+    backgroundColor: "rgba(76, 29, 149, 0.06)",
+    zIndex: 1,
   },
 });

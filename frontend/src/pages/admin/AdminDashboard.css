@@ -122,12 +122,10 @@
   font-size: 19px;
   font-weight: 800;
   color: #14213d;
-  margin: 0 0 1px 0;
+  margin: 0 0 2px 0;
   letter-spacing: -0.3px;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  line-height: 1.15;
+  display: block;
+  line-height: 1.25;
 }
 
 .db-hero-title-blue {
@@ -912,6 +910,18 @@
   border-bottom-right-radius: 16px;
 }
 
+@media (max-width: 1100px) {
+  .db-hero-thought-center {
+    display: none !important;
+  }
+  .db-hero-left {
+    max-width: 60% !important;
+  }
+  .db-hero-panoramic-bg {
+    width: 38% !important;
+  }
+}
+
 @media (max-width: 1024px) {
   .db-kpi-grid {
     grid-template-columns: repeat(2, 1fr);
@@ -1437,20 +1447,26 @@
 .db-hero-text-block {
   display: flex !important;
   flex-direction: column !important;
-  background: rgba(255, 255, 255, 0.76) !important;
+  background: rgba(255, 255, 255, 0.88) !important;
   backdrop-filter: blur(12px) !important;
   -webkit-backdrop-filter: blur(12px) !important;
   border: 1.5px solid rgba(255, 255, 255, 0.95) !important;
-  border-radius: 20px !important;
-  padding: 10px 22px 12px 22px !important;
+  border-radius: 16px !important;
+  padding: 8px 18px 9px 18px !important;
   box-shadow: 0 4px 18px rgba(37, 99, 235, 0.08) !important;
+  max-width: 400px !important;
+  box-sizing: border-box !important;
 }
 
 .db-hero-title {
-  font-size: 20px !important;
+  font-size: 18px !important;
   font-weight: 800 !important;
   color: #0F172A !important;
   margin: 0 0 2px 0 !important;
+  display: block !important;
+  line-height: 1.25 !important;
+  letter-spacing: -0.3px !important;
+  white-space: normal !important;
 }
 
 .db-hero-title-blue {
@@ -1515,20 +1531,26 @@
 .db-hero-text-block {
   display: flex !important;
   flex-direction: column !important;
-  background: rgba(255, 255, 255, 0.76) !important;
+  background: rgba(255, 255, 255, 0.88) !important;
   backdrop-filter: blur(12px) !important;
   -webkit-backdrop-filter: blur(12px) !important;
   border: 1.5px solid rgba(255, 255, 255, 0.95) !important;
-  border-radius: 20px !important;
-  padding: 10px 22px 12px 22px !important;
+  border-radius: 16px !important;
+  padding: 8px 18px 9px 18px !important;
   box-shadow: 0 4px 18px rgba(37, 99, 235, 0.08) !important;
+  max-width: 400px !important;
+  box-sizing: border-box !important;
 }
 
 .db-hero-title {
-  font-size: 20px !important;
+  font-size: 18px !important;
   font-weight: 800 !important;
   color: #0F172A !important;
   margin: 0 0 2px 0 !important;
+  display: block !important;
+  line-height: 1.25 !important;
+  letter-spacing: -0.3px !important;
+  white-space: normal !important;
 }
 
 .db-hero-title-blue {
@@ -1633,46 +1655,44 @@
    CENTERED ULTRA-BRIGHT SUPERMARKET THOUGHT / SLOGAN
    =================================================================== */
 .db-hero-thought-center {
-  position: absolute !important;
-  left: 47% !important;
-  top: 50% !important;
-  transform: translateY(-50%) !important;
-  z-index: 15 !important;
-  display: flex !important;
-  flex-direction: column !important;
-  align-items: center !important;
-  text-align: center !important;
-  pointer-events: none !important;
-  white-space: nowrap !important;
+  display: none !important;
 }
 
 .db-thought-script {
   font-family: "Brush Script MT", "Segoe Script", cursive, "Caveat", sans-serif !important;
-  font-size: 28px !important;
+  font-size: 22px !important;
   font-weight: 800 !important;
   color: #1E3A8A !important;
   letter-spacing: 0.5px !important;
-  line-height: 1.15 !important;
+  line-height: 1.2 !important;
   text-shadow: 0 2px 10px rgba(255, 255, 255, 0.95), 0 0 16px rgba(37, 99, 235, 0.3) !important;
+  max-width: 210px !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
 }
 
 .db-thought-sub {
-  font-size: 10.5px !important;
+  font-size: 9.5px !important;
   font-weight: 800 !important;
   color: #2563EB !important;
-  letter-spacing: 0.8px !important;
+  letter-spacing: 0.6px !important;
   text-transform: uppercase !important;
-  margin-top: 3px !important;
+  margin-top: 2px !important;
   text-shadow: 0 1px 4px rgba(255, 255, 255, 0.95) !important;
+  max-width: 210px !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
 }
 
 .db-thought-swoosh {
-  width: 110px !important;
-  height: 4px !important;
+  width: 80px !important;
+  height: 3.5px !important;
   border-radius: 9999px !important;
   background: linear-gradient(90deg, #F59E0B 0%, #FBBF24 50%, #F59E0B 100%) !important;
-  margin-top: 4px !important;
-  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.6) !important;
+  margin-top: 3px !important;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.5) !important;
 }
 
 /* ===================================================================
@@ -1933,53 +1953,43 @@
 .db-hero-left {
   display: flex !important;
   align-items: center !important;
-  gap: 16px !important;
+  gap: 14px !important;
   position: relative !important;
   z-index: 25 !important;
-  max-width: 50% !important;
+  max-width: 46% !important;
 }
 
 .db-storefront-3d-wrap {
-  width: 90px !important;
-  height: 90px !important;
+  width: 76px !important;
+  height: 76px !important;
   flex-shrink: 0 !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  filter: drop-shadow(0 8px 18px rgba(20, 85, 217, 0.25)) !important;
-  padding: 0 !important;
+  background: #FFFFFF !important;
+  border-radius: 14px !important;
+  padding: 4px !important;
+  border: 1.5px solid #BFDBFE !important;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.1) !important;
 }
 
 .db-storefront-3d-img {
   width: 100% !important;
   height: 100% !important;
   object-fit: contain !important;
-  border-radius: 0 !important;
-  mix-blend-mode: multiply !important;
+  border-radius: 10px !important;
+  mix-blend-mode: normal !important;
 }
 
 .db-hero-thought-center {
-  position: absolute !important;
-  left: 48% !important;
-  top: 50% !important;
-  transform: translateY(-50%) !important;
-  z-index: 15 !important;
-  display: flex !important;
-  flex-direction: column !important;
-  align-items: center !important;
-  text-align: center !important;
-  pointer-events: none !important;
-  white-space: nowrap !important;
+  display: none !important;
 }
 
 .db-hero-panoramic-bg {
   position: absolute !important;
   top: 0 !important;
   right: 0 !important;
-  width: 48% !important;
+  width: 36% !important;
   height: 100% !important;
   background-size: cover !important;
   background-position: right center !important;
@@ -1992,24 +2002,24 @@
    3D STOREFRONT "BEFORE IMAGE" RESTORATION
    =================================================================== */
 .db-storefront-3d-wrap {
-  width: 90px !important;
-  height: 90px !important;
+  width: 76px !important;
+  height: 76px !important;
   flex-shrink: 0 !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
   background: #FFFFFF !important;
-  border-radius: 16px !important;
-  padding: 6px !important;
+  border-radius: 14px !important;
+  padding: 4px !important;
   border: 1.5px solid #BFDBFE !important;
-  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.12) !important;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.1) !important;
 }
 
 .db-storefront-3d-img {
   width: 100% !important;
   height: 100% !important;
   object-fit: contain !important;
-  border-radius: 12px !important;
+  border-radius: 10px !important;
   mix-blend-mode: normal !important;
 }
 
@@ -2019,6 +2029,18 @@
    - Smartphones (<= 480px, Galaxy Z Fold 6, iPhone 16, Pixel 9, Galaxy A55)
    - Ultra-compact phones (<= 360px, iPhone SE)
    =================================================================== */
+
+@media (max-width: 1100px) {
+  .db-hero-thought-center {
+    display: none !important;
+  }
+  .db-hero-left {
+    max-width: 60% !important;
+  }
+  .db-hero-panoramic-bg {
+    width: 38% !important;
+  }
+}
 
 @media (max-width: 1024px) {
 

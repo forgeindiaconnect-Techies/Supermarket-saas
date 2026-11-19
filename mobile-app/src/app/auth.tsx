@@ -33,6 +33,7 @@ export default function CustomerAuthScreen() {
   // Form Fields
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
   const [password, setPassword] = useState("");
 
@@ -108,6 +109,13 @@ export default function CustomerAuthScreen() {
         return;
       }
 
+      const emailTrim = email.trim().toLowerCase();
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailTrim || !emailRegex.test(emailTrim)) {
+        setErrorMsg("Please enter a valid email address (e.g., name@example.com).");
+        return;
+      }
+
       if (!chosenStore) {
         setErrorMsg("Please search and select your preferred supermarket location.");
         setSearchModalVisible(true);
@@ -115,7 +123,12 @@ export default function CustomerAuthScreen() {
       }
 
       // Strict validation of Online availability
-      if (chosenStore.onlineAvailable !== true) {
+      const isOnlineSupported =
+        chosenStore.onlineDeliveryAvailable === true ||
+        chosenStore.selfPickupAvailable === true ||
+        chosenStore.onlineAvailable === true;
+
+      if (!isOnlineSupported) {
         setUnavailableModal({
           visible: true,
           mode: "Online",
@@ -134,10 +147,12 @@ export default function CustomerAuthScreen() {
           body: JSON.stringify({
             name: name.trim(),
             phone: cleanPhone,
+            email: email.trim().toLowerCase(),
             password,
             address: address.trim(),
             supermarketId: chosenStore._id,
             supermarketCode: chosenStore.code,
+            registrationType: "ONLINE",
           }),
         }, 8000);
 
@@ -162,6 +177,7 @@ export default function CustomerAuthScreen() {
           _id: data.customer?._id,
           name: data.customer?.name || name.trim(),
           phone: cleanPhone,
+          email: data.customer?.email || email.trim().toLowerCase(),
           address: address.trim(),
           supermarketId: chosenStore._id,
           supermarketCode: chosenStore.code,
@@ -219,6 +235,7 @@ export default function CustomerAuthScreen() {
           _id: data.customer?._id,
           name: data.customer?.name || "Shopper",
           phone: cleanPhone,
+          email: data.customer?.email || "",
           address: data.customer?.address || "",
           supermarketId: storeInfo._id,
           supermarketCode: storeInfo.code,
@@ -319,64 +336,11 @@ export default function CustomerAuthScreen() {
               </View>
             ) : null}
 
-            {/* Supermarket Location Selection Card (Prominent for Registration) */}
-            {activeTab === "register" && (
-              <View style={styles.sectionWrap}>
-                <Text style={styles.inputLabel}>
-                  Preferred Supermarket Location <Text style={styles.star}>*</Text>
-                </Text>
-
-                {chosenStore ? (
-                  <View style={styles.selectedStoreCard}>
-                    <View style={styles.selectedStoreTop}>
-                      <View style={styles.selectedStoreIcon}>
-                        <Text style={{ fontSize: 20 }}>🏪</Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.selectedStoreName}>{chosenStore.name}</Text>
-                        <Text style={styles.selectedStoreLocation}>
-                          📍 {chosenStore.city || "Bangalore"}, {chosenStore.state || "Karnataka"}
-                        </Text>
-                        <View style={styles.storeVerifiedBadge}>
-                          <Text style={styles.storeVerifiedText}>
-                            ✓ Online Purchase Enabled ({chosenStore.code})
-                          </Text>
-                        </View>
-                      </View>
-                    </View>
-
-                    <TouchableOpacity
-                      style={styles.changeStoreBtn}
-                      onPress={() => setSearchModalVisible(true)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.changeStoreText}>Change Location / Store</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  <TouchableOpacity
-                    style={styles.searchLocationTrigger}
-                    onPress={() => setSearchModalVisible(true)}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={styles.searchLocationIcon}>🔍</Text>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.searchLocationTitle}>Search Supermarket Location</Text>
-                      <Text style={styles.searchLocationSub}>
-                        Tap to find supermarkets registered by Super Admin
-                      </Text>
-                    </View>
-                    <Text style={styles.searchLocationArrow}>›</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            )}
-
-            {/* Registration Specific Fields */}
+            {/* 1. Customer Personal Details: Name, Mobile, Email */}
             {activeTab === "register" && (
               <View style={styles.formGroup}>
                 <Text style={styles.inputLabel}>
-                  Full Name <Text style={styles.star}>*</Text>
+                  Customer Name <Text style={styles.star}>*</Text>
                 </Text>
                 <TextInput
                   style={styles.input}
@@ -408,6 +372,78 @@ export default function CustomerAuthScreen() {
                 />
               </View>
             </View>
+
+            {/* Email Address (Mandatory for Online Registration) */}
+            {activeTab === "register" && (
+              <View style={styles.formGroup}>
+                <Text style={styles.inputLabel}>
+                  Email Address <Text style={styles.star}>*</Text>
+                </Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g. yourname@gmail.com"
+                  placeholderTextColor="#94A3B8"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  value={email}
+                  onChangeText={setEmail}
+                />
+              </View>
+            )}
+
+            {/* 2. Supermarket Location Selection Search Bar (After entering details) */}
+            {activeTab === "register" && (
+              <View style={styles.sectionWrap}>
+                <Text style={styles.inputLabel}>
+                  Select Supermarket <Text style={styles.star}>*</Text>
+                </Text>
+
+                {chosenStore ? (
+                  <View style={styles.selectedStoreCard}>
+                    <View style={styles.selectedStoreTop}>
+                      <View style={styles.selectedStoreIcon}>
+                        <Text style={{ fontSize: 20 }}>🏪</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.selectedStoreName}>{chosenStore.name}</Text>
+                        <Text style={styles.selectedStoreLocation}>
+                          📍 {chosenStore.city || "Bangalore"}, {chosenStore.state || "Karnataka"}
+                        </Text>
+                        <View style={styles.storeVerifiedBadge}>
+                          <Text style={styles.storeVerifiedText}>
+                            ✓ Online Purchase Enabled ({chosenStore.code})
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+
+                    <TouchableOpacity
+                      style={styles.changeStoreBtn}
+                      onPress={() => setSearchModalVisible(true)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.changeStoreText}>Change Supermarket</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.searchLocationTrigger}
+                    onPress={() => setSearchModalVisible(true)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.searchLocationIcon}>🔍</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.searchLocationTitle}>Search Supermarket</Text>
+                      <Text style={styles.searchLocationSub}>
+                        Search registered supermarkets by name or location
+                      </Text>
+                    </View>
+                    <Text style={styles.searchLocationArrow}>›</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
 
             {/* Delivery Address (for Online Orders) */}
             {activeTab === "register" && (
@@ -478,6 +514,17 @@ export default function CustomerAuthScreen() {
                 {activeTab === "register"
                   ? "Already have an account? Sign In"
                   : "Don't have an account? Create One"}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Dedicated Delivery Fleet Login Link */}
+            <TouchableOpacity
+              style={{ marginTop: 24, paddingVertical: 12, alignItems: "center", backgroundColor: "#F0F9FF", borderRadius: 12, borderWidth: 1, borderColor: "#BAE6FD" }}
+              onPress={() => router.push("/delivery-login")}
+              activeOpacity={0.7}
+            >
+              <Text style={{ fontSize: 13, color: "#0284C7", fontWeight: "700" }}>
+                🚚 Delivery Personnel? Access Delivery Dashboard →
               </Text>
             </TouchableOpacity>
           </ScrollView>

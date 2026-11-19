@@ -6,7 +6,7 @@
    ========================================================================= */
 
 :root {
-  --sa-bg: #c5e4d2;
+  --sa-bg: #ffffff;
   --sa-card-bg: #ffffff;
   --sa-sidebar-bg: #064e3b;
   --sa-green-primary: #16a34a;
@@ -44,6 +44,8 @@
 /* Global Card Background Rule: Clean White (#FFFFFF) */
 .sa-page-header,
 .sa-section-card,
+.sa-table-card,
+.sa-info-card,
 .sa-kpi-card,
 .sa-kpi-card-v2,
 .sa-store-card,
@@ -635,7 +637,7 @@
 }
 
 .sa-data-table {
-  width: max-content;
+  width: 100%;
   min-width: 100%;
   border-collapse: collapse;
   text-align: left;
@@ -2224,6 +2226,41 @@ input[type="password"]::-ms-clear,
 
 .sa-clean-table tbody tr:hover {
   background-color: #f8fafc;
+}
+
+/* Master Data Table Universal Styles - Clean White Surface & Legible Typography */
+.sa-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: #ffffff !important;
+}
+
+.sa-data-table thead tr {
+  background-color: #f8fafc !important;
+}
+
+.sa-data-table thead th {
+  padding: 12px 16px !important;
+  color: #475569 !important;
+  font-size: 0.74rem !important;
+  font-weight: 800 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.04em !important;
+  border-bottom: 1.5px solid #e2e8f0 !important;
+  white-space: nowrap !important;
+  background-color: #f8fafc !important;
+}
+
+.sa-data-table tbody td {
+  padding: 13px 16px !important;
+  border-bottom: 1px solid #f1f5f9 !important;
+  background-color: #ffffff !important;
+  vertical-align: middle !important;
+  color: #1e293b !important;
+}
+
+.sa-data-table tbody tr:hover td {
+  background-color: #f8fafc !important;
 }
 
 .sa-store-name-text {
@@ -4936,6 +4973,27 @@ input[type="password"]::-ms-clear,
   color: #6b21a8;
 }
 
+.sa-pill-red {
+  background: #fee2e2;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #b91c1c;
+}
+
+.sa-clickable-card {
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.18s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.18s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.18s ease;
+}
+
+.sa-clickable-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.09) !important;
+}
+
+.sa-clickable-card:active {
+  transform: translateY(0);
+}
+
 .sa-ref-kpi-spark {
   width: 56px;
   height: 26px;
@@ -5770,10 +5828,10 @@ input[type="password"]::-ms-clear,
   max-width: 1280px;
   margin: 0 auto;
   padding: 1.25rem 1.5rem 3rem 1.5rem;
-  background-color: #c5e4d2;
+  background-color: #ffffff;
   border-radius: 20px;
-  border: 1.5px solid #93d4af;
-  box-shadow: 0 6px 24px rgba(16, 185, 129, 0.08);
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);
   min-height: calc(100vh - 110px);
   box-sizing: border-box;
   width: 100%;

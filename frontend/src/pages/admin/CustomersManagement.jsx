@@ -28,10 +28,12 @@ import {
   Check,
   Tag,
   ArrowRight,
+  UserPlus,
+  Building2,
+  Trash2,
 } from "lucide-react";
 import API from "../../services/api";
 import ErpPageBanner from "../../components/ErpPageBanner";
-import bannerCartImg from "../../assets/banner-cart.png";
 import "./ProductManagement.css";
 
 const STATUS_FILTERS = ["All Statuses", "Active", "Suspended"];
@@ -63,8 +65,7 @@ const formatPhone = (phone) => {
 
 export default function CustomersManagement() {
   const [searchParams] = useSearchParams();
-  const [orders, setOrders] = useState([]);
-  const [cartActivities, setCartActivities] = useState([]);
+  const [rawCustomers, setRawCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState(() => searchParams.get("search") || "");
 
@@ -74,6 +75,7 @@ export default function CustomersManagement() {
       setSearch(q);
     }
   }, [searchParams]);
+
   const [selectedStatus, setSelectedStatus] = useState("All Statuses");
   const [selectedDateFilter, setSelectedDateFilter] = useState("all");
   const [selectedTier, setSelectedTier] = useState("All Membership Tiers");
@@ -85,7 +87,15 @@ export default function CustomersManagement() {
   const [viewAll, setViewAll] = useState(false);
   const [actionToast, setActionToast] = useState("");
 
-  // Customer account status override map persisted in localStorage
+  // Add Walk-in Offline Customer Modal state
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [newCustName, setNewCustName] = useState("");
+  const [newCustPhone, setNewCustPhone] = useState("");
+  const [newCustEmail, setNewCustEmail] = useState("");
+  const [newCustAddress, setNewCustAddress] = useState("");
+  const [creatingCust, setCreatingCust] = useState(false);
+
+  // Customer account status override map
   const [statusOverrides, setStatusOverrides] = useState(() => {
     try {
       const saved = localStorage.getItem("grocerease_customer_statuses");
@@ -95,19 +105,22 @@ export default function CustomersManagement() {
     }
   });
 
+  /**
+   * Fetch Customers from dedicated Backend Customer API:
+   * STRICT: API returns ONLY customers registered through the OFFLINE shopping flow.
+   * Multi-tenant isolated to authenticated Store Admin's supermarket.
+   */
   const fetchData = async (showLoading = false) => {
     try {
       if (showLoading) setLoading(true);
-      const [ordRes, actRes] = await Promise.allSettled([
-        API.get("/orders"),
-        API.get("/orders/cart-activity"),
-      ]);
+      const res = await API.get("/customers");
 
-      if (ordRes.status === "fulfilled" && ordRes.value.data?.success) {
-        setOrders(ordRes.value.data.orders || []);
-      }
-      if (actRes.status === "fulfilled" && actRes.value.data?.success) {
-        setCartActivities(actRes.value.data.activities || []);
+      if (res.data?.success && Array.isArray(res.data.customers)) {
+        // Enforce registrationType: "OFFLINE"
+        const offlineOnly = res.data.customers.filter(
+          (c) => c.registrationType === "OFFLINE" || !c.registrationType
+        );
+        setRawCustomers(offlineOnly);
       }
     } catch (err) {
       console.warn("Customers data sync:", err.message);
@@ -119,10 +132,10 @@ export default function CustomersManagement() {
   useEffect(() => {
     fetchData(true);
 
-    // Auto-poll every 3.5s so when a new customer registers or checks out, the directory updates immediately
+    // Auto-poll every 4s to ensure real-time offline registrations update
     const timer = setInterval(() => {
       fetchData(false);
-    }, 3500);
+    }, 4000);
 
     const handleStorageUpdate = () => {
       fetchData(false);
@@ -135,238 +148,57 @@ export default function CustomersManagement() {
     };
   }, []);
 
-  // Helper to extract clean 10-digit phone digits for consistent deduplication
-  const getCleanPhoneDigits = (phone) => {
-    if (!phone) return "";
-    const digits = String(phone).replace(/\D/g, "");
-    return digits.length >= 10 ? digits.slice(-10) : digits;
-  };
-
-  // Derive genuine customer accounts purely from MongoDB Orders and Cart Activities
+  // Format and process offline customer records
   const customers = useMemo(() => {
-    const customerMap = new Map();
-
-    // 1. Process all MongoDB Orders
-    orders.forEach((order) => {
-      const rawName = (order.customer?.name || "").trim() || "Guest Shopper";
-      const rawPhone = (order.customer?.phone || "").trim();
-      const rawEmail = (order.customer?.email || "").trim();
-      const cleanPhone = getCleanPhoneDigits(rawPhone);
-
-      // Unique canonical key prioritizing 10-digit clean phone
-      const identityKey = cleanPhone && cleanPhone.length === 10
-        ? `phone_${cleanPhone}`
-        : (rawEmail ? `email_${rawEmail.toLowerCase()}` : `name_${rawName.toLowerCase()}`);
-
-      let customer = customerMap.get(identityKey);
-      if (!customer && cleanPhone && cleanPhone.length === 10) {
-        customer = customerMap.get(`phone_${cleanPhone}`);
-      }
-      if (!customer && rawName && !["guest shopper", "mobile shopper", "shopper"].includes(rawName.toLowerCase())) {
-        for (const c of customerMap.values()) {
-          if (c.name.trim().toLowerCase() === rawName.toLowerCase()) {
-            customer = c;
-            break;
-          }
-        }
-      }
-
-      if (!customer) {
-        // Derive clean customer ID
-        let idSuffix = "";
-        if (cleanPhone && cleanPhone.length >= 4) {
-          idSuffix = cleanPhone.slice(-4);
-        } else if (order.orderNumber) {
-          idSuffix = order.orderNumber.replace(/\D/g, "").slice(-4);
-        } else {
-          idSuffix = "1001";
-        }
-        const custId = `CUST-${idSuffix.padStart(4, "0")}`;
-
-        customer = {
-          id: custId,
-          key: identityKey,
-          name: rawName,
-          phone: cleanPhone && cleanPhone.length === 10 ? `+91 ${cleanPhone}` : (rawPhone || "Not provided"),
-          email: rawEmail || "",
-          address: (order.customer?.address || "").trim(),
-          registrationDate: new Date(order.createdAt || Date.now()),
-          latestOrderDate: new Date(order.createdAt || Date.now()),
-          orders: [],
-          totalOrders: 0,
-          totalSpent: 0,
-          paymentMethodsUsed: {},
-          recentCartItems: [],
-        };
-        customerMap.set(identityKey, customer);
-        if (cleanPhone && cleanPhone.length === 10) {
-          customerMap.set(`phone_${cleanPhone}`, customer);
-        }
-      } else {
-        if (!customer.address && order.customer?.address) {
-          customer.address = (order.customer.address || "").trim();
-        }
-        if (rawName && (!customer.name || customer.name === "Guest Shopper" || customer.name === "Mobile Shopper")) {
-          customer.name = rawName;
-        }
-        if (cleanPhone && cleanPhone.length === 10 && (!customer.phone || customer.phone === "Not provided")) {
-          customer.phone = `+91 ${cleanPhone}`;
-        }
-      }
-
-      // Update earliest registration date
-      const orderDate = new Date(order.createdAt || Date.now());
-      if (orderDate < customer.registrationDate) {
-        customer.registrationDate = orderDate;
-      }
-      if (orderDate > customer.latestOrderDate) {
-        customer.latestOrderDate = orderDate;
-      }
-
-      // Attach real order
-      customer.orders.push({
-        id: order.orderNumber || order._id,
-        orderId: order._id,
-        date: orderDate,
-        amount: Number(order.totalAmount || 0),
-        discount: Number(order.discountAmount || 0),
-        subtotal: Number(order.subtotalAmount || order.totalAmount || 0),
-        paymentMethod: order.paymentMethod || "UPI",
-        paymentStatus: order.paymentStatus || "Pending",
-        exitBarcode: order.exitBarcode || "",
-        items: (order.items || []).map((it) => ({
-          name: it.name,
-          quantity: it.quantity,
-          price: it.price,
-          subtotal: it.subtotal,
-          brand: it.brand || "",
-        })),
-      });
-
-      customer.totalOrders += 1;
-
-      // Count only verified completed payments as total purchase amount
-      if (order.paymentStatus === "Completed") {
-        customer.totalSpent += Number(order.totalAmount || 0);
-      }
-
-      // Track payment methods
-      const pm = order.paymentMethod || "UPI";
-      customer.paymentMethodsUsed[pm] = (customer.paymentMethodsUsed[pm] || 0) + 1;
-    });
-
-    // 2. Incorporate cart activity sessions - deduplicate strictly against registered & order customers
-    cartActivities.forEach((act) => {
-      const rawName = (act.customerName || "").trim();
-      const rawSession = (act.sessionId || "").trim();
-      const cleanPhone = getCleanPhoneDigits(rawSession);
-      const isGeneric = !rawName || ["guest shopper", "mobile shopper", "shopper"].includes(rawName.toLowerCase());
-
-      // If it's an anonymous temporary cart session without phone/email and has 0 orders, do not duplicate into directory
-      if (isGeneric && (!cleanPhone || cleanPhone.length < 10)) {
-        return;
-      }
-
-      // Check if this shopper already exists in customerMap by phone, key, or name
-      let customer = cleanPhone && cleanPhone.length === 10 ? customerMap.get(`phone_${cleanPhone}`) : null;
-      if (!customer && !isGeneric) {
-        for (const c of customerMap.values()) {
-          if (c.name.trim().toLowerCase() === rawName.toLowerCase()) {
-            customer = c;
-            break;
-          }
-          if (cleanPhone && cleanPhone.length === 10 && getCleanPhoneDigits(c.phone) === cleanPhone) {
-            customer = c;
-            break;
-          }
-        }
-      }
-
-      if (customer) {
-        // Merge cart items with existing verified customer account
-        if (act.productName && !customer.recentCartItems.includes(act.productName)) {
-          customer.recentCartItems.push(act.productName);
-        }
-        if (cleanPhone && cleanPhone.length === 10 && (!customer.phone || customer.phone === "Not provided")) {
-          customer.phone = `+91 ${cleanPhone}`;
-        }
-      } else {
-        // Genuine new shopper not yet in orders (e.g. newly registered mobile user currently browsing)
-        const idSuffix = cleanPhone && cleanPhone.length >= 4
-          ? cleanPhone.slice(-4)
-          : (rawSession.replace(/\D/g, "").slice(-4) || "8801");
-        const key = cleanPhone && cleanPhone.length === 10 ? `phone_${cleanPhone}` : `name_${rawName.toLowerCase()}`;
-
-        customer = {
-          id: `CUST-${idSuffix.padStart(4, "0")}`,
-          key,
-          name: rawName || "Shopper",
-          phone: cleanPhone && cleanPhone.length === 10 ? `+91 ${cleanPhone}` : (rawSession.startsWith("+") || /^\d+$/.test(rawSession) ? rawSession : "Not provided"),
-          email: "",
-          address: "",
-          registrationDate: new Date(act.createdAt || Date.now()),
-          latestOrderDate: new Date(act.createdAt || Date.now()),
-          orders: [],
-          totalOrders: 0,
-          totalSpent: 0,
-          paymentMethodsUsed: {},
-          recentCartItems: act.productName ? [act.productName] : [],
-        };
-        customerMap.set(key, customer);
-        if (cleanPhone && cleanPhone.length === 10) {
-          customerMap.set(`phone_${cleanPhone}`, customer);
-        }
-      }
-    });
-
-    // Deduplicate entries by unique customer ID to guarantee 0 duplicates in table output
-    const uniqueMap = new Map();
-    for (const c of customerMap.values()) {
-      const uniqueKey = getCleanPhoneDigits(c.phone) || c.id || c.name.toLowerCase();
-      if (!uniqueMap.has(uniqueKey)) {
-        uniqueMap.set(uniqueKey, c);
-      } else {
-        // Merge into the entry that has orders
-        const existing = uniqueMap.get(uniqueKey);
-        if (c.orders.length > existing.orders.length) {
-          uniqueMap.set(uniqueKey, c);
-        }
-      }
-    }
-
-    // 3. Finalize customer metrics, sorting, membership tier, and status overrides
-    return Array.from(uniqueMap.values()).map((c) => {
-      // Sort orders descending
-      c.orders.sort((a, b) => b.date - a.date);
-
-      // Determine preferred payment method
-      let topMethod = "UPI";
-      let topCount = 0;
-      Object.entries(c.paymentMethodsUsed).forEach(([method, count]) => {
-        if (count > topCount) {
-          topMethod = method;
-          topCount = count;
-        }
-      });
-      c.preferredPayment = topMethod;
+    return rawCustomers.map((c) => {
+      const regDate = new Date(c.registrationDate || c.createdAt || Date.now());
+      const latestDate = new Date(c.latestOrderDate || c.createdAt || Date.now());
+      const totalSpent = Number(c.totalSpent || 0);
 
       // Derive Membership Tier based on actual completed spend
-      if (c.totalSpent >= 10000) {
-        c.tier = "VIP Platinum";
-      } else if (c.totalSpent >= 3000) {
-        c.tier = "Gold Shoppers";
-      } else {
-        c.tier = "Regular Members";
+      let tier = "Regular Members";
+      if (totalSpent >= 10000) {
+        tier = "VIP Platinum";
+      } else if (totalSpent >= 3000) {
+        tier = "Gold Shoppers";
       }
 
-      // Status (Active vs Suspended)
-      c.status = statusOverrides[c.key] || "Active";
+      // Preferred payment
+      let topMethod = "Cash / UPI";
+      let topCount = 0;
+      if (c.paymentMethodsUsed && typeof c.paymentMethodsUsed === "object") {
+        Object.entries(c.paymentMethodsUsed).forEach(([method, count]) => {
+          if (count > topCount) {
+            topMethod = method;
+            topCount = count;
+          }
+        });
+      }
 
-      return c;
+      const key = String(c._id || c.phone || c.id);
+      const status = statusOverrides[key] || c.status || "Active";
+
+      return {
+        ...c,
+        key,
+        registrationDate: regDate,
+        latestOrderDate: latestDate,
+        totalOrders: Number(c.totalOrders || (c.orders ? c.orders.length : 0)),
+        totalSpent,
+        tier,
+        status,
+        preferredPayment: topMethod,
+        orders: Array.isArray(c.orders)
+          ? c.orders.map((o) => ({
+              ...o,
+              date: new Date(o.date || Date.now()),
+            }))
+          : [],
+      };
     });
-  }, [orders, cartActivities, statusOverrides]);
+  }, [rawCustomers, statusOverrides]);
 
-  // Executive KPI Metrics
+  // Executive KPI Metrics (Offline Directory)
   const totalRegisteredCount = customers.length;
 
   const now = new Date();
@@ -420,8 +252,9 @@ export default function CustomersManagement() {
         const matchPhone = c.phone?.toLowerCase().includes(q);
         const matchEmail = c.email?.toLowerCase().includes(q);
         const matchId = c.id?.toLowerCase().includes(q);
+        const matchAddress = c.address?.toLowerCase().includes(q);
 
-        if (!matchName && !matchPhone && !matchEmail && !matchId) {
+        if (!matchName && !matchPhone && !matchEmail && !matchId && !matchAddress) {
           return false;
         }
       }
@@ -451,8 +284,48 @@ export default function CustomersManagement() {
     }
   }, [totalPages, currentPage]);
 
+  // Register New Walk-in Offline Customer
+  const handleCreateOfflineCustomer = async (e) => {
+    e.preventDefault();
+    if (!newCustName.trim()) {
+      alert("Please enter customer name.");
+      return;
+    }
+
+    const cleanP = newCustPhone.replace(/\D/g, "").slice(-10);
+    if (!cleanP || cleanP.length !== 10 || !["6", "7", "8", "9"].includes(cleanP[0])) {
+      alert("Please enter a valid 10-digit Indian mobile number starting with 6, 7, 8, or 9.");
+      return;
+    }
+
+    setCreatingCust(true);
+    try {
+      const res = await API.post("/customers", {
+        name: newCustName.trim(),
+        phone: cleanP,
+        email: newCustEmail.trim().toLowerCase(),
+        address: newCustAddress.trim(),
+      });
+
+      if (res.data?.success) {
+        setActionToast(`✓ Offline customer "${newCustName.trim()}" registered successfully!`);
+        setIsAddModalOpen(false);
+        setNewCustName("");
+        setNewCustPhone("");
+        setNewCustEmail("");
+        setNewCustAddress("");
+        await fetchData(false);
+        setTimeout(() => setActionToast(""), 4500);
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || err.message || "Failed to register offline customer.");
+    } finally {
+      setCreatingCust(false);
+    }
+  };
+
   // Toggle Customer Account Status
-  const handleToggleCustomerStatus = (customer) => {
+  const handleToggleCustomerStatus = async (customer) => {
     const newStatus = customer.status === "Active" ? "Suspended" : "Active";
     const updatedMap = {
       ...statusOverrides,
@@ -463,16 +336,44 @@ export default function CustomersManagement() {
       localStorage.setItem("grocerease_customer_statuses", JSON.stringify(updatedMap));
     } catch (_) {}
 
+    // Persist to backend if ID exists
+    if (customer._id) {
+      try {
+        await API.patch(`/customers/${customer._id}/status`, { status: newStatus });
+      } catch (_) {}
+    }
+
     // Update active customer modal if open
     if (activeCustomer && activeCustomer.key === customer.key) {
       setActiveCustomer((prev) => ({ ...prev, status: newStatus }));
     }
 
-    setActionToast(`✓ Customer "${customer.name}" status updated to ${newStatus}.`);
+    setActionToast(`✓ Offline Customer "${customer.name}" status updated to ${newStatus}.`);
     setTimeout(() => setActionToast(""), 4000);
+    fetchData(false);
   };
 
-  // Export Customers to CSV
+  // Delete Offline Customer Record
+  const handleDeleteCustomer = async (customer) => {
+    if (!window.confirm(`Are you sure you want to remove offline customer "${customer.name}" (${customer.phone})?\n\nThis action cannot be undone.`)) {
+      return;
+    }
+    try {
+      if (customer._id) {
+        await API.delete(`/customers/${customer._id}`);
+      }
+      setActionToast(`✓ Customer "${customer.name}" removed from offline directory.`);
+      if (activeCustomer && activeCustomer.key === customer.key) {
+        setActiveCustomer(null);
+      }
+      setTimeout(() => setActionToast(""), 4000);
+      fetchData(false);
+    } catch (err) {
+      alert(err.response?.data?.message || err.message || "Failed to delete customer.");
+    }
+  };
+
+  // Export Offline Customers to CSV
   const handleExportCSV = () => {
     if (filteredCustomers.length === 0) {
       alert("No customer records match the current filter.");
@@ -482,8 +383,10 @@ export default function CustomersManagement() {
     const headers = [
       "Customer ID",
       "Customer Name",
+      "Registration Source",
       "Mobile Number",
       "Email Address",
+      "Address",
       "Registration Date",
       "Total Orders",
       "Total Verified Spend (INR)",
@@ -495,8 +398,10 @@ export default function CustomersManagement() {
     const rows = filteredCustomers.map((c) => [
       `"${c.id}"`,
       `"${c.name}"`,
+      `"OFFLINE"`,
       `"${c.phone}"`,
       `"${c.email || "N/A"}"`,
+      `"${c.address || "N/A"}"`,
       `"${c.registrationDate.toLocaleDateString("en-IN")}"`,
       c.totalOrders,
       Number(c.totalSpent).toFixed(2),
@@ -514,7 +419,7 @@ export default function CustomersManagement() {
     link.setAttribute("href", encodedUri);
     link.setAttribute(
       "download",
-      `supermarket_customers_${new Date().toISOString().slice(0, 10)}.csv`
+      `supermarket_offline_customers_${new Date().toISOString().slice(0, 10)}.csv`
     );
     document.body.appendChild(link);
     link.click();
@@ -534,12 +439,12 @@ export default function CustomersManagement() {
   return (
     <div className="grocer-page-container">
       {/* ========================================================================= */}
-      {/* 1. TOP HERO BANNER - EXACT MATCH TO REGISTER NEW PRODUCT                  */}
+      {/* 1. TOP HERO BANNER - STRICT OFFLINE CUSTOMER REGISTRATION DIRECTORY        */}
       {/* ========================================================================= */}
       <ErpPageBanner
-        title="Customer Management"
-        subtitle="Registered shopper profiles, verified self-checkout purchase histories & loyalty tiers"
-        badges={["Verified Shopper Profiles", "Loyalty Tier Automation", "Self-Checkout Tracking"]}
+        title="Customer Directory (Offline Registrations)"
+        subtitle="Directory of customers registered exclusively through the OFFLINE shopping flow • In-store walk-in shopper profiles"
+        badges={["OFFLINE Registrations Only", "In-Store Walk-In Shoppers", "Strictly Isolated from Online Orders"]}
         icon={<Users size={22} color="#ffffff" strokeWidth={2.4} />}
       />
 
@@ -567,47 +472,47 @@ export default function CustomersManagement() {
       )}
 
       {/* ========================================================================= */}
-      {/* 2. FOUR HORIZONTAL CUSTOMER KPI CARDS (SPEC REQUIREMENT #1)               */}
+      {/* 2. FOUR HORIZONTAL OFFLINE CUSTOMER KPI CARDS                             */}
       {/* ========================================================================= */}
       <section className="pm-kpi-grid">
-        {/* Card 1: Total Registered Customers */}
+        {/* Card 1: Total Registered Offline Customers */}
         <div className="pm-kpi-card blue-theme">
           <div className="pm-kpi-icon-pill blue">
             <Users size={20} color="#2563EB" strokeWidth={2.4} />
           </div>
           <div className="pm-kpi-content">
             <h3 className="pm-kpi-number">{totalRegisteredCount}</h3>
-            <span className="pm-kpi-label">Total Registered Customers</span>
+            <span className="pm-kpi-label">Offline Registered Customers</span>
             <div className="pm-kpi-trend green">
-              <span className="trend-arrow">↑</span>
-              <span>From MongoDB Records</span>
+              <span className="trend-arrow">✓</span>
+              <span>Exclusively Offline Flow</span>
             </div>
           </div>
         </div>
 
-        {/* Card 2: Active Customers */}
+        {/* Card 2: Active Offline Customers */}
         <div className="pm-kpi-card green-theme">
           <div className="pm-kpi-icon-pill green">
             <CheckCircle2 size={20} color="#059669" strokeWidth={2.4} />
           </div>
           <div className="pm-kpi-content">
             <h3 className="pm-kpi-number">{activeCustomersCount}</h3>
-            <span className="pm-kpi-label">Active Customers</span>
+            <span className="pm-kpi-label">Active In-Store Shoppers</span>
             <div className="pm-kpi-trend green">
               <span className="trend-arrow">✓</span>
-              <span>Activity in last 30 days</span>
+              <span>Visited in last 30 days</span>
             </div>
           </div>
         </div>
 
-        {/* Card 3: New Customers */}
+        {/* Card 3: New Offline Customers */}
         <div className="pm-kpi-card yellow-theme">
           <div className="pm-kpi-icon-pill yellow">
             <Sparkles size={20} color="#D97706" strokeWidth={2.4} />
           </div>
           <div className="pm-kpi-content">
             <h3 className="pm-kpi-number">{newCustomersCount}</h3>
-            <span className="pm-kpi-label">New Customers</span>
+            <span className="pm-kpi-label">New Walk-In Registrations</span>
             <div className="pm-kpi-trend green">
               <span className="trend-arrow">↑</span>
               <span>Joined recently</span>
@@ -622,12 +527,12 @@ export default function CustomersManagement() {
           </div>
           <div className="pm-kpi-content">
             <h3 className="pm-kpi-number">{customersWithOrdersCount}</h3>
-            <span className="pm-kpi-label">Customers with Orders</span>
+            <span className="pm-kpi-label">Shoppers with Purchase History</span>
             <div className="pm-kpi-trend green">
               <span className="trend-arrow">✓</span>
               <span>
                 {totalRegisteredCount > 0
-                  ? `${Math.round((customersWithOrdersCount / totalRegisteredCount) * 100)}% conversion`
+                  ? `${Math.round((customersWithOrdersCount / totalRegisteredCount) * 100)}% active shoppers`
                   : "0%"}
               </span>
             </div>
@@ -645,7 +550,7 @@ export default function CustomersManagement() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by customer name, mobile number, email, or customer ID (CUST-...)"
+            placeholder="Search offline customers by name, mobile, email, or customer ID..."
           />
         </div>
 
@@ -694,21 +599,50 @@ export default function CustomersManagement() {
               ))}
             </select>
           </div>
+
+          {/* Add Offline Walk-in Customer Button */}
+          <button
+            type="button"
+            onClick={() => setIsAddModalOpen(true)}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "9px 16px",
+              borderRadius: "10px",
+              fontSize: "13px",
+              fontWeight: "700",
+              background: "#059669",
+              color: "#FFFFFF",
+              border: "none",
+              cursor: "pointer",
+              boxShadow: "0 2px 8px rgba(5, 150, 105, 0.25)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <UserPlus size={16} />
+            <span>+ Add Offline Customer</span>
+          </button>
         </div>
       </section>
 
       {/* ========================================================================= */}
-      {/* 4. CUSTOMER DIRECTORY LISTING TABLE                                       */}
+      {/* 4. OFFLINE CUSTOMER DIRECTORY LISTING TABLE                               */}
       {/* ========================================================================= */}
       <div className="pm-catalog-card">
         <div className="pm-catalog-header">
           <div className="pm-catalog-title-group">
-            <div className="pm-catalog-icon-box">
+            <div className="pm-catalog-icon-box" style={{ background: "linear-gradient(135deg, #059669, #10B981)" }}>
               <Users size={18} color="#FFFFFF" />
             </div>
-            <h3 className="pm-catalog-heading">
-              Customer Directory ({filteredCustomers.length} Shoppers Listed)
-            </h3>
+            <div>
+              <h3 className="pm-catalog-heading">
+                Offline Customer Directory ({filteredCustomers.length} Shoppers Listed)
+              </h3>
+              <span style={{ fontSize: "11.5px", color: "#64748B", fontWeight: "600" }}>
+                Strictly customers registered via OFFLINE shopping flow • Online registrations excluded
+              </span>
+            </div>
           </div>
 
           <div className="cm-header-controls" style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
@@ -811,7 +745,7 @@ export default function CustomersManagement() {
                 borderRadius: "8px",
                 fontSize: "12px",
                 fontWeight: 700,
-                background: "#1D4ED8",
+                background: "#059669",
                 color: "#FFFFFF",
                 border: "none",
                 cursor: "pointer",
@@ -828,10 +762,10 @@ export default function CustomersManagement() {
             <div style={{ textAlign: "center", padding: "48px 20px", color: "#64748B" }}>
               <Users size={36} color="#CBD5E1" style={{ margin: "0 auto 12px" }} />
               <p style={{ margin: "0 0 6px", fontSize: "15px", fontWeight: 700, color: "#0F172A" }}>
-                No customer records match your filter.
+                No OFFLINE customer records found.
               </p>
               <span style={{ fontSize: "13px" }}>
-                Customers placing orders or browsing carts will automatically appear here.
+                Customers registering through the in-store offline flow or added via the button above appear here.
               </span>
             </div>
           ) : (
@@ -839,12 +773,13 @@ export default function CustomersManagement() {
               <thead>
                 <tr>
                   <th>CUSTOMER INFO</th>
+                  <th>SOURCE</th>
                   <th>MOBILE & EMAIL</th>
                   <th>REGISTRATION DATE</th>
-                  <th>TOTAL ORDERS</th>
+                  <th>IN-STORE ORDERS</th>
                   <th>TOTAL VERIFIED SPEND</th>
-                  <th>LATEST ORDER DATE</th>
-                  <th>ACCOUNT STATUS</th>
+                  <th>LATEST VISIT</th>
+                  <th>STATUS</th>
                   <th style={{ textAlign: "center" }}>ACTIONS</th>
                 </tr>
               </thead>
@@ -866,14 +801,16 @@ export default function CustomersManagement() {
                       {/* Customer Info (Avatar & ID) */}
                       <td>
                         <div className="pm-cell-details">
-                          <div className="cm-avatar-initials">{getInitials(c.name)}</div>
+                          <div className="cm-avatar-initials" style={{ background: "linear-gradient(135deg, #059669, #10B981)" }}>
+                            {getInitials(c.name)}
+                          </div>
                           <div className="pm-details-text">
                             <span className="pm-name-main">{c.name}</span>
                             <span
                               style={{
                                 fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-                                fontSize: "11.5px",
-                                color: "#1D4ED8",
+                                fontSize: "11px",
+                                color: "#059669",
                                 fontWeight: 800,
                               }}
                             >
@@ -881,6 +818,24 @@ export default function CustomersManagement() {
                             </span>
                           </div>
                         </div>
+                      </td>
+
+                      {/* Registration Source Badge */}
+                      <td>
+                        <span
+                          style={{
+                            fontSize: "10.5px",
+                            fontWeight: 800,
+                            padding: "3px 8px",
+                            borderRadius: "6px",
+                            background: "#ECFDF5",
+                            color: "#059669",
+                            border: "1px solid #A7F3D0",
+                            letterSpacing: "0.4px",
+                          }}
+                        >
+                          OFFLINE
+                        </span>
                       </td>
 
                       {/* Contact Info */}
@@ -929,7 +884,7 @@ export default function CustomersManagement() {
                         </span>
                       </td>
 
-                      {/* Total Orders */}
+                      {/* Total In-Store Orders */}
                       <td>
                         <span
                           style={{
@@ -947,7 +902,7 @@ export default function CustomersManagement() {
 
                       {/* Total Verified Spend */}
                       <td>
-                        <span className="pm-price-bold">
+                        <span className="pm-price-bold" style={{ color: "#059669" }}>
                           ₹{c.totalSpent.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                         </span>
                       </td>
@@ -955,7 +910,7 @@ export default function CustomersManagement() {
                       {/* Latest Order Date */}
                       <td>
                         <span style={{ fontSize: "12px", color: "#475569" }}>
-                          {c.totalOrders > 0 ? latestFormatted : "No orders yet"}
+                          {c.totalOrders > 0 ? latestFormatted : "Walk-in Only"}
                         </span>
                       </td>
 
@@ -966,7 +921,7 @@ export default function CustomersManagement() {
                         </span>
                       </td>
 
-                      {/* Action Button */}
+                      {/* Action Buttons */}
                       <td style={{ textAlign: "center" }}>
                         <div style={{ display: "inline-flex", gap: "6px" }}>
                           <button
@@ -974,10 +929,26 @@ export default function CustomersManagement() {
                             className="action-pill-btn refresh"
                             style={{ padding: "6px 12px", fontSize: "12px" }}
                             onClick={() => setActiveCustomer(c)}
-                            title="View Complete Customer Profile & Order History"
+                            title="View Complete Customer Profile & Offline Purchase History"
                           >
                             <Eye size={13} />
                             <span>View Details</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCustomer(c)}
+                            style={{
+                              padding: "6px 8px",
+                              borderRadius: "8px",
+                              border: "1px solid #FCA5A5",
+                              background: "#FEF2F2",
+                              color: "#DC2626",
+                              cursor: "pointer",
+                            }}
+                            title="Delete Customer Record"
+                          >
+                            <Trash2 size={13} />
                           </button>
                         </div>
                       </td>
@@ -990,17 +961,17 @@ export default function CustomersManagement() {
         </div>
 
         {/* ========================================================================= */}
-        {/* 5. PAGINATION CONTROLS (SPEC REQUIREMENT #4)                              */}
+        {/* 5. PAGINATION CONTROLS                                                    */}
         {/* ========================================================================= */}
         {filteredCustomers.length > 0 && (
           <div className="cm-pagination-wrap">
             <div className="cm-pagination-info">
               {viewAll
-                ? `Showing all ${filteredCustomers.length} registered customers`
+                ? `Showing all ${filteredCustomers.length} registered offline customers`
                 : `Showing ${(validCurrentPage - 1) * pageSize + 1} to ${Math.min(
                     validCurrentPage * pageSize,
                     filteredCustomers.length
-                  )} of ${filteredCustomers.length} registered customers (Page ${validCurrentPage} of ${totalPages})`}
+                  )} of ${filteredCustomers.length} registered offline customers (Page ${validCurrentPage} of ${totalPages})`}
             </div>
 
             <div className="cm-pagination-actions">
@@ -1043,7 +1014,7 @@ export default function CustomersManagement() {
                 <span>Prev</span>
               </button>
 
-              {/* Individual Interactive Page Number Buttons */}
+              {/* Page Number Buttons */}
               {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
                 <button
                   key={pageNum}
@@ -1078,51 +1049,157 @@ export default function CustomersManagement() {
                 <span>Next</span>
                 <ChevronRight size={14} />
               </button>
-
-              {/* Jump to page */}
-              <div
-                className="pm-goto-wrap"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  fontSize: "12px",
-                  color: "#64748B",
-                  marginLeft: "4px",
-                }}
-              >
-                <span>Go to page</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={totalPages}
-                  value={validCurrentPage}
-                  disabled={viewAll || totalPages <= 1}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    if (!isNaN(val) && val >= 1 && val <= totalPages) {
-                      setViewAll(false);
-                      setCurrentPage(val);
-                    }
-                  }}
-                  style={{
-                    width: "48px",
-                    padding: "4px 8px",
-                    borderRadius: "6px",
-                    border: "1px solid #CBD5E1",
-                    fontSize: "12px",
-                    textAlign: "center",
-                    fontWeight: 700,
-                  }}
-                />
-              </div>
             </div>
           </div>
         )}
       </div>
 
       {/* ========================================================================= */}
-      {/* 6. PROFESSIONAL CUSTOMER PROFILE & ORDER HISTORY MODAL                    */}
+      {/* 6. ADD WALK-IN OFFLINE CUSTOMER MODAL                                     */}
+      {/* ========================================================================= */}
+      {isAddModalOpen && (
+        <div className="pm-modal-overlay" onClick={() => setIsAddModalOpen(false)}>
+          <div
+            className="pm-modal-card"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: "480px", padding: "26px" }}
+          >
+            <div className="pm-modal-header" style={{ marginBottom: "16px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <div style={{ padding: "8px", borderRadius: "10px", background: "#ECFDF5", color: "#059669" }}>
+                  <UserPlus size={20} />
+                </div>
+                <div>
+                  <h3 className="pm-modal-title" style={{ margin: 0, fontSize: "17px" }}>
+                    Register Offline Customer
+                  </h3>
+                  <span style={{ fontSize: "12px", color: "#64748B" }}>
+                    Multi-tenant isolated • OFFLINE Registration Source
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="pm-modal-close"
+                onClick={() => setIsAddModalOpen(false)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateOfflineCustomer}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "12.5px", fontWeight: "700", color: "#334155", marginBottom: "5px" }}>
+                    Customer Full Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newCustName}
+                    onChange={(e) => setNewCustName(e.target.value)}
+                    placeholder="e.g. Ramesh Kumar"
+                    style={{
+                      width: "100%",
+                      padding: "10px 14px",
+                      borderRadius: "10px",
+                      border: "1px solid #CBD5E1",
+                      fontSize: "13.5px",
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: "block", fontSize: "12.5px", fontWeight: "700", color: "#334155", marginBottom: "5px" }}>
+                    Mobile Number (10 Digits starting with 6-9) *
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    maxLength={10}
+                    value={newCustPhone}
+                    onChange={(e) => setNewCustPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                    placeholder="e.g. 9845012345"
+                    style={{
+                      width: "100%",
+                      padding: "10px 14px",
+                      borderRadius: "10px",
+                      border: "1px solid #CBD5E1",
+                      fontSize: "13.5px",
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: "block", fontSize: "12.5px", fontWeight: "700", color: "#334155", marginBottom: "5px" }}>
+                    Email Address (Optional)
+                  </label>
+                  <input
+                    type="email"
+                    value={newCustEmail}
+                    onChange={(e) => setNewCustEmail(e.target.value)}
+                    placeholder="e.g. customer@example.com"
+                    style={{
+                      width: "100%",
+                      padding: "10px 14px",
+                      borderRadius: "10px",
+                      border: "1px solid #CBD5E1",
+                      fontSize: "13.5px",
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: "block", fontSize: "12.5px", fontWeight: "700", color: "#334155", marginBottom: "5px" }}>
+                    Street Address (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={newCustAddress}
+                    onChange={(e) => setNewCustAddress(e.target.value)}
+                    placeholder="e.g. 12 Main St, Bangalore"
+                    style={{
+                      width: "100%",
+                      padding: "10px 14px",
+                      borderRadius: "10px",
+                      border: "1px solid #CBD5E1",
+                      fontSize: "13.5px",
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginTop: "22px", display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  className="pm-btn-cancel"
+                  onClick={() => setIsAddModalOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={creatingCust}
+                  style={{
+                    padding: "10px 20px",
+                    borderRadius: "10px",
+                    background: "#059669",
+                    color: "#FFFFFF",
+                    fontWeight: "700",
+                    border: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  {creatingCust ? "Registering..." : "Save Offline Customer"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 7. CUSTOMER PROFILE & OFFLINE ORDER HISTORY MODAL                         */}
       {/* ========================================================================= */}
       {activeCustomer && (
         <div className="pm-modal-overlay" onClick={() => setActiveCustomer(null)}>
@@ -1134,7 +1211,10 @@ export default function CustomersManagement() {
             {/* Modal Header */}
             <div className="pm-modal-header" style={{ marginBottom: "16px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                <div className="cm-avatar-initials" style={{ width: "48px", height: "48px", fontSize: "17px" }}>
+                <div
+                  className="cm-avatar-initials"
+                  style={{ width: "48px", height: "48px", fontSize: "17px", background: "linear-gradient(135deg, #059669, #10B981)" }}
+                >
                   {getInitials(activeCustomer.name)}
                 </div>
                 <div>
@@ -1142,8 +1222,22 @@ export default function CustomersManagement() {
                     {activeCustomer.name}
                   </h3>
                   <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "3px" }}>
-                    <span style={{ fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif", fontSize: "12px", color: "#1D4ED8", fontWeight: 800 }}>
+                    <span style={{ fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif", fontSize: "12px", color: "#059669", fontWeight: 800 }}>
                       {activeCustomer.id}
+                    </span>
+                    <span style={{ fontSize: "11px", color: "#64748B" }}>&bull;</span>
+                    <span
+                      style={{
+                        fontSize: "10.5px",
+                        fontWeight: 800,
+                        padding: "2px 6px",
+                        borderRadius: "4px",
+                        background: "#ECFDF5",
+                        color: "#059669",
+                        border: "1px solid #A7F3D0",
+                      }}
+                    >
+                      OFFLINE REGISTRATION
                     </span>
                     <span style={{ fontSize: "11px", color: "#64748B" }}>&bull;</span>
                     <span className={`cm-status-pill ${activeCustomer.status === "Active" ? "active" : "suspended"}`}>
@@ -1191,7 +1285,7 @@ export default function CustomersManagement() {
 
                 <div>
                   <span style={{ color: "#64748B", display: "block", fontSize: "11px", textTransform: "uppercase" }}>
-                    Member Since
+                    Registration Date
                   </span>
                   <strong style={{ color: "#0F172A" }}>
                     {activeCustomer.registrationDate.toLocaleDateString("en-IN", {
@@ -1204,13 +1298,13 @@ export default function CustomersManagement() {
 
                 <div>
                   <span style={{ color: "#64748B", display: "block", fontSize: "11px", textTransform: "uppercase" }}>
-                    Preferred Payment
+                    Registration Channel
                   </span>
-                  <strong style={{ color: "#0F172A" }}>{activeCustomer.preferredPayment}</strong>
+                  <strong style={{ color: "#059669" }}>Offline In-Store Walk-In</strong>
                 </div>
               </div>
 
-              {/* Account Status Authorization Action */}
+              {/* Status Toggle Action */}
               <div
                 style={{
                   marginTop: "14px",
@@ -1248,18 +1342,18 @@ export default function CustomersManagement() {
             <div className="cm-profile-stats-grid">
               <div className="cm-profile-stat-box">
                 <span className="num">{activeCustomer.totalOrders}</span>
-                <span className="lbl">Total Orders Placed</span>
-              </div>
-
-              <div className="cm-profile-stat-box">
-                <span className="num" style={{ color: "#2563EB" }}>
-                  ₹{activeCustomer.totalSpent.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                </span>
-                <span className="lbl">Lifetime Verified Spend</span>
+                <span className="lbl">In-Store Orders Placed</span>
               </div>
 
               <div className="cm-profile-stat-box">
                 <span className="num" style={{ color: "#059669" }}>
+                  ₹{activeCustomer.totalSpent.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                </span>
+                <span className="lbl">Lifetime In-Store Spend</span>
+              </div>
+
+              <div className="cm-profile-stat-box">
+                <span className="num" style={{ color: "#2563EB" }}>
                   ₹
                   {activeCustomer.totalOrders > 0
                     ? Math.round(activeCustomer.totalSpent / activeCustomer.totalOrders).toLocaleString("en-IN")
@@ -1269,7 +1363,7 @@ export default function CustomersManagement() {
               </div>
             </div>
 
-            {/* Complete Order History (Spec Requirement #3) */}
+            {/* Complete Offline Order History */}
             <h4
               style={{
                 margin: "18px 0 10px",
@@ -1281,9 +1375,9 @@ export default function CustomersManagement() {
                 justifyContent: "space-between",
               }}
             >
-              <span>Complete Order History ({activeCustomer.orders.length} Records)</span>
-              <span style={{ fontSize: "11px", color: "#64748B", fontWeight: 600 }}>
-                Actual MongoDB Orders
+              <span>Offline Purchase History ({activeCustomer.orders.length} Records)</span>
+              <span style={{ fontSize: "11px", color: "#059669", fontWeight: 700 }}>
+                In-Store Checkout Records
               </span>
             </h4>
 
@@ -1298,7 +1392,7 @@ export default function CustomersManagement() {
                   fontSize: "13px",
                 }}
               >
-                This customer has not completed any orders yet.
+                No completed in-store orders recorded yet.
               </div>
             ) : (
               <div
@@ -1325,7 +1419,7 @@ export default function CustomersManagement() {
                   >
                     <div>
                       <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                        <span style={{ fontFamily: "monospace", fontSize: "12px", fontWeight: 800, color: "#1D4ED8" }}>
+                        <span style={{ fontFamily: "monospace", fontSize: "12px", fontWeight: 800, color: "#059669" }}>
                           #{ord.id}
                         </span>
                         <span
@@ -1334,18 +1428,8 @@ export default function CustomersManagement() {
                             fontWeight: 700,
                             padding: "2px 6px",
                             borderRadius: "4px",
-                            background:
-                              ord.paymentStatus === "Completed"
-                                ? "#DCFCE7"
-                                : ord.paymentStatus === "Approved"
-                                ? "#EEF2FF"
-                                : "#FEF3C7",
-                            color:
-                              ord.paymentStatus === "Completed"
-                                ? "#166534"
-                                : ord.paymentStatus === "Approved"
-                                ? "#4338CA"
-                                : "#B45309",
+                            background: ord.paymentStatus === "Completed" ? "#DCFCE7" : "#FEF3C7",
+                            color: ord.paymentStatus === "Completed" ? "#166534" : "#B45309",
                           }}
                         >
                           {ord.paymentStatus}
@@ -1363,51 +1447,24 @@ export default function CustomersManagement() {
                           textOverflow: "ellipsis",
                         }}
                       >
-                        {ord.items.map((it) => `${it.name} (x${it.quantity})`).join(", ") || "General Grocery"}
+                        {(ord.items || []).map((it) => `${it.name} (x${it.quantity})`).join(", ") || "General Grocery"}
                       </p>
 
                       <span style={{ fontSize: "10.5px", color: "#94A3B8" }}>
-                        {ord.date.toLocaleDateString("en-IN")}, {ord.date.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })} &bull; {ord.paymentMethod}
+                        {ord.date.toLocaleDateString("en-IN")} &bull; {ord.paymentMethod}
                       </span>
                     </div>
 
                     <div style={{ textAlign: "right" }}>
                       <span style={{ fontSize: "15px", fontWeight: 800, color: "#0F172A", display: "block" }}>
-                        ₹{ord.amount.toFixed(2)}
+                        ₹{Number(ord.amount || 0).toFixed(2)}
                       </span>
                       <span style={{ fontSize: "10.5px", color: "#64748B" }}>
-                        {ord.items.length} items
+                        {ord.items?.length || 0} items
                       </span>
                     </div>
                   </div>
                 ))}
-              </div>
-            )}
-
-            {/* Recent Shopping Activity from Cart Activity */}
-            {activeCustomer.recentCartItems && activeCustomer.recentCartItems.length > 0 && (
-              <div style={{ marginTop: "14px" }}>
-                <span style={{ fontSize: "11.5px", fontWeight: 700, color: "#475569", display: "block", marginBottom: "6px" }}>
-                  Recent Cart Items:
-                </span>
-                <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                  {activeCustomer.recentCartItems.map((prod, i) => (
-                    <span
-                      key={i}
-                      style={{
-                        background: "#EFF6FF",
-                        color: "#1D4ED8",
-                        border: "1px solid #DBEAFE",
-                        borderRadius: "6px",
-                        padding: "2px 8px",
-                        fontSize: "11px",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {prod}
-                    </span>
-                  ))}
-                </div>
               </div>
             )}
 

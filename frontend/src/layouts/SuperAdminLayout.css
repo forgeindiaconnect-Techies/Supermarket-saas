@@ -10,7 +10,7 @@
   --sa-sidebar-border: rgba(255, 255, 255, 0.12);
   --sa-sidebar-text: #f1f5f9;
   --sa-sidebar-text-bright: #ffffff;
-  --sa-bg: #c5e4d2;
+  --sa-bg: #ffffff;
   --sa-card-bg: #ffffff;
   --sa-heading: #172b24;
   --sa-text-main: #172b24;
@@ -449,7 +449,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background-color: var(--sa-bg, #c5e4d2);
+  background-color: var(--sa-bg, #ffffff);
   position: relative;
 }
 
@@ -1452,7 +1452,7 @@
   touch-action: pan-y;
   overscroll-behavior-y: contain;
   padding: 1.6rem 1.6rem 3.5rem 1.6rem;
-  background-color: var(--sa-bg, #c5e4d2) !important;
+  background-color: var(--sa-bg, #ffffff) !important;
   scroll-behavior: smooth;
 }
 

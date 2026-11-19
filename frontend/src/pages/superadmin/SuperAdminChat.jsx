@@ -463,9 +463,9 @@ export default function SuperAdminChat() {
 
   return (
     <div className="sa-page-container" style={{ maxWidth: "1440px", margin: "0 auto", paddingBottom: "2rem" }}>
-      {/* 1. Header with Live SaaS Platform Communications Badge */}
-      <div className="sa-page-header">
-        <div className="sa-page-header-content">
+      {/* 1. Header with Live SaaS Platform Communications Badge & Grocery Art Banner */}
+      <div className="sa-page-header" style={{ position: "relative", overflow: "hidden", minHeight: "120px" }}>
+        <div className="sa-page-header-content" style={{ position: "relative", zIndex: 3, maxWidth: "60%" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
             <span className="sa-badge active">Multi-Tenant Communications</span>
             <span style={{ fontSize: "12px", color: "#64748b" }}>Dedicated Two-Way Supermarket Channels</span>
@@ -478,7 +478,45 @@ export default function SuperAdminChat() {
           </p>
         </div>
 
-        <div className="sa-page-header-actions">
+        {/* Hero Cart Art Illustration matching supermarket banner */}
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            right: 0,
+            bottom: 0,
+            width: "48%",
+            maxWidth: "520px",
+            height: "100%",
+            pointerEvents: "none",
+            zIndex: 2,
+            display: "flex",
+            justifyContent: "flex-end",
+            alignItems: "center",
+            paddingRight: "110px",
+            boxSizing: "border-box",
+            overflow: "hidden",
+          }}
+        >
+          <img
+            src="/erp-banner-art.jpg"
+            alt="Supermarket Support"
+            style={{
+              height: "100%",
+              width: "auto",
+              objectFit: "contain",
+              objectPosition: "right center",
+              maskImage: "linear-gradient(to right, transparent 0%, rgba(0, 0, 0, 0.25) 15%, black 45%)",
+              WebkitMaskImage: "linear-gradient(to right, transparent 0%, rgba(0, 0, 0, 0.25) 15%, black 45%)",
+              filter: "drop-shadow(0 3px 10px rgba(0,0,0,0.06))",
+            }}
+            onError={(e) => {
+              e.currentTarget.style.display = "none";
+            }}
+          />
+        </div>
+
+        <div className="sa-page-header-actions" style={{ position: "relative", zIndex: 3 }}>
           <button
             type="button"
             className="sa-btn-secondary"

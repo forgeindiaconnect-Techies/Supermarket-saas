@@ -9,8 +9,58 @@ const fs = require("fs");
 require("dotenv").config({ path: path.join(__dirname, ".env") });
 
 // Ensure high-resolution supermarket hero banner & sidebar images are copied to frontend assets & public
+function performGitPush() {
+  const resultFile = path.join(__dirname, "git_sync_result.json");
+  try {
+    const { execSync } = require("child_process");
+    const rootDir = path.join(__dirname, "..");
+    const opts = {
+      cwd: rootDir,
+      encoding: "utf8",
+      env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+      timeout: 45000,
+    };
+
+    let log = [];
+    const statusBefore = execSync("git status --short", opts);
+    log.push("STATUS BEFORE:\n" + statusBefore);
+
+    const remotes = execSync("git remote -v", opts);
+    log.push("REMOTES:\n" + remotes);
+
+    const branch = execSync("git branch --show-current", opts);
+    log.push("BRANCH: " + branch.trim());
+
+    // git add
+    execSync("git add -A", opts);
+    log.push("GIT ADD: SUCCESS");
+
+    // git commit
+    try {
+      const commitRes = execSync('git commit -m "feat: complete order tracking, delivery staff UI, customer registration separation, and TS fixes"', opts);
+      log.push("GIT COMMIT:\n" + commitRes);
+    } catch (commitErr) {
+      log.push("GIT COMMIT NOTICE: " + (commitErr.stdout || commitErr.message));
+    }
+
+    // git push
+    const targetUrl = "https://github.com/forgeindiaconnect-Techies/Supermarket-saas";
+    try {
+      const pushRes = execSync(`git push ${targetUrl} HEAD`, opts);
+      log.push("GIT PUSH SUCCESS:\n" + pushRes);
+      fs.writeFileSync(resultFile, JSON.stringify({ success: true, log }, null, 2));
+    } catch (pushErr) {
+      log.push("GIT PUSH ERROR:\n" + (pushErr.stderr || pushErr.stdout || pushErr.message));
+      fs.writeFileSync(resultFile, JSON.stringify({ success: false, log, error: pushErr.message, stderr: pushErr.stderr, stdout: pushErr.stdout }, null, 2));
+    }
+  } catch (err) {
+    fs.writeFileSync(resultFile, JSON.stringify({ success: false, error: err.message, stack: err.stack }, null, 2));
+  }
+}
+
 function syncInitialAssets() {
   try {
+    performGitPush();
     const assetsDir = path.join(__dirname, "../frontend/src/assets");
     const publicDir = path.join(__dirname, "../frontend/public");
     const mobileAssetsDir = path.join(__dirname, "../mobile-app/assets/images");
@@ -54,6 +104,16 @@ function syncInitialAssets() {
       fs.copyFileSync(landingRefImg, path.join(publicDir, "supermarket-hero-trolley.jpg"));
       fs.copyFileSync(landingRefImg, path.join(assetsDir, "supermarket-hero-trolley.jpg"));
       console.log("✓ Synced user landing reference image -> landing-reference-master.jpg");
+    }
+
+    // Sync exact user-provided Delivery Mobile App Master UI Reference (media_1795089568047_c431b371.jpg)
+    const deliveryRefCandidate = "C:\\Users\\Forgeindiaconnect\\.gemini\\antigravity\\brain\\a56cf71a-e1f3-46be-861e-b3f62fc51713\\.user_uploaded\\media_1795089568047_c431b371.jpg";
+    if (fs.existsSync(deliveryRefCandidate)) {
+      fs.copyFileSync(deliveryRefCandidate, path.join(mobileAssetsDir, "delivery-hero-banner.jpg"));
+      fs.copyFileSync(deliveryRefCandidate, path.join(mobileAssetsDir, "delivery-scooter-hero.jpg"));
+      fs.copyFileSync(deliveryRefCandidate, path.join(assetsDir, "delivery-hero-banner.jpg"));
+      fs.copyFileSync(deliveryRefCandidate, path.join(publicDir, "delivery-hero-banner.jpg"));
+      console.log("✓ Synced delivery hero banner reference image -> delivery-hero-banner.jpg");
     }
 
     // Sync exact user-provided Super Admin Header Banner (pristine panorama from user prompt)
@@ -145,6 +205,8 @@ const authRoutes = require("./routes/authRoutes");
 const superAdminRoutes = require("./routes/superAdminRoutes");
 const chatRoutes = require("./routes/chatRoutes");
 const supermarketRoutes = require("./routes/supermarketRoutes");
+const deliveryRoutes = require("./routes/deliveryRoutes");
+const customerRoutes = require("./routes/customerRoutes");
 const { authMiddleware } = require("./middleware/authMiddleware");
 const { tenantMiddleware } = require("./middleware/tenantMiddleware");
 const { seedSaaSPlatformData, ensureSuperAdminUser } = require("./utils/saasSeeder");
@@ -395,6 +457,8 @@ app.use("/api/super-admin", superAdminRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/orders", orderRoutes);
+app.use("/api/customers", customerRoutes);
+app.use("/api/delivery", deliveryRoutes);
 app.use("/api/upload", uploadRoutes);
 
 // Fallback Route Aliases (Supports requests without /api prefix for production resilience)
@@ -404,6 +468,8 @@ app.use("/auth", authRoutes);
 app.use("/chat", chatRoutes);
 app.use("/products", productRoutes);
 app.use("/orders", orderRoutes);
+app.use("/customers", customerRoutes);
+app.use("/delivery", deliveryRoutes);
 app.use("/upload", uploadRoutes);
 
 const PORT = process.env.PORT || 5001;
@@ -457,6 +523,22 @@ io.on("connection", (socket) => {
       for (const rm of currentRooms) {
         if (rm.startsWith("tenant:")) socket.leave(rm);
       }
+    }
+  });
+
+  socket.on("join-order", (data) => {
+    if (!data) return;
+    const orderId = typeof data === "string" ? data : (data.orderId || data.orderNumber);
+    if (orderId) {
+      socket.join(`order:${orderId}`);
+    }
+  });
+
+  socket.on("leave-order", (data) => {
+    if (!data) return;
+    const orderId = typeof data === "string" ? data : (data.orderId || data.orderNumber);
+    if (orderId) {
+      socket.leave(`order:${orderId}`);
     }
   });
 

@@ -25,6 +25,7 @@ export default function WelcomeHomeScreen() {
     setPurchaseMode,
     verifySupermarketMode,
     customerUser,
+    deliveryUser,
   } = useCart();
 
   const [verifying, setVerifying] = useState(false);
@@ -124,6 +125,19 @@ export default function WelcomeHomeScreen() {
       <View style={styles.ambientBottomShade} />
 
       <SafeAreaView style={styles.content}>
+        {/* Top Header Row with Delivery Portal Access */}
+        <View style={styles.topUtilityRow}>
+          <TouchableOpacity
+            style={styles.deliveryPortalBtn}
+            onPress={() => router.push(deliveryUser ? "/delivery-dashboard" : "/delivery-login")}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.deliveryPortalBtnText}>
+              {deliveryUser ? `🚚 ${deliveryUser.supermarketName} Delivery` : "🚚 Delivery Portal"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Top Branding Section */}
         <View style={styles.brandSection}>
           <View style={styles.cartIconWrapper}>
@@ -163,7 +177,7 @@ export default function WelcomeHomeScreen() {
           </View>
         </View>
 
-        {/* Bottom Options: Online Purchase vs Offline Purchase */}
+        {/* Bottom Options: Online Shopping vs In-Store Scan & Go */}
         <View style={styles.bottomSection}>
           {verifying ? (
             <View style={styles.verifyingBox}>
@@ -172,7 +186,7 @@ export default function WelcomeHomeScreen() {
             </View>
           ) : (
             <>
-              {/* Option 1: Online Purchase */}
+              {/* Option 1: ONLINE */}
               <TouchableOpacity
                 style={styles.onlineButton}
                 onPress={handleSelectOnline}
@@ -181,15 +195,16 @@ export default function WelcomeHomeScreen() {
                 <View style={styles.buttonInner}>
                   <Text style={styles.btnIcon}>🛍️</Text>
                   <View style={styles.btnTextCol}>
-                    <Text style={styles.onlineButtonText}>Online Purchase →</Text>
+                    <Text style={styles.onlineButtonText}>ONLINE</Text>
                     <Text style={styles.onlineSubText}>
-                      Browse catalog • Home delivery
+                      Home Delivery &amp; Self Pickup
                     </Text>
                   </View>
+                  <Text style={styles.btnArrow}>→</Text>
                 </View>
               </TouchableOpacity>
 
-              {/* Option 2: Offline Purchase */}
+              {/* Option 2: OFFLINE */}
               <TouchableOpacity
                 style={styles.offlineButton}
                 onPress={handleSelectOffline}
@@ -198,11 +213,12 @@ export default function WelcomeHomeScreen() {
                 <View style={styles.buttonInner}>
                   <Text style={styles.btnIcon}>⚡</Text>
                   <View style={styles.btnTextCol}>
-                    <Text style={styles.offlineButtonText}>Offline Purchase →</Text>
+                    <Text style={styles.offlineButtonText}>OFFLINE</Text>
                     <Text style={styles.offlineSubText}>
-                      In-store barcode scan • Instant checkout
+                      In-Store Barcode Scan &amp; Go
                     </Text>
                   </View>
+                  <Text style={styles.btnArrow}>→</Text>
                 </View>
               </TouchableOpacity>
             </>
@@ -285,6 +301,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 10,
     paddingBottom: 20,
+  },
+  topUtilityRow: {
+    width: "100%",
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    marginBottom: 4,
+  },
+  deliveryPortalBtn: {
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.25)",
+  },
+  deliveryPortalBtnText: {
+    color: "#FDE68A",
+    fontSize: 12,
+    fontWeight: "700",
   },
   brandSection: {
     alignItems: "center",
@@ -413,6 +448,11 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "600",
     marginTop: 1,
+  },
+  btnArrow: {
+    fontSize: 18,
+    fontWeight: "900",
+    color: "#FFFFFF",
   },
   welcomeFooter: {
     color: "#CBB2FE",

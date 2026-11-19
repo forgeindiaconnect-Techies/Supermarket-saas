@@ -206,7 +206,10 @@ async function logEmailAttempt({
   metadata = {},
 }) {
   try {
-    if (!EmailLog) return null;
+    const mongoose = require("mongoose");
+    if (!EmailLog || !mongoose.connection || mongoose.connection.readyState !== 1) {
+      return null;
+    }
     const cleanEmail = (recipientEmail || "").trim().toLowerCase();
     const logEntry = await EmailLog.create({
       supermarket: supermarket?._id || null,
@@ -271,10 +274,18 @@ function getSmtpConfig() {
  */
 function sendViaBrevoApi({ apiKey, senderName, senderEmail, to, subject, html, text }) {
   return new Promise((resolve, reject) => {
+    // Brevo strictly enforces that sender.email MUST be an authorized/verified sender in the Brevo account
+    const verifiedSenderEmail =
+      (senderEmail && !senderEmail.includes("grocerease.store") && !senderEmail.includes("example.com"))
+        ? senderEmail
+        : (cachedVerifiedSender?.email || process.env.SMTP_FROM_EMAIL || "forgeindiaconnectfic@gmail.com");
+
+    const verifiedSenderName = senderName || cachedVerifiedSender?.name || "GrocerEase Supermarket";
+
     const postData = JSON.stringify({
       sender: {
-        name: senderName || "GrocerEase Supermarket",
-        email: senderEmail || "support@grocerease.store",
+        name: verifiedSenderName,
+        email: verifiedSenderEmail,
       },
       to: [{ email: to }],
       subject: subject || "GrocerEase Notification",
@@ -496,7 +507,11 @@ async function sendMail({ to, subject, text = "", html = "", from, fromName }) {
  * High-Level Helper: Send Supermarket Subscription Renewal Email
  */
 async function sendSubscriptionRenewalEmail({ supermarket, customMessage, subject }) {
-  const targetEmail = supermarket.email || `${supermarket.adminUsername}@grocerease.store`;
+  const rawEmail = (supermarket.email || "").trim().toLowerCase();
+  const targetEmail =
+    rawEmail && !rawEmail.includes("@grocerease.store") && !rawEmail.includes("@example.com")
+      ? rawEmail
+      : (process.env.SMTP_FROM_EMAIL || "forgeindiaconnectfic@gmail.com");
   const storeName = supermarket.name || "Supermarket Partner";
   const planName = supermarket.plan || "Standard Business";
   const expiryDate = supermarket.expiryDate
@@ -677,9 +692,11 @@ async function sendSupermarketWelcomeEmail({
   companyName = "GrocerEase – Smart Supermarket Solutions",
   loginUrl = "http://localhost:5173/login",
 }) {
-  const targetEmail = (supermarket.email || adminUser?.email || `${supermarket.adminUsername}@grocerease.store`)
-    .trim()
-    .toLowerCase();
+  const rawEmail = (supermarket.email || adminUser?.email || "").trim().toLowerCase();
+  const targetEmail =
+    rawEmail && !rawEmail.includes("@grocerease.store") && !rawEmail.includes("@example.com")
+      ? rawEmail
+      : (process.env.SMTP_FROM_EMAIL || "forgeindiaconnectfic@gmail.com");
   const storeName = supermarket.name || "Supermarket Partner";
   const planName = supermarket.plan || "Standard Business Plan";
   const adminUsername = (supermarket.adminUsername || adminUser?.username || "store_admin")
@@ -939,9 +956,11 @@ async function sendAutomatedPlanNoticeEmail({
   customMessage = "",
   portalUrl = "http://localhost:5173/login",
 }) {
-  const targetEmail = (supermarket.email || `${supermarket.adminUsername}@grocerease.store`)
-    .trim()
-    .toLowerCase();
+  const rawEmail = (supermarket.email || "").trim().toLowerCase();
+  const targetEmail =
+    rawEmail && !rawEmail.includes("@grocerease.store") && !rawEmail.includes("@example.com")
+      ? rawEmail
+      : (process.env.SMTP_FROM_EMAIL || "forgeindiaconnectfic@gmail.com");
   const storeName = supermarket.name || "Supermarket Partner";
   const planName = supermarket.plan || "Standard Business Plan";
 
@@ -1236,12 +1255,209 @@ Smart Supermarket Solutions
   };
 }
 
+/**
+ * Send Delivery Staff Welcome Email with Login Credentials and Supermarket Details
+ */
+async function sendDeliveryStaffWelcomeEmail({ staff, supermarket, plainPassword }) {
+  const storeName = supermarket?.name || staff.supermarketName || "Your Supermarket";
+  const storeCode = supermarket?.code || staff.supermarketCode || "SM-STORE";
+  const storeCity = supermarket?.city || "Bangalore";
+  const storeAddress = supermarket?.address || `${storeCity}, Karnataka`;
+  const storePhone = supermarket?.phone || "+91 98765 43210";
+  const targetEmail = (staff.email || "").trim().toLowerCase();
+  const staffName = staff.name || "Delivery Partner";
+  const staffUsername = staff.username || "";
+  const staffPhone = staff.phone || "";
+
+  if (!targetEmail) {
+    return { delivered: false, error: "No email address provided for delivery staff" };
+  }
+
+  const subject = `Welcome to ${storeName} Delivery Fleet – Login Credentials & Details`;
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f1f5f9; margin: 0; padding: 24px; color: #1e293b; }
+        .card { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; }
+        .header { background: linear-gradient(135deg, #064e3b 0%, #059669 100%); padding: 32px 28px; color: #ffffff; text-align: center; }
+        .header h1 { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.3px; }
+        .header p { margin: 6px 0 0 0; font-size: 14px; opacity: 0.9; }
+        .content { padding: 28px; }
+        .greeting { font-size: 16px; font-weight: 700; color: #0f172a; margin-bottom: 12px; }
+        .intro { font-size: 14px; color: #475569; line-height: 1.6; margin-bottom: 20px; }
+        .creds-box { background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 12px; padding: 18px 20px; margin-bottom: 22px; }
+        .creds-title { font-size: 14px; font-weight: 800; color: #166534; margin-bottom: 12px; }
+        .cred-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px dashed #bbf7d0; font-size: 13.5px; }
+        .cred-row:last-child { border-bottom: none; }
+        .cred-label { color: #475569; font-weight: 600; }
+        .cred-val { color: #0f172a; font-weight: 700; font-family: monospace; font-size: 14px; }
+        .cred-val-highlight { color: #059669; font-weight: 800; font-family: monospace; font-size: 14px; }
+        .instructions-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; margin-bottom: 22px; }
+        .instructions-title { font-size: 14px; font-weight: 800; color: #0f172a; margin-bottom: 10px; }
+        .instructions-list { margin: 0; padding-left: 20px; font-size: 13.5px; color: #334155; line-height: 1.7; }
+        .store-info-box { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px; padding: 14px 18px; margin-bottom: 24px; font-size: 13px; color: #1e40af; }
+        .store-info-title { font-weight: 700; margin-bottom: 4px; color: #1d4ed8; }
+        .footer { background: #f8fafc; padding: 20px; text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #f1f5f9; line-height: 1.5; }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <div class="header">
+          <h1>Welcome to ${storeName}</h1>
+          <p>Official Delivery Fleet Staff Provisioning</p>
+        </div>
+        <div class="content">
+          <div class="greeting">Hello ${staffName},</div>
+          <div class="intro">
+            You have been registered as an authorized <strong>Doorstep Delivery Staff Member</strong> for <strong>${storeName}</strong> on the GrocerEase retail network. Below are your dedicated login credentials and delivery workflow details.
+          </div>
+
+          <!-- Credentials Box -->
+          <div class="creds-box">
+            <div class="creds-title">&#128274; Your Login Credentials</div>
+            <div class="cred-row">
+              <span class="cred-label">Assigned Supermarket:</span>
+              <span class="cred-val">${storeName} (${storeCode})</span>
+            </div>
+            <div class="cred-row">
+              <span class="cred-label">Login Username:</span>
+              <span class="cred-val-highlight">${staffUsername}</span>
+            </div>
+            <div class="cred-row">
+              <span class="cred-label">Registered Email:</span>
+              <span class="cred-val">${targetEmail}</span>
+            </div>
+            <div class="cred-row">
+              <span class="cred-label">Password:</span>
+              <span class="cred-val-highlight">${plainPassword}</span>
+            </div>
+            ${staffPhone ? `
+            <div class="cred-row">
+              <span class="cred-label">Registered Mobile:</span>
+              <span class="cred-val">${staffPhone}</span>
+            </div>` : ""}
+            <div class="cred-row">
+              <span class="cred-label">Staff Role:</span>
+              <span class="cred-val">DELIVERY_STAFF</span>
+            </div>
+          </div>
+
+          <!-- Delivery Instructions -->
+          <div class="instructions-box">
+            <div class="instructions-title">&#128666; Delivery Workflow Instructions</div>
+            <ol class="instructions-list">
+              <li><strong>Sign In</strong>: Open the GrocerEase Delivery Mobile App and log in using either your Username (<code>${staffUsername}</code>) or Registered Email (<code>${targetEmail}</code>) with your password.</li>
+              <li><strong>Receive Assigned Orders</strong>: Your Store Admin will assign paid customer doorstep orders to you in real-time.</li>
+              <li><strong>Track Deliveries</strong>: View customer names, contact mobile numbers, delivery addresses, and grocery items.</li>
+              <li><strong>Update Status</strong>: Mark orders as <em>Out for Delivery</em> when you depart the store, and <em>Delivered</em> upon customer handoff.</li>
+            </ol>
+          </div>
+
+          <!-- Store Info -->
+          <div class="store-info-box">
+            <div class="store-info-title">&#127978; Supermarket Operating Hub:</div>
+            <div><strong>${storeName}</strong> • Store Code: ${storeCode}</div>
+            <div>${storeAddress}</div>
+            <div>Contact: ${storePhone}</div>
+          </div>
+
+          <p style="font-size: 12.5px; color: #64748b; margin-top: 18px; line-height: 1.5;">
+            <em>Note: Please keep your login credentials secure. You can log in using either your username or registered email. If you ever forget your password, contact your Store Admin at ${storeName}.</em>
+          </p>
+        </div>
+
+        <div class="footer">
+          &copy; ${new Date().getFullYear()} ${storeName} &bull; Powered by GrocerEase Smart Supermarket Solutions.<br>
+          Automated multi-tenant delivery staff notification dispatched via Brevo SMTP Relay.
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  const text = `
+    Welcome to ${storeName} Delivery Fleet!
+    ===================================================================
+    Hello ${staffName},
+
+    You have been registered as an authorized Doorstep Delivery Staff Member for ${storeName}.
+
+    Your Login Credentials:
+    • Supermarket: ${storeName} (${storeCode})
+    • Login Username: ${staffUsername}
+    • Registered Email: ${targetEmail}
+    • Password: ${plainPassword}
+    • Mobile Number: ${staffPhone}
+    • Role: DELIVERY_STAFF
+
+    How to Access Your Delivery Dashboard:
+    1. Open the GrocerEase Delivery Mobile App.
+    2. Log in using your Username (${staffUsername}) or Email (${targetEmail}) and the password above.
+    3. Accept assigned orders, review delivery addresses, and deliver products to customer doorsteps.
+
+    Supermarket Hub Contact:
+    ${storeName} - ${storeAddress}
+    Phone: ${storePhone}
+
+    Best Regards,
+    ${storeName} & GrocerEase Team
+  `;
+
+  let mailResult = null;
+  let logStatus = "SENT";
+  let errorMessage = "";
+
+  try {
+    mailResult = await sendMail({
+      to: targetEmail,
+      subject,
+      text,
+      html,
+    });
+    logStatus = mailResult?.delivered ? "SENT" : "OUTBOX";
+    errorMessage = mailResult?.delivered ? "" : (mailResult?.error || "Captured in Outbox");
+  } catch (err) {
+    logStatus = "FAILED";
+    errorMessage = err.message;
+    console.warn("Delivery welcome email error:", err.message);
+  } finally {
+    if (typeof logEmailAttempt === "function") {
+      await logEmailAttempt({
+        supermarket,
+        recipientEmail: targetEmail,
+        subject,
+        templateType: "DELIVERY_STAFF_WELCOME",
+        status: logStatus,
+        messageId: mailResult?.messageId || "",
+        smtpResponse: mailResult?.response || "",
+        errorMessage,
+        metadata: {
+          staffName,
+          staffUsername,
+          storeCode,
+        },
+      }).catch(() => {});
+    }
+  }
+
+  return {
+    ...mailResult,
+    subject,
+    recipientEmail: targetEmail,
+  };
+}
+
 module.exports = {
   getSmtpConfig,
   verifySmtpConnection,
   sendMail,
   logEmailAttempt,
   sendSupermarketWelcomeEmail,
+  sendDeliveryStaffWelcomeEmail,
   determinePlanNoticeTemplate,
   sendAutomatedPlanNoticeEmail,
   sendSubscriptionRenewalEmail,

@@ -102,6 +102,14 @@ export default function AdminDashboard() {
   // Restock feedback
   const [restockedApple, setRestockedApple] = useState(false);
 
+  // Real-time purchase channels availability state
+  const [availability, setAvailability] = useState(() => ({
+    onlineDeliveryAvailable: currentSupermarket?.onlineDeliveryAvailable === true,
+    selfPickupAvailable: currentSupermarket?.selfPickupAvailable === true,
+    onlineAvailable: currentSupermarket?.onlineDeliveryAvailable === true || currentSupermarket?.selfPickupAvailable === true || currentSupermarket?.onlineAvailable === true,
+    offlineAvailable: currentSupermarket?.selfPickupAvailable === true || currentSupermarket?.offlineAvailable === true,
+  }));
+
   // Fetch live products, orders, and stats from MongoDB
   const fetchDashboardData = async () => {
     try {
@@ -235,14 +243,16 @@ export default function AdminDashboard() {
           const currentTenantId = currentSupermarket?._id ? String(currentSupermarket._id) : (user?.supermarket?._id ? String(user.supermarket._id) : (typeof user?.supermarket === "string" ? user.supermarket : null));
           const currentTenantCode = (currentSupermarket?.code || user?.supermarketCode || "").toUpperCase();
           if ((s._id && String(s._id) === currentTenantId) || (s.code && String(s.code).toUpperCase() === currentTenantCode)) {
-            const onAvail = s.onlineAvailable;
-            const offAvail = s.offlineAvailable;
+            const isDel = s.onlineDeliveryAvailable === true;
+            const isPick = s.selfPickupAvailable === true;
             setAvailability({
-              onlineAvailable: onAvail !== undefined ? onAvail : null,
-              offlineAvailable: offAvail !== undefined ? offAvail : null,
-              onlineStatus: onAvail === true ? "Available" : onAvail === false ? "Not Available" : "Not Configured",
-              offlineStatus: offAvail === true ? "Available" : offAvail === false ? "Not Available" : "Not Configured",
-              isConfigured: onAvail !== null && offAvail !== null && onAvail !== undefined && offAvail !== undefined,
+              onlineDeliveryAvailable: isDel,
+              selfPickupAvailable: isPick,
+              onlineAvailable: isDel || isPick || s.onlineAvailable === true,
+              offlineAvailable: isPick || s.offlineAvailable === true,
+              onlineStatus: isDel ? "Available" : "Not Available",
+              offlineStatus: isPick ? "Available" : "Not Available",
+              isConfigured: true,
             });
           }
         }
@@ -255,14 +265,16 @@ export default function AdminDashboard() {
           (data?.supermarketId && String(data.supermarketId) === currentTenantId) ||
           (data?.supermarketCode && String(data.supermarketCode).toUpperCase() === currentTenantCode)
         ) {
-          const onAvail = data.onlineAvailable;
-          const offAvail = data.offlineAvailable;
+          const isDel = data.onlineDeliveryAvailable === true;
+          const isPick = data.selfPickupAvailable === true;
           setAvailability({
-            onlineAvailable: onAvail !== undefined ? onAvail : null,
-            offlineAvailable: offAvail !== undefined ? offAvail : null,
-            onlineStatus: onAvail === true ? "Available" : onAvail === false ? "Not Available" : "Not Configured",
-            offlineStatus: offAvail === true ? "Available" : offAvail === false ? "Not Available" : "Not Configured",
-            isConfigured: onAvail !== null && offAvail !== null && onAvail !== undefined && offAvail !== undefined,
+            onlineDeliveryAvailable: isDel,
+            selfPickupAvailable: isPick,
+            onlineAvailable: isDel || isPick || data.onlineAvailable === true,
+            offlineAvailable: isPick || data.offlineAvailable === true,
+            onlineStatus: isDel ? "Available" : "Not Available",
+            offlineStatus: isPick ? "Available" : "Not Available",
+            isConfigured: true,
           });
         }
       });
@@ -333,6 +345,7 @@ export default function AdminDashboard() {
         const count = items.reduce((sum, it) => sum + (it.quantity || 1), 0);
         const name = (ord.customer?.name || ord.user?.name || ord.shippingAddress?.fullName || ord.customerName || "Customer").trim();
         const phone = formatPhone(ord.customer?.phone || ord.user?.phone || ord.shippingAddress?.phone || ord.customerPhone || "");
+        const email = (ord.customer?.email || ord.user?.email || "").trim();
         const address = (ord.customer?.address || ord.shippingAddress?.address || "").trim();
         const dateStr = ord.createdAt
           ? new Date(ord.createdAt).toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "numeric" }) + " • " + new Date(ord.createdAt).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })
@@ -341,6 +354,7 @@ export default function AdminDashboard() {
           orderId: String(orderNum).replace(/^#/, ""),
           customerName: name,
           customerPhone: phone,
+          customerEmail: email,
           customerAddress: address,
           itemsCount: `${count} item${count !== 1 ? "s" : ""}`,
           amount: Number(ord.totalAmount || ord.totalPrice || 0),
@@ -426,11 +440,10 @@ export default function AdminDashboard() {
               </span>
             </div>
             <h1 className="db-hero-title">
-              <span>Welcome Back,</span>
-              <span className="db-hero-title-blue"> {adminDisplayName}!</span>
-              <span role="img" aria-label="wave"> 👋</span>
+              Welcome Back, <span className="db-hero-title-blue">{adminDisplayName}!</span>{" "}
+              <span role="img" aria-label="wave">👋</span>
             </h1>
-            <p className="db-hero-subtitle" style={{ maxWidth: "380px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <p className="db-hero-subtitle" style={{ maxWidth: "360px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {storeName} &bull; {storeTagline}
             </p>
             <div className="db-hero-meta-row">
@@ -443,6 +456,49 @@ export default function AdminDashboard() {
                     day: "numeric",
                     year: "numeric",
                   })}
+                </span>
+              </div>
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "4px 10px",
+                  borderRadius: "20px",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  background: "#ffffff",
+                  border: "1px solid #cbd5e1",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+                }}
+                title="Super Admin live configured purchase channels"
+              >
+                <span style={{ color: "#475569" }}>Channels:</span>
+                <span
+                  style={{
+                    padding: "1px 6px",
+                    borderRadius: "4px",
+                    fontSize: "10.5px",
+                    fontWeight: 700,
+                    background: availability.onlineDeliveryAvailable ? "#dcfce7" : "#fee2e2",
+                    color: availability.onlineDeliveryAvailable ? "#15803d" : "#b91c1c",
+                    border: `1px solid ${availability.onlineDeliveryAvailable ? "#86efac" : "#fca5a5"}`,
+                  }}
+                >
+                  Delivery: {availability.onlineDeliveryAvailable ? "Available" : "Disabled"}
+                </span>
+                <span
+                  style={{
+                    padding: "1px 6px",
+                    borderRadius: "4px",
+                    fontSize: "10.5px",
+                    fontWeight: 700,
+                    background: availability.selfPickupAvailable ? "#dcfce7" : "#fee2e2",
+                    color: availability.selfPickupAvailable ? "#15803d" : "#b91c1c",
+                    border: `1px solid ${availability.selfPickupAvailable ? "#86efac" : "#fca5a5"}`,
+                  }}
+                >
+                  Pickup: {availability.selfPickupAvailable ? "Available" : "Disabled"}
                 </span>
               </div>
               <button
@@ -458,17 +514,6 @@ export default function AdminDashboard() {
               </button>
             </div>
           </div>
-        </div>
-
-        {/* 3. Center Supermarket Thought / Slogan */}
-        <div className="db-hero-thought-center">
-          <span className="db-thought-script" style={{ maxWidth: "260px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>
-            {storeName}
-          </span>
-          <span className="db-thought-sub" style={{ maxWidth: "260px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>
-            {storeTagline}
-          </span>
-          <div className="db-thought-swoosh" />
         </div>
       </section>
 
@@ -644,6 +689,11 @@ export default function AdminDashboard() {
                             ) : (
                               <span style={{ fontSize: "10.5px", color: "#94A3B8" }}>No mobile</span>
                             )}
+                            {ord.customerEmail ? (
+                              <span style={{ fontSize: "10.5px", color: "#2563EB", fontWeight: 600 }}>
+                                ✉️ {ord.customerEmail}
+                              </span>
+                            ) : null}
                             {ord.customerAddress ? (
                               <span style={{ fontSize: "10px", color: "#64748B" }} title={ord.customerAddress}>
                                 📍 {ord.customerAddress}

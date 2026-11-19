@@ -11,15 +11,35 @@ export type SupermarketInfo = {
   pincode?: string;
   phone?: string;
   logoUrl?: string;
+  deliveryBannerUrl?: string;
   onlineAvailable?: boolean | null;
   offlineAvailable?: boolean | null;
+  onlineDeliveryAvailable?: boolean | null;
+  selfPickupAvailable?: boolean | null;
   status?: string;
 };
+
+export type DeliveryUser = {
+  _id: string;
+  name: string;
+  username: string;
+  phone?: string;
+  role: string;
+  supermarketId: string;
+  supermarketCode: string;
+  supermarketName: string;
+  logoUrl?: string;
+  deliveryBannerUrl?: string;
+  token: string;
+};
+
+export type FulfillmentType = "DELIVERY" | "SELF_PICKUP" | "IN_STORE";
 
 export type CustomerUser = {
   _id?: string;
   name: string;
   phone: string;
+  email?: string;
   address?: string;
   supermarketId?: string;
   supermarketCode?: string;
@@ -58,7 +78,37 @@ export type OrderRecord = {
   paymentStatus: string;
   exitBarcode: string;
   purchaseMode?: "ONLINE" | "OFFLINE";
-  supermarket?: string;
+  orderType?: string;
+  fulfillmentChoice?: string;
+  pickupDate?: string;
+  pickupTimeSlot?: string;
+  pickupStatus?: string;
+  deliveryStatus?: string;
+  deliveryAddress?: string;
+  deliveryPhone?: string;
+  deliveryCustomerName?: string;
+  deliveryNotes?: string;
+  assignedStaff?: any;
+  assignedStaffName?: string;
+  assignedStaffPhone?: string;
+  orderConfirmedAt?: string;
+  preparingAt?: string;
+  assignedAt?: string;
+  pickedUpAt?: string;
+  deliveryAcceptedAt?: string;
+  deliveryOutAt?: string;
+  deliveryCompletedAt?: string;
+  estimatedDeliveryTime?: string;
+  estimatedDeliveryDate?: string;
+  trackingTimeline?: Array<{
+    status?: string;
+    title?: string;
+    description?: string;
+    timestamp?: string;
+    updatedBy?: string;
+    role?: string;
+  }>;
+  supermarket?: any;
   supermarketCode?: string;
   supermarketName?: string;
   customer?: {
@@ -95,12 +145,20 @@ type CartContextType = {
   // Multi-Tenant Purchase Mode & Supermarket Isolation
   purchaseMode: "online" | "offline" | null;
   setPurchaseMode: (mode: "online" | "offline" | null) => void;
+  fulfillmentType: FulfillmentType;
+  setFulfillmentType: (type: FulfillmentType) => void;
   selectedSupermarket: SupermarketInfo | null;
   setSelectedSupermarket: (store: SupermarketInfo | null) => void;
   customerUser: CustomerUser | null;
   setCustomerUser: (user: CustomerUser | null) => void;
+  updateCustomerDetails: (details: { name?: string; phone?: string; address?: string }) => Promise<void>;
   logoutCustomer: () => void;
   verifySupermarketMode: (store: SupermarketInfo, mode: "online" | "offline") => Promise<{ allowed: boolean; message: string }>;
+
+  // Dedicated Delivery Dashboard Auth (Multi-Tenant Scoped)
+  deliveryUser: DeliveryUser | null;
+  setDeliveryUser: (user: DeliveryUser | null) => void;
+  logoutDeliveryUser: () => void;
 };
 
 const CartContext = createContext<CartContextType | null>(null);
@@ -138,8 +196,18 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   // New states for Online vs Offline Purchase Workflows
   const [purchaseMode, setPurchaseMode] = useState<"online" | "offline" | null>(null);
+  const [fulfillmentType, setFulfillmentType] = useState<FulfillmentType>("DELIVERY");
   const [selectedSupermarket, setSelectedSupermarketState] = useState<SupermarketInfo | null>(null);
   const [customerUser, setCustomerUserState] = useState<CustomerUser | null>(null);
+  const [deliveryUser, setDeliveryUserState] = useState<DeliveryUser | null>(null);
+
+  const setDeliveryUser = (user: DeliveryUser | null) => {
+    setDeliveryUserState(user);
+  };
+
+  const logoutDeliveryUser = () => {
+    setDeliveryUserState(null);
+  };
 
   const setSelectedSupermarket = (store: SupermarketInfo | null) => {
     // If switching to a different supermarket, clear cart to maintain absolute supermarket data isolation
@@ -158,13 +226,40 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         address: user.address,
       });
       if (user.supermarketId) {
-        // Automatically sync customer's connected supermarket
-        setSelectedSupermarketState({
-          _id: user.supermarketId,
-          name: user.supermarketName || "Selected Supermarket",
-          code: user.supermarketCode || "",
+        const smId: string = user.supermarketId;
+        // Automatically sync customer's connected supermarket with live attributes
+        setSelectedSupermarketState((prev: SupermarketInfo | null): SupermarketInfo => ({
+          _id: smId,
+          name: user.supermarketName || prev?.name || "Selected Supermarket",
+          code: user.supermarketCode || prev?.code || "",
+          onlineDeliveryAvailable: prev?.onlineDeliveryAvailable ?? null,
+          selfPickupAvailable: prev?.selfPickupAvailable ?? null,
           onlineAvailable: true,
-        });
+          offlineAvailable: true,
+        }));
+
+        if (API_URL) {
+          safeFetch(`${API_URL}/supermarkets/${user.supermarketId}/availability`, {}, 5000)
+            .then((res) => res.json())
+            .then((data) => {
+              if (data?.success && data.supermarket) {
+                const sm = data.supermarket;
+                setSelectedSupermarketState({
+                  _id: sm._id,
+                  name: sm.name,
+                  code: sm.code,
+                  city: sm.city,
+                  address: sm.address,
+                  onlineDeliveryAvailable: sm.onlineDeliveryAvailable === true,
+                  selfPickupAvailable: sm.selfPickupAvailable === true,
+                  onlineAvailable: sm.onlineDeliveryAvailable === true || sm.selfPickupAvailable === true || sm.onlineAvailable === true,
+                  offlineAvailable: sm.selfPickupAvailable === true || sm.offlineAvailable === true,
+                  logoUrl: sm.logoUrl,
+                });
+              }
+            })
+            .catch(() => {});
+        }
       }
     }
   };
@@ -173,6 +268,47 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setCustomerUserState(null);
     setCustomerInfo(null);
     setCart([]);
+  };
+
+  const updateCustomerDetails = async (details: { name?: string; phone?: string; address?: string }) => {
+    const updatedName = details.name !== undefined ? details.name.trim() : (customerUser?.name || customerInfo?.name || "");
+    const rawP = details.phone !== undefined ? details.phone : (customerUser?.phone || customerInfo?.phone || "");
+    const updatedPhone = String(rawP).replace(/\D/g, "").slice(-10);
+    const updatedAddress = details.address !== undefined ? details.address.trim() : (customerUser?.address || customerInfo?.address || "");
+
+    setCustomerInfo({
+      name: updatedName,
+      phone: updatedPhone,
+      address: updatedAddress,
+    });
+
+    if (customerUser) {
+      setCustomerUserState({
+        ...customerUser,
+        name: updatedName,
+        phone: updatedPhone,
+        address: updatedAddress,
+      });
+    }
+
+    if (API_URL && (customerUser?._id || updatedPhone)) {
+      try {
+        await safeFetch(
+          `${API_URL}/auth/customer/profile`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              customerId: customerUser?._id,
+              phone: updatedPhone,
+              name: updatedName,
+              address: updatedAddress,
+            }),
+          },
+          5000
+        );
+      } catch (_) {}
+    }
   };
 
   /**
@@ -186,14 +322,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     try {
       if (!API_URL) {
         // Fallback to local store properties
-        const isOnline = mode === "online" && store.onlineAvailable === true;
-        const isOffline = mode === "offline" && store.offlineAvailable === true;
+        const isOnline = mode === "online" && (store.onlineDeliveryAvailable === true || store.selfPickupAvailable === true || store.onlineAvailable === true);
+        const isOffline = mode === "offline" && (store.selfPickupAvailable === true || store.offlineAvailable === true);
         const allowed = isOnline || isOffline;
         return {
           allowed,
           message: allowed
             ? ""
-            : `This supermarket does not currently support ${mode === "online" ? "Online" : "Offline"} Purchase. Please choose an available option.`,
+            : `This supermarket does not currently support ${mode === "online" ? "Online Ordering" : "In-Store Shopping"}. Please choose an available option.`,
         };
       }
 
@@ -217,12 +353,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       };
     } catch (_) {
       // Local check fallback
-      const allowed = mode === "online" ? store.onlineAvailable === true : store.offlineAvailable === true;
+      const allowed = mode === "online" 
+        ? (store.onlineDeliveryAvailable === true || store.selfPickupAvailable === true || store.onlineAvailable === true)
+        : (store.selfPickupAvailable === true || store.offlineAvailable === true);
       return {
         allowed,
         message: allowed
           ? ""
-          : `This supermarket does not currently support ${mode === "online" ? "Online" : "Offline"} Purchase. Please choose an available option.`,
+          : `This supermarket does not currently support ${mode === "online" ? "Online Ordering" : "In-Store Shopping"}. Please choose an available option.`,
       };
     }
   };
@@ -454,12 +592,19 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
         purchaseMode,
         setPurchaseMode,
+        fulfillmentType,
+        setFulfillmentType,
         selectedSupermarket,
         setSelectedSupermarket,
         customerUser,
         setCustomerUser,
+        updateCustomerDetails,
         logoutCustomer,
         verifySupermarketMode,
+
+        deliveryUser,
+        setDeliveryUser,
+        logoutDeliveryUser,
       }}
     >
       {children}

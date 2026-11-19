@@ -61,8 +61,16 @@ export default function SupermarketsManagement() {
 
   const handleOpenAvailabilityModal = (store) => {
     setSelectedStoreForAvailability(store);
-    setOnlineAvailForm(store.onlineAvailable !== null && store.onlineAvailable !== undefined ? Boolean(store.onlineAvailable) : true);
-    setOfflineAvailForm(store.offlineAvailable !== null && store.offlineAvailable !== undefined ? Boolean(store.offlineAvailable) : true);
+    setOnlineAvailForm(
+      store.onlineDeliveryAvailable !== undefined && store.onlineDeliveryAvailable !== null
+        ? Boolean(store.onlineDeliveryAvailable)
+        : (store.onlineAvailable !== undefined && store.onlineAvailable !== null ? Boolean(store.onlineAvailable) : true)
+    );
+    setOfflineAvailForm(
+      store.selfPickupAvailable !== undefined && store.selfPickupAvailable !== null
+        ? Boolean(store.selfPickupAvailable)
+        : (store.offlineAvailable !== undefined && store.offlineAvailable !== null ? Boolean(store.offlineAvailable) : true)
+    );
     setIsAvailabilityModalOpen(true);
   };
 
@@ -71,14 +79,18 @@ export default function SupermarketsManagement() {
     if (!selectedStoreForAvailability) return;
     try {
       setSavingAvailability(true);
-      const res = await API.put(`/super-admin/supermarkets/${selectedStoreForAvailability._id}/availability`, {
-        onlineAvailable: onlineAvailForm,
+      const storeId = selectedStoreForAvailability._id || selectedStoreForAvailability.code;
+      const res = await API.put(`/super-admin/supermarkets/${storeId}/availability`, {
+        onlineDeliveryAvailable: onlineAvailForm,
+        selfPickupAvailable: offlineAvailForm,
+        onlineAvailable: onlineAvailForm || offlineAvailForm,
         offlineAvailable: offlineAvailForm,
       });
       if (res.data?.success) {
-        showToast(`✓ Availability updated for "${selectedStoreForAvailability.name}": Online is ${onlineAvailForm ? 'Available' : 'Not Available'}, Offline is ${offlineAvailForm ? 'Available' : 'Not Available'}`);
+        showToast(`✓ Availability updated for "${selectedStoreForAvailability.name}": Online Delivery is ${onlineAvailForm ? 'Available' : 'Disabled'}, Self Pickup is ${offlineAvailForm ? 'Available' : 'Disabled'}`);
         setIsAvailabilityModalOpen(false);
-        await loadSupermarkets();
+        if (loadSupermarkets) await loadSupermarkets();
+        window.dispatchEvent(new Event("grocerease_storage_updated"));
       } else {
         showToast(`⚠️ ${res.data?.message || 'Failed to update availability.'}`);
       }
@@ -670,12 +682,12 @@ export default function SupermarketsManagement() {
                           borderRadius: "4px",
                           fontSize: "10.5px",
                           fontWeight: 700,
-                          backgroundColor: store.onlineAvailable === true ? "#dcfce7" : store.onlineAvailable === false ? "#fee2e2" : "#f1f5f9",
-                          color: store.onlineAvailable === true ? "#15803d" : store.onlineAvailable === false ? "#b91c1c" : "#64748b",
-                          border: `1px solid ${store.onlineAvailable === true ? "#86efac" : store.onlineAvailable === false ? "#fca5a5" : "#cbd5e1"}`,
+                          backgroundColor: store.onlineDeliveryAvailable === true ? "#dcfce7" : store.onlineDeliveryAvailable === false ? "#fee2e2" : "#f1f5f9",
+                          color: store.onlineDeliveryAvailable === true ? "#15803d" : store.onlineDeliveryAvailable === false ? "#b91c1c" : "#64748b",
+                          border: `1px solid ${store.onlineDeliveryAvailable === true ? "#86efac" : store.onlineDeliveryAvailable === false ? "#fca5a5" : "#cbd5e1"}`,
                         }}
                       >
-                        Online: {store.onlineAvailable === true ? "Available" : store.onlineAvailable === false ? "Not Available" : "Not Configured"}
+                        Delivery: {store.onlineDeliveryAvailable === true ? "Available" : store.onlineDeliveryAvailable === false ? "Not Available" : "Not Configured"}
                       </span>
                       <span
                         style={{
@@ -683,12 +695,12 @@ export default function SupermarketsManagement() {
                           borderRadius: "4px",
                           fontSize: "10.5px",
                           fontWeight: 700,
-                          backgroundColor: store.offlineAvailable === true ? "#dcfce7" : store.offlineAvailable === false ? "#fee2e2" : "#f1f5f9",
-                          color: store.offlineAvailable === true ? "#15803d" : store.offlineAvailable === false ? "#b91c1c" : "#64748b",
-                          border: `1px solid ${store.offlineAvailable === true ? "#86efac" : store.offlineAvailable === false ? "#fca5a5" : "#cbd5e1"}`,
+                          backgroundColor: store.selfPickupAvailable === true ? "#dcfce7" : store.selfPickupAvailable === false ? "#fee2e2" : "#f1f5f9",
+                          color: store.selfPickupAvailable === true ? "#15803d" : store.selfPickupAvailable === false ? "#b91c1c" : "#64748b",
+                          border: `1px solid ${store.selfPickupAvailable === true ? "#86efac" : store.selfPickupAvailable === false ? "#fca5a5" : "#cbd5e1"}`,
                         }}
                       >
-                        Offline: {store.offlineAvailable === true ? "Available" : store.offlineAvailable === false ? "Not Available" : "Not Configured"}
+                        Pickup: {store.selfPickupAvailable === true ? "Available" : store.selfPickupAvailable === false ? "Not Available" : "Not Configured"}
                       </span>
                     </div>
 
@@ -1186,10 +1198,10 @@ export default function SupermarketsManagement() {
                       </div>
                       <div>
                         <div style={{ fontWeight: 700, fontSize: "14px", color: "#0f172a" }}>
-                          Online Purchase Mode
+                          Online Delivery
                         </div>
                         <div style={{ fontSize: "12px", color: "#64748b" }}>
-                          Catalog browsing, digital carts &amp; self-checkout
+                          Catalog browsing, digital carts &amp; dedicated doorstep delivery
                         </div>
                       </div>
                     </div>
@@ -1208,7 +1220,7 @@ export default function SupermarketsManagement() {
                     </span>
                   </div>
 
-                  {/* Offline Channel Toggle */}
+                  {/* Offline / Self Pickup Channel Toggle */}
                   <div
                     onClick={() => setOfflineAvailForm((p) => !p)}
                     style={{
@@ -1239,10 +1251,10 @@ export default function SupermarketsManagement() {
                       </div>
                       <div>
                         <div style={{ fontWeight: 700, fontSize: "14px", color: "#0f172a" }}>
-                          Offline Purchase Mode
+                          Self Pickup
                         </div>
                         <div style={{ fontSize: "12px", color: "#64748b" }}>
-                          In-store shopping, POS billing &amp; turnstile clearance
+                          In-store barcode scanning, store pickup &amp; instant self-checkout
                         </div>
                       </div>
                     </div>

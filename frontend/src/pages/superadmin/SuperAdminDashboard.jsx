@@ -268,12 +268,42 @@ export default function SuperAdminDashboard() {
       : (supermarkets?.filter((s) => s.status === "Active")?.length || 0);
 
   const totalPlatformRevenue =
-    analytics?.summary?.totalRevenue !== undefined
-      ? Number(analytics.summary.totalRevenue)
-      : (analytics?.summary?.totalStoreSales || 0);
+    analytics?.summary?.totalStoreSales !== undefined
+      ? Number(analytics.summary.totalStoreSales)
+      : (analytics?.summary?.totalRevenue !== undefined ? Number(analytics.summary.totalRevenue) : 0);
+
+  const rawRevenueGrowth = analytics?.summary?.revenueGrowth;
+  const revenueGrowthRate =
+    rawRevenueGrowth !== undefined && rawRevenueGrowth !== null ? Number(rawRevenueGrowth) : 0;
 
   const rawGrowth = analytics?.summary?.platformGrowth;
   const platformGrowthRate = (rawGrowth !== undefined && rawGrowth !== null) ? Number(rawGrowth) : 0;
+
+  // Dynamic mini-bars for Card 3 (Sales amounts across recent 6 days)
+  const miniBarHeights = useMemo(() => {
+    const list = Array.isArray(analytics?.chart7d) ? analytics.chart7d.slice(-6) : [];
+    const maxSale = Math.max(...list.map((d) => Number(d.amount) || 0), 0);
+    if (maxSale === 0) {
+      return [18, 22, 28, 35, 45, 60];
+    }
+    return list.map((d) => {
+      const amt = Number(d.amount) || 0;
+      return Math.max(15, Math.min(100, Math.round((amt / maxSale) * 100)));
+    });
+  }, [analytics?.chart7d]);
+
+  // Dynamic mini-bars for Card 4 (Orders count / activity across recent 6 days)
+  const miniOrderHeights = useMemo(() => {
+    const list = Array.isArray(analytics?.chart7d) ? analytics.chart7d.slice(-6) : [];
+    const maxOrders = Math.max(...list.map((d) => Number(d.ordersCount) || 0), 0);
+    if (maxOrders === 0) {
+      return [20, 25, 35, 45, 65, 85];
+    }
+    return list.map((d) => {
+      const cnt = Number(d.ordersCount) || 0;
+      return Math.max(15, Math.min(100, Math.round((cnt / maxOrders) * 100)));
+    });
+  }, [analytics?.chart7d]);
 
   const totalProductsCount =
     analytics?.summary?.totalProductsCount !== undefined
@@ -388,10 +418,16 @@ export default function SuperAdminDashboard() {
 
   return (
     <div className="sa-ref-dashboard-container">
-      {/* ================= 1. Top Row: 4 Metric KPI Cards (Compact & Branded Colors) ================= */}
+      {/* ================= 1. Top Row: 4 Metric KPI Cards (Compact, Real-Time & Interactive) ================= */}
       <section className="sa-ref-kpi-grid">
         {/* Card 1: Total Supermarkets (Soft Mint Green) */}
-        <div className="sa-ref-kpi-card sa-kpi-mint">
+        <div
+          className="sa-ref-kpi-card sa-kpi-mint sa-clickable-card"
+          role="button"
+          tabIndex={0}
+          title="Click to view all registered supermarkets"
+          onClick={() => navigate("/super-admin/supermarkets")}
+        >
           <div className="sa-ref-kpi-left">
             <div className="sa-ref-icon-wrap sa-icon-mint">
               <KpiStorefrontIcon color="#059669" size={20} />
@@ -429,7 +465,13 @@ export default function SuperAdminDashboard() {
         </div>
 
         {/* Card 2: Active Subscriptions (Soft Sky Blue) */}
-        <div className="sa-ref-kpi-card sa-kpi-blue">
+        <div
+          className="sa-ref-kpi-card sa-kpi-blue sa-clickable-card"
+          role="button"
+          tabIndex={0}
+          title="Click to view and manage SaaS subscription plans"
+          onClick={() => navigate("/super-admin/plans")}
+        >
           <div className="sa-ref-kpi-left">
             <div className="sa-ref-icon-wrap sa-icon-blue">
               <KpiCrownIcon color="#0284c7" size={20} />
@@ -466,7 +508,20 @@ export default function SuperAdminDashboard() {
         </div>
 
         {/* Card 3: Total Revenue (Warm Gold / Emerald) */}
-        <div className="sa-ref-kpi-card sa-kpi-amber">
+        <div
+          className="sa-ref-kpi-card sa-kpi-amber sa-clickable-card"
+          role="button"
+          tabIndex={0}
+          title="Click to view live sales performance chart"
+          onClick={() => {
+            const chartElem = document.getElementById("sa-sales-chart-section");
+            if (chartElem) {
+              chartElem.scrollIntoView({ behavior: "smooth" });
+            } else {
+              navigate("/super-admin/supermarkets");
+            }
+          }}
+        >
           <div className="sa-ref-kpi-left">
             <KpiRevenueIcon size={34} />
             <div className="sa-ref-kpi-text">
@@ -475,23 +530,34 @@ export default function SuperAdminDashboard() {
                 <span className="sa-ref-kpi-val">
                   &#8377;{Number(totalPlatformRevenue).toLocaleString("en-IN")}
                 </span>
-                <span className="sa-ref-pill sa-pill-amber">&uarr; +{platformGrowthRate}%</span>
+                <span className={`sa-ref-pill ${revenueGrowthRate >= 0 ? "sa-pill-amber" : "sa-pill-red"}`}>
+                  {revenueGrowthRate >= 0 ? `↑ +${revenueGrowthRate}%` : `↓ ${revenueGrowthRate}%`}
+                </span>
               </div>
             </div>
           </div>
-          {/* Ascending Green Mini Bars (6 Bars) */}
+          {/* Dynamic Sales Mini Bars (Scaled to real 7-day sales) */}
           <div className="sa-ref-mini-bars">
-            <span className="sa-mbar b1" />
-            <span className="sa-mbar b2" />
-            <span className="sa-mbar b3" />
-            <span className="sa-mbar b4" />
-            <span className="sa-mbar b5" />
-            <span className="sa-mbar b6" />
+            {miniBarHeights.map((pct, idx) => (
+              <span
+                key={idx}
+                className={`sa-mbar b${idx + 1}`}
+                style={{ height: `${pct}%`, transition: "height 0.4s ease" }}
+              />
+            ))}
           </div>
         </div>
 
         {/* Card 4: Platform Growth (Soft Violet Purple) */}
-        <div className="sa-ref-kpi-card sa-kpi-purple">
+        <div
+          className="sa-ref-kpi-card sa-kpi-purple sa-clickable-card"
+          role="button"
+          tabIndex={0}
+          title="Click to toggle between 7-Day and 30-Day platform analytics"
+          onClick={() => {
+            setSalesRange((prev) => (prev === "7d" ? "30d" : "7d"));
+          }}
+        >
           <div className="sa-ref-kpi-left">
             <div className="sa-ref-icon-wrap sa-icon-purple">
               <KpiGrowthIcon color="#7c3aed" size={20} />
@@ -500,18 +566,21 @@ export default function SuperAdminDashboard() {
               <span className="sa-ref-kpi-label">Platform Growth</span>
               <div className="sa-ref-kpi-val-row">
                 <span className="sa-ref-kpi-val">{platformGrowthRate}%</span>
-                <span className="sa-ref-pill sa-pill-purple">&uarr; +{platformGrowthRate}%</span>
+                <span className={`sa-ref-pill ${platformGrowthRate >= 0 ? "sa-pill-purple" : "sa-pill-red"}`}>
+                  {platformGrowthRate >= 0 ? `↑ +${platformGrowthRate}%` : `↓ ${platformGrowthRate}%`}
+                </span>
               </div>
             </div>
           </div>
-          {/* Ascending Purple Mini Bars (6 Bars) */}
+          {/* Dynamic Growth Mini Bars (Scaled to real 7-day order activity) */}
           <div className="sa-ref-mini-bars sa-bars-purple">
-            <span className="sa-mbar b1" />
-            <span className="sa-mbar b2" />
-            <span className="sa-mbar b3" />
-            <span className="sa-mbar b4" />
-            <span className="sa-mbar b5" />
-            <span className="sa-mbar b6" />
+            {miniOrderHeights.map((pct, idx) => (
+              <span
+                key={idx}
+                className={`sa-mbar b${idx + 1}`}
+                style={{ height: `${pct}%`, transition: "height 0.4s ease" }}
+              />
+            ))}
           </div>
         </div>
       </section>
@@ -616,7 +685,7 @@ export default function SuperAdminDashboard() {
         </div>
 
         {/* Right Card: Sales Performance */}
-        <div className="sa-ref-card sa-ref-sales-card">
+        <div id="sa-sales-chart-section" className="sa-ref-card sa-ref-sales-card">
           <div className="sa-ref-card-header">
             <div className="sa-ref-card-title-wrap">
               <div className="sa-ref-header-icon-mint">

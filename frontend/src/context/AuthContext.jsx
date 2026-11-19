@@ -169,24 +169,33 @@ export function AuthProvider({ children }) {
 
       socket.on("supermarket:availability_updated", (data) => {
         if (!data) return;
+        const matchesStore = (s) =>
+          s &&
+          (String(s._id) === String(data.supermarketId) ||
+            String(s.code || "").toUpperCase() === String(data.supermarketCode || "").toUpperCase());
+
         setSupermarkets((prev) =>
           prev.map((s) => {
-            if (s._id === data.supermarketId || s.code === data.supermarketCode) {
+            if (matchesStore(s)) {
               return {
                 ...s,
-                onlineAvailable: data.onlineAvailable,
-                offlineAvailable: data.offlineAvailable,
+                onlineDeliveryAvailable: data.onlineDeliveryAvailable === true,
+                selfPickupAvailable: data.selfPickupAvailable === true,
+                onlineAvailable: data.onlineDeliveryAvailable === true || data.selfPickupAvailable === true || data.onlineAvailable === true,
+                offlineAvailable: data.selfPickupAvailable === true || data.offlineAvailable === true,
               };
             }
             return s;
           })
         );
         setCurrentSupermarket((prev) => {
-          if (prev && (prev._id === data.supermarketId || prev.code === data.supermarketCode)) {
+          if (matchesStore(prev)) {
             const updated = {
               ...prev,
-              onlineAvailable: data.onlineAvailable,
-              offlineAvailable: data.offlineAvailable,
+              onlineDeliveryAvailable: data.onlineDeliveryAvailable === true,
+              selfPickupAvailable: data.selfPickupAvailable === true,
+              onlineAvailable: data.onlineDeliveryAvailable === true || data.selfPickupAvailable === true || data.onlineAvailable === true,
+              offlineAvailable: data.selfPickupAvailable === true || data.offlineAvailable === true,
             };
             try {
               localStorage.setItem("grocerease_current_supermarket", JSON.stringify(updated));

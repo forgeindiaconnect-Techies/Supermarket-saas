@@ -349,6 +349,7 @@ exports.login = async (req, res) => {
       } catch (_) {}
     }
 
+
     // 3. Check status
     if (user.status === "Suspended") {
       return res.status(403).json({
@@ -913,14 +914,16 @@ exports.getSupermarketAvailability = async (req, res) => {
 // =============================================================================
 
 // POST /api/auth/customer/register
-// Customer registration with mandatory supermarket selection & online availability check
+// Customer registration with mandatory supermarket selection & availability check
 exports.customerRegister = async (req, res) => {
   try {
-    const { name, phone, password, address, supermarketId, supermarketCode } = req.body;
+    const { name, phone, email, password, address, supermarketId, supermarketCode, registrationType: reqRegType } = req.body;
 
     if (!name || !name.trim()) {
       return res.status(400).json({ success: false, message: "Customer name is mandatory." });
     }
+
+    const cleanEmail = String(email || "").trim().toLowerCase();
 
     const rawDigits = String(phone || "").replace(/\D/g, "");
     const cleanPhone = rawDigits.length >= 10 ? rawDigits.slice(-10) : rawDigits;
@@ -931,12 +934,16 @@ exports.customerRegister = async (req, res) => {
       });
     }
 
+    // Determine strict registration source (default to ONLINE if initiated from customer online app flow)
+    const rawRegType = String(reqRegType || req.body.source || "ONLINE").toUpperCase();
+    const registrationType = rawRegType === "OFFLINE" ? "OFFLINE" : "ONLINE";
+
     // Lookup supermarket
     const targetId = supermarketId || supermarketCode;
     if (!targetId) {
       return res.status(400).json({
         success: false,
-        message: "Please select a registered supermarket for Online Purchase.",
+        message: `Please select a registered supermarket for ${registrationType === "ONLINE" ? "Online" : "Offline"} registration.`,
       });
     }
 
@@ -955,8 +962,8 @@ exports.customerRegister = async (req, res) => {
       });
     }
 
-    // STRICT CHECK: Verify Online Purchase is enabled for that supermarket
-    if (store.onlineAvailable !== true) {
+    // STRICT CHECK: Verify availability based on registration source
+    if (registrationType === "ONLINE" && store.onlineAvailable !== true) {
       return res.status(403).json({
         success: false,
         message: "This supermarket does not currently support Online Purchase. Please choose an available option.",
@@ -968,6 +975,12 @@ exports.customerRegister = async (req, res) => {
         },
       });
     }
+    if (registrationType === "OFFLINE" && store.offlineAvailable === false) {
+      return res.status(403).json({
+        success: false,
+        message: "This supermarket does not currently support Offline Walk-In Purchase.",
+      });
+    }
 
     const Customer = require("../models/Customer");
     let customer = await Customer.findOne({ phone: cleanPhone });
@@ -975,23 +988,32 @@ exports.customerRegister = async (req, res) => {
     if (customer) {
       // Update customer details and connect permanently to selected supermarket
       customer.name = name.trim();
+      if (cleanEmail) customer.email = cleanEmail;
       if (address) customer.address = address.trim();
       customer.supermarket = store._id;
       customer.supermarketCode = store.code;
       customer.supermarketName = store.name;
       customer.registeredLocation = `${store.city}, ${store.state || ""}`.trim();
       if (password) customer.password = password;
+      // Set or update registrationType strictly if explicitly specified
+      if (reqRegType) {
+        customer.registrationType = registrationType;
+      } else if (!customer.registrationType) {
+        customer.registrationType = registrationType;
+      }
       await customer.save();
     } else {
       customer = await Customer.create({
         name: name.trim(),
         phone: cleanPhone,
+        email: cleanEmail,
         password: password || "",
         address: address?.trim() || "",
         supermarket: store._id,
         supermarketCode: store.code,
         supermarketName: store.name,
         registeredLocation: `${store.city}, ${store.state || ""}`.trim(),
+        registrationType,
       });
     }
 
@@ -1000,6 +1022,8 @@ exports.customerRegister = async (req, res) => {
         id: customer._id,
         role: "CUSTOMER",
         phone: customer.phone,
+        email: customer.email,
+        registrationType: customer.registrationType,
         supermarketId: store._id.toString(),
         supermarketCode: store.code,
       },
@@ -1009,13 +1033,15 @@ exports.customerRegister = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: `Welcome to ${store.name}! Your account is registered.`,
+      message: `Welcome to ${store.name}! Your account is registered as ${customer.registrationType}.`,
       token,
       customer: {
         _id: customer._id,
         name: customer.name,
         phone: customer.phone,
+        email: customer.email,
         address: customer.address,
+        registrationType: customer.registrationType,
         supermarketId: store._id.toString(),
         supermarketCode: store.code,
         supermarketName: store.name,
@@ -1122,7 +1148,9 @@ exports.customerLogin = async (req, res) => {
         _id: customer._id,
         name: customer.name,
         phone: customer.phone,
+        email: customer.email || "",
         address: customer.address,
+        registrationType: customer.registrationType || "ONLINE",
         supermarketId: store._id.toString(),
         supermarketCode: store.code,
         supermarketName: store.name,
@@ -1144,6 +1172,398 @@ exports.customerLogin = async (req, res) => {
       success: false,
       message: "Customer login failed",
       error: err.message,
+    });
+  }
+};
+
+// PUT /api/auth/customer/profile
+// Allows customer to update their delivery address, name, or contact details securely
+exports.updateCustomerProfile = async (req, res) => {
+  try {
+    const { customerId, phone, name, address } = req.body;
+    const Customer = require("../models/Customer");
+
+    let customer = null;
+    if (customerId && String(customerId).match(/^[0-9a-fA-F]{24}$/)) {
+      customer = await Customer.findById(customerId);
+    }
+    if (!customer && phone) {
+      const rawDigits = String(phone || "").replace(/\D/g, "");
+      const cleanPhone = rawDigits.length >= 10 ? rawDigits.slice(-10) : rawDigits;
+      if (cleanPhone) {
+        customer = await Customer.findOne({ phone: cleanPhone });
+      }
+    }
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer account not found.",
+      });
+    }
+
+    if (name && name.trim()) customer.name = name.trim();
+    if (address !== undefined) customer.address = address.trim();
+    await customer.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Customer details updated successfully.",
+      customer: {
+        _id: customer._id,
+        name: customer.name,
+        phone: customer.phone,
+        address: customer.address,
+        supermarketId: customer.supermarket ? customer.supermarket.toString() : "",
+        supermarketCode: customer.supermarketCode,
+        supermarketName: customer.supermarketName,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update customer details",
+      error: error.message,
+    });
+  }
+};
+
+// POST /api/auth/delivery-login - Dedicated Delivery Dashboard Login with Strict Isolation & Supermarket Status Check
+exports.deliveryLogin = async (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Delivery Username and Password are required.",
+      });
+    }
+
+    const cleanUsername = String(username).trim().toLowerCase();
+    const cleanPassword = String(password).trim();
+
+    // 1. Look up User by username OR email with role DELIVERY_STAFF or DELIVERY_ADMIN
+    let user = await User.findOne({
+      $or: [
+        { username: cleanUsername },
+        { email: cleanUsername },
+      ],
+      role: { $in: ["DELIVERY_STAFF", "DELIVERY_ADMIN"] },
+    }).populate("supermarket");
+
+    // Fallback: check if supermarket's deliveryCredentials match
+    if (!user) {
+      const storeWithCreds = await Supermarket.findOne({
+        "deliveryCredentials.username": cleanUsername,
+      });
+
+      if (storeWithCreds) {
+        if (storeWithCreds.deliveryCredentials?.password === cleanPassword) {
+          user = await User.findOne({
+            username: cleanUsername,
+            supermarket: storeWithCreds._id,
+          });
+
+          if (!user) {
+            user = await User.create({
+              name: storeWithCreds.deliveryCredentials?.staffName || `${storeWithCreds.name} Delivery Driver`,
+              username: cleanUsername,
+              password: cleanPassword,
+              role: "DELIVERY_STAFF",
+              supermarket: storeWithCreds._id,
+              supermarketCode: storeWithCreds.code,
+              supermarketName: storeWithCreds.name,
+              phone: storeWithCreds.deliveryCredentials?.phone || storeWithCreds.phone,
+              status: "Active",
+            });
+          }
+          user.supermarket = storeWithCreds;
+        }
+      }
+    }
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials. Dedicated Delivery Account not found for this username.",
+      });
+    }
+
+    // 2. Verify Password
+    let isMatch = false;
+    try {
+      isMatch = await user.comparePassword(cleanPassword);
+    } catch (_) {}
+
+    if (!isMatch && user.password === cleanPassword) {
+      isMatch = true;
+    }
+
+    if (!isMatch) {
+      const storeObj = user.supermarket;
+      if (storeObj?.deliveryCredentials?.password === cleanPassword) {
+        isMatch = true;
+      }
+    }
+
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid password for this Delivery Dashboard account.",
+      });
+    }
+
+    // 3. Resolve Supermarket & Verify strict Online Delivery configuration
+    let store = user.supermarket;
+    if (!store || !store._id) {
+      store = await Supermarket.findById(user.supermarket);
+    }
+    if (!store && user.supermarketCode) {
+      store = await Supermarket.findOne({ code: user.supermarketCode });
+    }
+
+    if (!store) {
+      return res.status(404).json({
+        success: false,
+        message: "Associated Supermarket not found. Contact Super Admin.",
+      });
+    }
+
+    // Strict Rule: Online Delivery MUST be enabled by Super Admin
+    const isOnlineDeliveryEnabled = store.onlineDeliveryAvailable === true || store.onlineAvailable === true;
+    if (!isOnlineDeliveryEnabled) {
+      return res.status(403).json({
+        success: false,
+        message: `Online Delivery is currently disabled for ${store.name}. Access to this Delivery Dashboard is suspended by the Super Admin.`,
+      });
+    }
+
+    if (store.status === "Suspended") {
+      return res.status(403).json({
+        success: false,
+        message: `Supermarket "${store.name}" is suspended. Delivery portal access is temporarily disabled.`,
+      });
+    }
+
+    if (user.status === "Suspended") {
+      return res.status(403).json({
+        success: false,
+        message: "Your delivery account has been suspended. Please contact Super Admin.",
+      });
+    }
+
+    // Update last login
+    user.lastLogin = new Date();
+    await user.save();
+
+    // 4. Generate JWT Token
+    const token = generateToken(user);
+
+    return res.status(200).json({
+      success: true,
+      message: `Welcome to ${store.name} Delivery Dashboard!`,
+      token,
+      user: {
+        _id: user._id,
+        name: user.name,
+        username: user.username,
+        role: "DELIVERY_STAFF",
+        phone: user.phone || store.phone,
+        supermarketId: store._id,
+        supermarketCode: store.code,
+        supermarketName: store.name,
+      },
+      supermarket: {
+        _id: store._id,
+        name: store.name,
+        code: store.code,
+        city: store.city,
+        state: store.state,
+        address: store.address,
+        phone: store.phone,
+        logoUrl: store.logoUrl,
+        deliveryBannerUrl: store.deliveryBannerUrl || store.logoUrl || "",
+        themeColor: store.themeColor || "#16a34a",
+        onlineDeliveryAvailable: true,
+      },
+    });
+  } catch (error) {
+    console.error("Delivery login error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error during delivery login.",
+      error: error.message,
+    });
+  }
+};
+
+// POST /api/auth/delivery-login - Dedicated Delivery Dashboard Login with Strict Isolation & Supermarket Status Check
+exports.deliveryLogin = async (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Delivery Username and Password are required.",
+      });
+    }
+
+    const cleanUsername = String(username).trim().toLowerCase();
+    const cleanPassword = String(password).trim();
+
+    // 1. Look up User by username OR email with role DELIVERY_STAFF or DELIVERY_ADMIN
+    let user = await User.findOne({
+      $or: [
+        { username: cleanUsername },
+        { email: cleanUsername },
+      ],
+      role: { $in: ["DELIVERY_STAFF", "DELIVERY_ADMIN"] },
+    }).populate("supermarket");
+
+    // Fallback: check if supermarket's deliveryCredentials match
+    if (!user) {
+      const storeWithCreds = await Supermarket.findOne({
+        "deliveryCredentials.username": cleanUsername,
+      });
+
+      if (storeWithCreds) {
+        if (storeWithCreds.deliveryCredentials?.password === cleanPassword) {
+          user = await User.findOne({
+            username: cleanUsername,
+            supermarket: storeWithCreds._id,
+          });
+
+          if (!user) {
+            user = await User.create({
+              name: storeWithCreds.deliveryCredentials?.staffName || `${storeWithCreds.name} Delivery Driver`,
+              username: cleanUsername,
+              password: cleanPassword,
+              role: "DELIVERY_STAFF",
+              supermarket: storeWithCreds._id,
+              supermarketCode: storeWithCreds.code,
+              supermarketName: storeWithCreds.name,
+              phone: storeWithCreds.deliveryCredentials?.phone || storeWithCreds.phone,
+              status: "Active",
+            });
+          }
+          user.supermarket = storeWithCreds;
+        }
+      }
+    }
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials. Dedicated Delivery Account not found for this username.",
+      });
+    }
+
+    // 2. Verify Password
+    let isMatch = false;
+    try {
+      isMatch = await user.comparePassword(cleanPassword);
+    } catch (_) {}
+
+    if (!isMatch && user.password === cleanPassword) {
+      isMatch = true;
+    }
+
+    if (!isMatch) {
+      const storeObj = user.supermarket;
+      if (storeObj?.deliveryCredentials?.password === cleanPassword) {
+        isMatch = true;
+      }
+    }
+
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid password for this Delivery Dashboard account.",
+      });
+    }
+
+    // 3. Resolve Supermarket & Verify strict Online Delivery configuration
+    let store = user.supermarket;
+    if (!store || !store._id) {
+      store = await Supermarket.findById(user.supermarket);
+    }
+    if (!store && user.supermarketCode) {
+      store = await Supermarket.findOne({ code: user.supermarketCode });
+    }
+
+    if (!store) {
+      return res.status(404).json({
+        success: false,
+        message: "Associated Supermarket not found. Contact Super Admin.",
+      });
+    }
+
+    // Strict Rule: Online Delivery MUST be enabled by Super Admin
+    const isOnlineDeliveryEnabled = store.onlineDeliveryAvailable === true || store.onlineAvailable === true;
+    if (!isOnlineDeliveryEnabled) {
+      return res.status(403).json({
+        success: false,
+        message: `Online Delivery is currently disabled for ${store.name}. Access to this Delivery Dashboard is suspended by the Super Admin.`,
+      });
+    }
+
+    if (store.status === "Suspended") {
+      return res.status(403).json({
+        success: false,
+        message: `Supermarket "${store.name}" is suspended. Delivery portal access is temporarily disabled.`,
+      });
+    }
+
+    if (user.status === "Suspended") {
+      return res.status(403).json({
+        success: false,
+        message: "Your delivery account has been suspended. Please contact Super Admin.",
+      });
+    }
+
+    // Update last login
+    user.lastLogin = new Date();
+    await user.save();
+
+    // 4. Generate JWT Token
+    const token = generateToken(user);
+
+    return res.status(200).json({
+      success: true,
+      message: `Welcome to ${store.name} Delivery Dashboard!`,
+      token,
+      user: {
+        _id: user._id,
+        name: user.name,
+        username: user.username,
+        role: "DELIVERY_STAFF",
+        phone: user.phone || store.phone,
+        supermarketId: store._id,
+        supermarketCode: store.code,
+        supermarketName: store.name,
+      },
+      supermarket: {
+        _id: store._id,
+        name: store.name,
+        code: store.code,
+        city: store.city,
+        state: store.state,
+        address: store.address,
+        phone: store.phone,
+        logoUrl: store.logoUrl,
+        deliveryBannerUrl: store.deliveryBannerUrl || store.logoUrl || "",
+        themeColor: store.themeColor || "#16a34a",
+        onlineDeliveryAvailable: true,
+      },
+    });
+  } catch (error) {
+    console.error("Delivery login error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error during delivery login.",
+      error: error.message,
     });
   }
 };

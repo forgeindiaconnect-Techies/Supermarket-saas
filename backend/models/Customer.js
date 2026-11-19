@@ -51,6 +51,13 @@ const customerSchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
+    // Registration source: strictly separates ONLINE customers from OFFLINE customers
+    registrationType: {
+      type: String,
+      enum: ["ONLINE", "OFFLINE"],
+      default: "OFFLINE",
+      index: true,
+    },
     status: {
       type: String,
       enum: ["Active", "Inactive", "Blocked"],
@@ -86,5 +93,6 @@ customerSchema.methods.comparePassword = async function (enteredPassword) {
 
 customerSchema.index({ phone: 1 }, { unique: true });
 customerSchema.index({ supermarket: 1 });
+customerSchema.index({ supermarket: 1, registrationType: 1 });
 
 module.exports = mongoose.model("Customer", customerSchema);

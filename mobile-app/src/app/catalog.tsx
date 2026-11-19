@@ -115,7 +115,12 @@ export default function OnlineCatalogScreen() {
   };
 
   const handleSelectStore = (store: SupermarketInfo) => {
-    if (store.onlineAvailable !== true) {
+    const isOnlineSupported =
+      store.onlineDeliveryAvailable === true ||
+      store.selfPickupAvailable === true ||
+      store.onlineAvailable === true;
+
+    if (!isOnlineSupported) {
       setSearchModalVisible(false);
       setUnavailableModal({ visible: true, storeName: store.name });
       return;

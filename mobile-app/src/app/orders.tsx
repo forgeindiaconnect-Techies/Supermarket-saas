@@ -88,6 +88,20 @@ export default function MyOrdersScreen() {
     fetchOrders();
   };
 
+  const handleCustomerCompletePickup = async (orderId: string) => {
+    if (!API_URL || !orderId) return;
+    try {
+      const res = await safeFetch(`${API_URL}/orders/${orderId}/customer-complete-pickup`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+      }, 5000);
+      const data = await res.json();
+      if (data?.success) {
+        fetchOrders();
+      }
+    } catch (_) {}
+  };
+
   const filteredOrders = orders.filter((o) => {
     if (activeFilter === "All") return true;
     if (activeFilter === "Completed") return o.paymentStatus === "Completed";
@@ -260,16 +274,76 @@ export default function MyOrdersScreen() {
                       )}
                     </View>
 
-                    {/* View Details Link on Bottom Right matching Screen 8 */}
-                    <TouchableOpacity
-                      style={styles.viewDetailsBtn}
-                      onPress={() => setSelectedOrder(ord)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.viewDetailsText}>
-                        View Details →
-                      </Text>
-                    </TouchableOpacity>
+                    {/* Store Collection Notification Banner & Complete Button */}
+                    {(ord as any).pickupStatus === "ReadyForPickup" && !(ord as any).customerPickupConfirmed && (
+                      <View style={styles.pickupBanner}>
+                        <Text style={styles.pickupBannerText}>
+                          🔔 Your order will be ready for pickup at {(ord as any).estimatedReadyTime || "5:30 PM"} ({(ord as any).estimatedReadyDate || "Today"}). Please visit the store and collect your products.
+                        </Text>
+                        {(ord as any).pickupInstructions ? (
+                          <Text style={styles.pickupInstructionsText}>
+                            {(ord as any).pickupInstructions}
+                          </Text>
+                        ) : null}
+                        <TouchableOpacity
+                          style={styles.pickupCompleteBtn}
+                          onPress={() => handleCustomerCompletePickup(ord._id)}
+                          activeOpacity={0.85}
+                        >
+                          <Text style={styles.pickupCompleteBtnText}>✓ Complete (Collected from Store)</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+
+                    {(ord as any).pickupStatus === "Preparing" && (
+                      <View style={[styles.pickupBanner, { backgroundColor: "#FEF3C7", borderColor: "#FDE68A" }]}>
+                        <Text style={[styles.pickupBannerText, { color: "#92400E" }]}>
+                          ⏳ Supermarket is preparing & packing your products for collection.
+                        </Text>
+                      </View>
+                    )}
+
+                    {(ord as any).customerPickupConfirmed && (
+                      <View style={[styles.pickupBanner, { backgroundColor: "#F0FDF4", borderColor: "#86EFAC" }]}>
+                        <Text style={[styles.pickupBannerText, { color: "#166534" }]}>
+                          ✓ Order Collected from Store (Hand-off Verified)
+                        </Text>
+                      </View>
+                    )}
+
+                    {(ord as any).fulfillmentChoice === "DOORSTEP_DELIVERY" && (
+                      <View style={styles.doorstepBanner}>
+                        <Text style={styles.doorstepBannerText}>
+                          🚚 Doorstep Delivery ({ (ord as any).deliveryStatus === "OutForDelivery" ? "Out for Delivery" : ((ord as any).deliveryStatus || "Processing") })
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* Action Buttons: Live Track & Details */}
+                    <View style={styles.orderCardActionsRow}>
+                      <TouchableOpacity
+                        style={styles.cardTrackBtn}
+                        onPress={() => {
+                          router.push({
+                            pathname: "/order-tracking",
+                            params: { orderId: ord._id || ord.orderNumber },
+                          });
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={styles.cardTrackBtnText}>🚚 Track Order</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.viewDetailsBtn}
+                        onPress={() => setSelectedOrder(ord)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.viewDetailsText}>
+                          View Details →
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 );
               })}
@@ -322,6 +396,24 @@ export default function MyOrdersScreen() {
                 ₹{selectedOrder?.totalAmount}
               </Text>
             </View>
+
+            {/* Live Order Tracking Button */}
+            <TouchableOpacity
+              style={styles.modalTrackBtn}
+              onPress={() => {
+                const targetId = selectedOrder?._id || selectedOrder?.orderNumber;
+                setSelectedOrder(null);
+                if (targetId) {
+                  router.push({
+                    pathname: "/order-tracking",
+                    params: { orderId: targetId },
+                  });
+                }
+              }}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.modalTrackBtnText}>🚚 Track Live Order Status</Text>
+            </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.modalReceiptBtn}
@@ -537,9 +629,33 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
   },
+  orderCardActionsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 6,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#F1F5F9",
+  },
+  cardTrackBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F3E8FF",
+    borderWidth: 1,
+    borderColor: "#D8B4FE",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  cardTrackBtnText: {
+    color: "#6B21A8",
+    fontSize: 12,
+    fontWeight: "800",
+  },
   viewDetailsBtn: {
-    alignSelf: "flex-end",
-    paddingVertical: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
   },
   viewDetailsText: {
     color: "#3B0764", // Purple link text matching reference
@@ -639,6 +755,24 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     color: "#166534",
   },
+  modalTrackBtn: {
+    backgroundColor: "#059669",
+    paddingVertical: 14,
+    borderRadius: 24,
+    alignItems: "center",
+    marginTop: 12,
+    marginBottom: 4,
+    shadowColor: "#059669",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  modalTrackBtnText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "800",
+  },
   modalReceiptBtn: {
     backgroundColor: "#FFFFFF",
     borderWidth: 1.5,
@@ -665,5 +799,50 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 15,
     fontWeight: "800",
+  },
+  pickupBanner: {
+    backgroundColor: "#F0FDF4",
+    borderWidth: 1,
+    borderColor: "#BBF7D0",
+    borderRadius: 10,
+    padding: 10,
+    marginTop: 8,
+  },
+  pickupBannerText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#166534",
+    lineHeight: 16,
+  },
+  pickupInstructionsText: {
+    fontSize: 11,
+    color: "#15803D",
+    marginTop: 3,
+  },
+  pickupCompleteBtn: {
+    backgroundColor: "#059669",
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 8,
+  },
+  pickupCompleteBtnText: {
+    color: "#FFFFFF",
+    fontSize: 12.5,
+    fontWeight: "700",
+  },
+  doorstepBanner: {
+    backgroundColor: "#EFF6FF",
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+    borderRadius: 8,
+    padding: 8,
+    marginTop: 8,
+  },
+  doorstepBannerText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#1E40AF",
   },
 });

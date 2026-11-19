@@ -33,6 +33,7 @@ import {
   Upload,
   X,
   Globe,
+  Truck,
 } from "lucide-react";
 import API from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
@@ -176,8 +177,29 @@ export default function AddSupermarket() {
   const logoFileInputRef = useRef(null);
 
   // ================= Purchase Mode Availability (Super Admin Fixed Policy) =================
-  const [onlineAvailable, setOnlineAvailable] = useState(false);
-  const [offlineAvailable, setOfflineAvailable] = useState(false);
+  const [onlineDeliveryAvailable, setOnlineDeliveryAvailable] = useState(false);
+  const [selfPickupAvailable, setSelfPickupAvailable] = useState(true);
+
+  // Dedicated Delivery Dashboard & Credentials (Online Delivery Only)
+  const [deliveryUsername, setDeliveryUsername] = useState("");
+  const [deliveryPassword, setDeliveryPassword] = useState("Delivery@123");
+  const [deliveryStaffName, setDeliveryStaffName] = useState("");
+  const [deliveryPhone, setDeliveryPhone] = useState("");
+  const [showDeliveryPassword, setShowDeliveryPassword] = useState(false);
+
+  // Synchronize delivery credentials defaults with supermarket name
+  useEffect(() => {
+    if (supermarketName && !deliveryUsername) {
+      const clean = supermarketName.toLowerCase().replace(/[^a-z0-9]/g, "");
+      setDeliveryUsername(`${clean}_delivery`);
+    }
+    if (supermarketName && !deliveryStaffName) {
+      setDeliveryStaffName(`${supermarketName} Delivery Fleet`);
+    }
+    if (mobileNumber && !deliveryPhone) {
+      setDeliveryPhone(mobileNumber);
+    }
+  }, [supermarketName, mobileNumber]);
 
   // ================= Step 2: Admin Credentials =================
   const [adminUsername, setAdminUsername] = useState("");
@@ -626,8 +648,21 @@ export default function AddSupermarket() {
         timeZone: timeZone,
         status: accountStatus,
         themeColor: "#16a34a",
-        onlineAvailable: Boolean(onlineAvailable),
-        offlineAvailable: Boolean(offlineAvailable),
+        onlineDeliveryAvailable: Boolean(onlineDeliveryAvailable),
+        selfPickupAvailable: Boolean(selfPickupAvailable),
+        onlineAvailable: Boolean(onlineDeliveryAvailable || selfPickupAvailable),
+        offlineAvailable: Boolean(selfPickupAvailable),
+        deliveryCredentials: onlineDeliveryAvailable ? {
+          username: (deliveryUsername || `${supermarketName.toLowerCase().replace(/[^a-z0-9]/g, "")}_delivery`).trim().toLowerCase(),
+          password: deliveryPassword || "Delivery@123",
+          staffName: (deliveryStaffName || `${supermarketName} Delivery Fleet`).trim(),
+          phone: deliveryPhone || mobileNumber,
+          active: true,
+        } : null,
+        deliveryUsername: onlineDeliveryAvailable ? (deliveryUsername || `${supermarketName.toLowerCase().replace(/[^a-z0-9]/g, "")}_delivery`).trim().toLowerCase() : "",
+        deliveryPassword: onlineDeliveryAvailable ? (deliveryPassword || "Delivery@123") : "",
+        deliveryStaffName: onlineDeliveryAvailable ? (deliveryStaffName || `${supermarketName} Delivery Fleet`).trim() : "",
+        deliveryPhone: onlineDeliveryAvailable ? (deliveryPhone || mobileNumber) : "",
       };
 
       const res = await API.post("/super-admin/supermarkets", payload);
@@ -1743,34 +1778,34 @@ export default function AddSupermarket() {
             </div>
           </div>
 
-          {/* Section D: Store Availability & Purchase Mode Configuration (Online / Offline) */}
+          {/* Section D: Store Availability & Purchase Mode Configuration (Online Delivery & Self Pickup) */}
           <div className="asm-form-section asm-availability-section">
             <div className="asm-section-title">
               <Sliders size={16} />
-              <span>Purchase Mode &amp; Channel Availability (Super Admin Configuration)</span>
+              <span>Purchase Availability Configuration (Super Admin Policy)</span>
             </div>
             <p className="asm-section-desc" style={{ fontSize: "13px", color: "#64748b", margin: "-6px 0 16px 0" }}>
-              Configure internal availability policy for this supermarket (Online, Offline, or both). This selection is an internal Super Admin control stored in the database and is never displayed to the supermarket Admin.
+              Configure purchase availability options for this supermarket. You can independently enable or disable <strong>Online Delivery</strong> and <strong>Self Pickup</strong>. Only options enabled here will be available to customers.
             </p>
 
             <div className="asm-availability-button-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-              {/* Button 1: Online Mode */}
+              {/* Option 1: Online Delivery */}
               <button
                 type="button"
-                className={`asm-avail-toggle-btn ${onlineAvailable ? "active-enabled" : "inactive-disabled"}`}
-                onClick={() => setOnlineAvailable((prev) => !prev)}
+                className={`asm-avail-toggle-btn ${onlineDeliveryAvailable ? "active-enabled" : "inactive-disabled"}`}
+                onClick={() => setOnlineDeliveryAvailable((prev) => !prev)}
                 style={{
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
                   padding: "16px 18px",
                   borderRadius: "14px",
-                  border: onlineAvailable ? "2px solid #16a34a" : "2px solid #cbd5e1",
-                  background: onlineAvailable ? "#f0fdf4" : "#ffffff",
+                  border: onlineDeliveryAvailable ? "2px solid #16a34a" : "2px solid #cbd5e1",
+                  background: onlineDeliveryAvailable ? "#f0fdf4" : "#ffffff",
                   cursor: "pointer",
                   transition: "all 0.2s ease",
                   textAlign: "left",
-                  boxShadow: onlineAvailable ? "0 4px 12px rgba(22, 163, 74, 0.12)" : "none",
+                  boxShadow: onlineDeliveryAvailable ? "0 4px 12px rgba(22, 163, 74, 0.12)" : "none",
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
@@ -1779,21 +1814,21 @@ export default function AddSupermarket() {
                       width: "42px",
                       height: "42px",
                       borderRadius: "10px",
-                      background: onlineAvailable ? "#16a34a" : "#e2e8f0",
+                      background: onlineDeliveryAvailable ? "#16a34a" : "#e2e8f0",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      color: onlineAvailable ? "#ffffff" : "#64748b",
+                      color: onlineDeliveryAvailable ? "#ffffff" : "#64748b",
                     }}
                   >
-                    <Globe size={22} />
+                    <Truck size={22} />
                   </div>
                   <div>
-                    <div style={{ fontSize: "15px", fontWeight: 800, color: onlineAvailable ? "#166534" : "#1e293b" }}>
-                      Online
+                    <div style={{ fontSize: "15px", fontWeight: 800, color: onlineDeliveryAvailable ? "#166534" : "#1e293b" }}>
+                      Online Delivery
                     </div>
-                    <div style={{ fontSize: "12px", color: onlineAvailable ? "#15803d" : "#64748b", marginTop: "2px" }}>
-                      Web portal &amp; digital catalog
+                    <div style={{ fontSize: "12px", color: onlineDeliveryAvailable ? "#15803d" : "#64748b", marginTop: "2px" }}>
+                      Doorstep delivery • Dedicated Delivery Dashboard
                     </div>
                   </div>
                 </div>
@@ -1804,42 +1839,42 @@ export default function AddSupermarket() {
                     borderRadius: "9999px",
                     fontSize: "12px",
                     fontWeight: 700,
-                    background: onlineAvailable ? "#dcfce7" : "#f1f5f9",
-                    color: onlineAvailable ? "#166534" : "#64748b",
+                    background: onlineDeliveryAvailable ? "#dcfce7" : "#f1f5f9",
+                    color: onlineDeliveryAvailable ? "#166534" : "#64748b",
                     display: "flex",
                     alignItems: "center",
                     gap: "6px",
-                    border: onlineAvailable ? "1px solid #86efac" : "1px solid #e2e8f0",
+                    border: onlineDeliveryAvailable ? "1px solid #86efac" : "1px solid #e2e8f0",
                   }}
                 >
-                  {onlineAvailable ? (
+                  {onlineDeliveryAvailable ? (
                     <>
                       <CheckCircle2 size={14} color="#16a34a" />
                       <span>Available</span>
                     </>
                   ) : (
-                    <span>Not Available</span>
+                    <span>Disabled</span>
                   )}
                 </div>
               </button>
 
-              {/* Button 2: Offline Mode */}
+              {/* Option 2: Self Pickup */}
               <button
                 type="button"
-                className={`asm-avail-toggle-btn ${offlineAvailable ? "active-enabled" : "inactive-disabled"}`}
-                onClick={() => setOfflineAvailable((prev) => !prev)}
+                className={`asm-avail-toggle-btn ${selfPickupAvailable ? "active-enabled" : "inactive-disabled"}`}
+                onClick={() => setSelfPickupAvailable((prev) => !prev)}
                 style={{
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
                   padding: "16px 18px",
                   borderRadius: "14px",
-                  border: offlineAvailable ? "2px solid #16a34a" : "2px solid #cbd5e1",
-                  background: offlineAvailable ? "#f0fdf4" : "#ffffff",
+                  border: selfPickupAvailable ? "2px solid #16a34a" : "2px solid #cbd5e1",
+                  background: selfPickupAvailable ? "#f0fdf4" : "#ffffff",
                   cursor: "pointer",
                   transition: "all 0.2s ease",
                   textAlign: "left",
-                  boxShadow: offlineAvailable ? "0 4px 12px rgba(22, 163, 74, 0.12)" : "none",
+                  boxShadow: selfPickupAvailable ? "0 4px 12px rgba(22, 163, 74, 0.12)" : "none",
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
@@ -1848,21 +1883,21 @@ export default function AddSupermarket() {
                       width: "42px",
                       height: "42px",
                       borderRadius: "10px",
-                      background: offlineAvailable ? "#16a34a" : "#e2e8f0",
+                      background: selfPickupAvailable ? "#16a34a" : "#e2e8f0",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      color: offlineAvailable ? "#ffffff" : "#64748b",
+                      color: selfPickupAvailable ? "#ffffff" : "#64748b",
                     }}
                   >
                     <Store size={22} />
                   </div>
                   <div>
-                    <div style={{ fontSize: "15px", fontWeight: 800, color: offlineAvailable ? "#166534" : "#1e293b" }}>
-                      Offline
+                    <div style={{ fontSize: "15px", fontWeight: 800, color: selfPickupAvailable ? "#166534" : "#1e293b" }}>
+                      Self Pickup
                     </div>
-                    <div style={{ fontSize: "12px", color: offlineAvailable ? "#15803d" : "#64748b", marginTop: "2px" }}>
-                      Physical in-store POS &amp; gate
+                    <div style={{ fontSize: "12px", color: selfPickupAvailable ? "#15803d" : "#64748b", marginTop: "2px" }}>
+                      Online Shopping (app) &amp; Offline Shopping (scan &amp; go)
                     </div>
                   </div>
                 </div>
@@ -1873,25 +1908,124 @@ export default function AddSupermarket() {
                     borderRadius: "9999px",
                     fontSize: "12px",
                     fontWeight: 700,
-                    background: offlineAvailable ? "#dcfce7" : "#f1f5f9",
-                    color: offlineAvailable ? "#166534" : "#64748b",
+                    background: selfPickupAvailable ? "#dcfce7" : "#f1f5f9",
+                    color: selfPickupAvailable ? "#166534" : "#64748b",
                     display: "flex",
                     alignItems: "center",
                     gap: "6px",
-                    border: offlineAvailable ? "1px solid #86efac" : "1px solid #e2e8f0",
+                    border: selfPickupAvailable ? "1px solid #86efac" : "1px solid #e2e8f0",
                   }}
                 >
-                  {offlineAvailable ? (
+                  {selfPickupAvailable ? (
                     <>
                       <CheckCircle2 size={14} color="#16a34a" />
                       <span>Available</span>
                     </>
                   ) : (
-                    <span>Not Available</span>
+                    <span>Disabled</span>
                   )}
                 </div>
               </button>
             </div>
+
+            {/* Case 1 & Case 3: Dedicated Delivery Dashboard Setup (Appears ONLY when Online Delivery is Enabled) */}
+            {onlineDeliveryAvailable ? (
+              <div
+                style={{
+                  marginTop: "18px",
+                  padding: "18px 20px",
+                  background: "#f0fdf4",
+                  borderRadius: "12px",
+                  border: "1.5px solid #86efac",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+                  <Truck size={18} color="#166534" />
+                  <span style={{ fontSize: "14.5px", fontWeight: 800, color: "#166534" }}>
+                    Dedicated Mobile Delivery Dashboard Setup ({supermarketName || "Store"} Only)
+                  </span>
+                  <span style={{ fontSize: "11px", background: "#dcfce7", color: "#166534", padding: "2px 8px", borderRadius: "9999px", fontWeight: 700 }}>
+                    Mobile App Only
+                  </span>
+                </div>
+                <p style={{ fontSize: "12.5px", color: "#15803d", margin: "0 0 14px 0", lineHeight: 1.5 }}>
+                  When Online Delivery is enabled, assign dedicated login credentials for this supermarket's Delivery Dashboard in the mobile app. Store Admin credentials cannot access this dashboard, and this dashboard will strictly show only {supermarketName || "this store"}'s delivery orders.
+                </p>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#1e293b", marginBottom: "4px" }}>
+                      Delivery Account Username <span style={{ color: "#dc2626" }}>*</span>
+                    </label>
+                    <div style={{ display: "flex", alignItems: "center", background: "#ffffff", border: "1px solid #cbd5e1", borderRadius: "8px", padding: "8px 12px" }}>
+                      <KeyRound size={15} color="#64748b" style={{ marginRight: "8px" }} />
+                      <input
+                        type="text"
+                        style={{ border: "none", outline: "none", width: "100%", fontSize: "13px", fontWeight: 600, color: "#0f172a" }}
+                        placeholder="e.g. pooja_delivery"
+                        value={deliveryUsername}
+                        onChange={(e) => setDeliveryUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#1e293b", marginBottom: "4px" }}>
+                      Delivery Password <span style={{ color: "#dc2626" }}>*</span>
+                    </label>
+                    <div style={{ display: "flex", alignItems: "center", background: "#ffffff", border: "1px solid #cbd5e1", borderRadius: "8px", padding: "8px 12px" }}>
+                      <Lock size={15} color="#64748b" style={{ marginRight: "8px" }} />
+                      <input
+                        type={showDeliveryPassword ? "text" : "password"}
+                        style={{ border: "none", outline: "none", width: "100%", fontSize: "13px", fontWeight: 600, color: "#0f172a" }}
+                        placeholder="Password"
+                        value={deliveryPassword}
+                        onChange={(e) => setDeliveryPassword(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowDeliveryPassword((prev) => !prev)}
+                        style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "#64748b" }}
+                      >
+                        {showDeliveryPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#1e293b", marginBottom: "4px" }}>
+                      Delivery Fleet / Staff Name
+                    </label>
+                    <div style={{ display: "flex", alignItems: "center", background: "#ffffff", border: "1px solid #cbd5e1", borderRadius: "8px", padding: "8px 12px" }}>
+                      <User size={15} color="#64748b" style={{ marginRight: "8px" }} />
+                      <input
+                        type="text"
+                        style={{ border: "none", outline: "none", width: "100%", fontSize: "13px", fontWeight: 600, color: "#0f172a" }}
+                        placeholder="e.g. Pooja Fleet Lead"
+                        value={deliveryStaffName}
+                        onChange={(e) => setDeliveryStaffName(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#1e293b", marginBottom: "4px" }}>
+                      Delivery Contact Phone
+                    </label>
+                    <div style={{ display: "flex", alignItems: "center", background: "#ffffff", border: "1px solid #cbd5e1", borderRadius: "8px", padding: "8px 12px" }}>
+                      <Phone size={15} color="#64748b" style={{ marginRight: "8px" }} />
+                      <input
+                        type="tel"
+                        style={{ border: "none", outline: "none", width: "100%", fontSize: "13px", fontWeight: 600, color: "#0f172a" }}
+                        placeholder="10-digit number"
+                        value={deliveryPhone}
+                        onChange={(e) => setDeliveryPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             {/* Current Selection Scenario Summary Indicator */}
             <div
@@ -1911,10 +2045,10 @@ export default function AddSupermarket() {
               <Sparkles size={14} color="#059669" />
               <span>
                 <strong>Configured Status: </strong>
-                {onlineAvailable && offlineAvailable && "Online – Available | Offline – Available (Scenario A: Both Channels Enabled)"}
-                {onlineAvailable && !offlineAvailable && "Online – Available | Offline – Not Available (Scenario B: Online Only)"}
-                {!onlineAvailable && offlineAvailable && "Online – Not Available | Offline – Available (Scenario C: Offline Only)"}
-                {!onlineAvailable && !offlineAvailable && "Online – Not Configured | Offline – Not Configured (Click buttons above to enable)"}
+                {onlineDeliveryAvailable && selfPickupAvailable && "Online Delivery – Available | Self Pickup – Available (Case 3: Both Options Enabled - Delivery Dashboard Created)"}
+                {onlineDeliveryAvailable && !selfPickupAvailable && "Online Delivery – Available | Self Pickup – Disabled (Case 1: Online Delivery Only - Delivery Dashboard Created)"}
+                {!onlineDeliveryAvailable && selfPickupAvailable && "Online Delivery – Disabled | Self Pickup – Available (Case 2: Self Pickup Only - Delivery Dashboard Not Created)"}
+                {!onlineDeliveryAvailable && !selfPickupAvailable && "Online Delivery – Disabled | Self Pickup – Disabled (Case 4: Customer purchase options blocked)"}
               </span>
             </div>
           </div>
@@ -2572,15 +2706,15 @@ export default function AddSupermarket() {
                       borderRadius: "6px",
                       fontSize: "0.76rem",
                       fontWeight: 800,
-                      backgroundColor: onlineAvailable ? "#dcfce7" : "#fee2e2",
-                      color: onlineAvailable ? "#15803d" : "#991b1b",
-                      border: onlineAvailable ? "1.5px solid #86efac" : "1.5px solid #fca5a5",
+                      backgroundColor: onlineDeliveryAvailable ? "#dcfce7" : "#fee2e2",
+                      color: onlineDeliveryAvailable ? "#15803d" : "#991b1b",
+                      border: onlineDeliveryAvailable ? "1.5px solid #86efac" : "1.5px solid #fca5a5",
                       display: "inline-flex",
                       alignItems: "center",
                       gap: "4px",
                     }}
                   >
-                    <Globe size={13} /> Online: {onlineAvailable ? "Available" : "Not Available"}
+                    <Truck size={13} /> Online Delivery: {onlineDeliveryAvailable ? "Available" : "Disabled"}
                   </span>
                   <span
                     style={{
@@ -2588,15 +2722,15 @@ export default function AddSupermarket() {
                       borderRadius: "6px",
                       fontSize: "0.76rem",
                       fontWeight: 800,
-                      backgroundColor: offlineAvailable ? "#dcfce7" : "#fee2e2",
-                      color: offlineAvailable ? "#15803d" : "#991b1b",
-                      border: offlineAvailable ? "1.5px solid #86efac" : "1.5px solid #fca5a5",
+                      backgroundColor: selfPickupAvailable ? "#dcfce7" : "#fee2e2",
+                      color: selfPickupAvailable ? "#15803d" : "#991b1b",
+                      border: selfPickupAvailable ? "1.5px solid #86efac" : "1.5px solid #fca5a5",
                       display: "inline-flex",
                       alignItems: "center",
                       gap: "4px",
                     }}
                   >
-                    <Building2 size={13} /> Offline: {offlineAvailable ? "Available" : "Not Available"}
+                    <Store size={13} /> Self Pickup: {selfPickupAvailable ? "Available" : "Disabled"}
                   </span>
                 </div>
               </div>
@@ -2723,7 +2857,7 @@ export default function AddSupermarket() {
                 )}
                 <div className="asm-review-row" style={{ alignItems: "center" }}>
                   <span className="asm-review-key">
-                    <Globe size={14} /> Channels:
+                    <Truck size={14} /> Channels:
                   </span>
                   <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
                     <span
@@ -2732,12 +2866,12 @@ export default function AddSupermarket() {
                         borderRadius: "6px",
                         fontSize: "0.75rem",
                         fontWeight: 700,
-                        backgroundColor: onlineAvailable ? "#dcfce7" : "#fee2e2",
-                        color: onlineAvailable ? "#166534" : "#991b1b",
-                        border: onlineAvailable ? "1px solid #86efac" : "1px solid #fca5a5",
+                        backgroundColor: onlineDeliveryAvailable ? "#dcfce7" : "#fee2e2",
+                        color: onlineDeliveryAvailable ? "#166534" : "#991b1b",
+                        border: onlineDeliveryAvailable ? "1px solid #86efac" : "1px solid #fca5a5",
                       }}
                     >
-                      Online: {onlineAvailable ? "Available" : "Not Available"}
+                      Online Delivery: {onlineDeliveryAvailable ? "Available" : "Disabled"}
                     </span>
                     <span
                       style={{
@@ -2745,12 +2879,12 @@ export default function AddSupermarket() {
                         borderRadius: "6px",
                         fontSize: "0.75rem",
                         fontWeight: 700,
-                        backgroundColor: offlineAvailable ? "#dcfce7" : "#fee2e2",
-                        color: offlineAvailable ? "#166534" : "#991b1b",
-                        border: offlineAvailable ? "1px solid #86efac" : "1px solid #fca5a5",
+                        backgroundColor: selfPickupAvailable ? "#dcfce7" : "#fee2e2",
+                        color: selfPickupAvailable ? "#166534" : "#991b1b",
+                        border: selfPickupAvailable ? "1px solid #86efac" : "1px solid #fca5a5",
                       }}
                     >
-                      Offline: {offlineAvailable ? "Available" : "Not Available"}
+                      Self Pickup: {selfPickupAvailable ? "Available" : "Disabled"}
                     </span>
                   </div>
                 </div>
@@ -2857,6 +2991,40 @@ export default function AddSupermarket() {
                     {forcePasswordChange ? "Mandatory Password Change" : "Optional"}
                   </span>
                 </div>
+
+                {onlineDeliveryAvailable && (
+                  <>
+                    <div style={{ margin: "10px 0 6px 0", borderTop: "1px dashed #c4b5fd", paddingTop: "8px" }}>
+                      <span style={{ fontSize: "11px", fontWeight: 800, color: "#6d28d9", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                        🚚 Mobile Delivery Dashboard Credentials
+                      </span>
+                    </div>
+                    <div className="asm-review-row">
+                      <span className="asm-review-key">
+                        <KeyRound size={14} /> Delivery User:
+                      </span>
+                      <span className="asm-review-val" style={{ fontFamily: "monospace", color: "#166534", fontWeight: 700 }}>
+                        {deliveryUsername || `${supermarketName.toLowerCase().replace(/[^a-z0-9]/g, "")}_delivery`}
+                      </span>
+                    </div>
+                    <div className="asm-review-row">
+                      <span className="asm-review-key">
+                        <Lock size={14} /> Delivery Password:
+                      </span>
+                      <span className="asm-review-val" style={{ fontFamily: "monospace", color: "#166534", fontWeight: 700 }}>
+                        {deliveryPassword || "Delivery@123"}
+                      </span>
+                    </div>
+                    <div className="asm-review-row">
+                      <span className="asm-review-key">
+                        <User size={14} /> Fleet Lead:
+                      </span>
+                      <span className="asm-review-val">
+                        {deliveryStaffName || `${supermarketName} Delivery Fleet`}
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 

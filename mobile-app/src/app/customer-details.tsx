@@ -20,12 +20,36 @@ import { API_URL, safeFetch } from "../constants/api";
 export default function CustomerDetailsScreen() {
   const router = useRouter();
   const { method = "UPI" } = useLocalSearchParams<{ method?: string }>();
-  const { cart, totalAmount, totalCount, customerInfo, setCustomerInfo } = useCart();
+  const {
+    cart,
+    totalAmount,
+    totalCount,
+    customerInfo,
+    setCustomerInfo,
+    customerUser,
+    updateCustomerDetails,
+  } = useCart();
 
-  // Fresh empty form inputs for every customer registering
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [address, setAddress] = useState("");
+  // Retrieve saved customer details if already registered/logged in
+  const initialName = customerUser?.name || customerInfo?.name || "";
+  const initialPhone = customerUser?.phone || customerInfo?.phone || "";
+  const initialAddress = customerUser?.address || customerInfo?.address || "";
+
+  const [name, setName] = useState(initialName);
+  const [phone, setPhone] = useState(initialPhone);
+  const [address, setAddress] = useState(initialAddress);
+
+  useEffect(() => {
+    if (!name && (customerUser?.name || customerInfo?.name)) {
+      setName(customerUser?.name || customerInfo?.name || "");
+    }
+    if (!phone && (customerUser?.phone || customerInfo?.phone)) {
+      setPhone(customerUser?.phone || customerInfo?.phone || "");
+    }
+    if (!address && (customerUser?.address || customerInfo?.address)) {
+      setAddress(customerUser?.address || customerInfo?.address || "");
+    }
+  }, [customerUser, customerInfo]);
 
   // Error validation states
   const [nameError, setNameError] = useState("");
@@ -138,8 +162,8 @@ export default function CustomerDetailsScreen() {
     const cleanPhone = phone.replace(/\D/g, "");
     const trimmedAddress = address.trim();
 
-    // Save details to CartContext for global persistence across the session
-    setCustomerInfo({
+    // Save details to CartContext and persist to backend
+    updateCustomerDetails({
       name: trimmedName,
       phone: cleanPhone,
       address: trimmedAddress,
@@ -171,6 +195,7 @@ export default function CustomerDetailsScreen() {
         customerName: trimmedName,
         customerPhone: cleanPhone,
         customerAddress: trimmedAddress,
+        customerId: customerUser?._id,
       },
     });
   };

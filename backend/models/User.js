@@ -21,7 +21,7 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ["SUPER_ADMIN", "STORE_ADMIN", "ADMIN"],
+      enum: ["SUPER_ADMIN", "STORE_ADMIN", "ADMIN", "DELIVERY_STAFF", "DELIVERY_ADMIN"],
       default: "STORE_ADMIN",
     },
     supermarket: {
@@ -54,7 +54,7 @@ const userSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["Active", "Suspended"],
+      enum: ["Active", "Inactive", "Suspended"],
       default: "Active",
     },
     lastLogin: {

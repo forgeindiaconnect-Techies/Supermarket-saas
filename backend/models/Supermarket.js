@@ -169,13 +169,34 @@ const supermarketSchema = new mongoose.Schema(
       default: "#1455d9",
     },
     // Purchase Mode Availability Configuration (Fixed by Super Admin)
+    onlineDeliveryAvailable: {
+      type: Boolean,
+      default: false,
+    },
+    selfPickupAvailable: {
+      type: Boolean,
+      default: true,
+    },
+    // Backwards compatibility aliases
     onlineAvailable: {
       type: Boolean,
-      default: null, // null = Not Configured
+      default: false,
     },
     offlineAvailable: {
       type: Boolean,
-      default: null, // null = Not Configured
+      default: true,
+    },
+    // Dedicated Delivery Dashboard & Fleet Configuration (Online Delivery Only)
+    deliveryBannerUrl: {
+      type: String,
+      default: "",
+    },
+    deliveryCredentials: {
+      username: { type: String, default: "", trim: true, lowercase: true },
+      password: { type: String, default: "" },
+      staffName: { type: String, default: "Delivery Fleet" },
+      phone: { type: String, default: "" },
+      active: { type: Boolean, default: false },
     },
     settings: {
       currency: { type: String, default: "₹" },
@@ -196,6 +217,18 @@ supermarketSchema.pre("save", function (next) {
   }
   if (this.adminUsername) {
     this.adminUsername = String(this.adminUsername).trim().toLowerCase();
+  }
+  // Sync onlineDeliveryAvailable and onlineAvailable
+  if (this.onlineDeliveryAvailable !== undefined) {
+    this.onlineAvailable = Boolean(this.onlineDeliveryAvailable);
+  } else if (this.onlineAvailable !== undefined && this.onlineAvailable !== null) {
+    this.onlineDeliveryAvailable = Boolean(this.onlineAvailable);
+  }
+  // Sync selfPickupAvailable and offlineAvailable
+  if (this.selfPickupAvailable !== undefined) {
+    this.offlineAvailable = Boolean(this.selfPickupAvailable);
+  } else if (this.offlineAvailable !== undefined && this.offlineAvailable !== null) {
+    this.selfPickupAvailable = Boolean(this.offlineAvailable);
   }
   if (typeof next === "function") next();
 });

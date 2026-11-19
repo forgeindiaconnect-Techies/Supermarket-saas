@@ -20,9 +20,12 @@ export default function RootLayout() {
         <Stack.Screen name="customer-details" />
         <Stack.Screen name="payment" />
         <Stack.Screen name="payment-success" />
+        <Stack.Screen name="order-tracking" />
         <Stack.Screen name="orders" />
         <Stack.Screen name="profile" />
         <Stack.Screen name="receipt" />
+        <Stack.Screen name="delivery-login" />
+        <Stack.Screen name="delivery-dashboard" />
       </Stack>
     </CartProvider>
   );

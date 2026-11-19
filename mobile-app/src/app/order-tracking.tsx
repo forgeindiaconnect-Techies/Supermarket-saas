@@ -1,0 +1,1498 @@
+import React, { useEffect, useState, useRef, useCallback } from "react";
+import {
+  View,
+  Text,
+  ScrollView,
+  Image,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  Dimensions,
+  Animated,
+  Linking,
+  RefreshControl,
+  Platform,
+  Alert,
+} from "react-native";
+import { useRouter, useLocalSearchParams } from "expo-router";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
+import { useCart, OrderRecord } from "../context/CartContext";
+import { API_URL, safeFetch } from "../constants/api";
+
+const { width } = Dimensions.get("window");
+
+interface TrackingStage {
+  step: number;
+  id: string;
+  title: string;
+  description: string;
+  isCompleted: boolean;
+  isActive: boolean;
+  isPending: boolean;
+  timestamp?: string | Date;
+}
+
+interface DeliveryPartner {
+  _id?: string;
+  name: string;
+  phone: string;
+  photoUrl?: string;
+  status: string;
+}
+
+export default function OrderTrackingScreen() {
+  const router = useRouter();
+  const { orderId } = useLocalSearchParams<{ orderId?: string }>();
+  const { recentOrders, selectedSupermarket } = useCart();
+
+  const [order, setOrder] = useState<OrderRecord | null>(null);
+  const [stages, setStages] = useState<TrackingStage[]>([]);
+  const [deliveryPartner, setDeliveryPartner] = useState<DeliveryPartner | null>(null);
+  const [etaTime, setEtaTime] = useState<string>("");
+  const [etaDate, setEtaDate] = useState<string>("");
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+
+  // Glowing pulse animation for live tracking badge & active stage
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 0.35,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, [pulseAnim]);
+
+  // Compute 5 Amazon-Style Tracking Stages locally or from API
+  const computeStages = useCallback((ord: OrderRecord): {
+    stages: TrackingStage[];
+    partner: DeliveryPartner | null;
+    estimatedTime: string;
+    estimatedDate: string;
+  } => {
+    const rawStatus = (ord.deliveryStatus || "New").toLowerCase();
+
+    // Stage 1: Order Confirmed
+    const s1Completed = true;
+    const s1Active = rawStatus === "new" || rawStatus === "pending";
+    const s1Time = ord.orderConfirmedAt || ord.createdAt;
+
+    // Stage 2: Preparing Your Order
+    const isPrepOrPast = [
+      "preparing",
+      "assigned",
+      "accepted",
+      "orderpickedup",
+      "outfordelivery",
+      "delivered",
+    ].includes(rawStatus);
+    const s2Completed = isPrepOrPast && rawStatus !== "preparing";
+    const s2Active = rawStatus === "preparing";
+    const s2Time = ord.preparingAt || (isPrepOrPast ? (ord as any).updatedAt : undefined);
+
+    // Stage 3: Delivery Partner Assigned
+    const isAssignedOrPast = [
+      "assigned",
+      "accepted",
+      "orderpickedup",
+      "outfordelivery",
+      "delivered",
+    ].includes(rawStatus);
+    const s3Completed =
+      isAssignedOrPast &&
+      rawStatus !== "assigned" &&
+      rawStatus !== "accepted";
+    const s3Active = rawStatus === "assigned" || rawStatus === "accepted";
+    const s3Time = ord.assignedAt || ord.deliveryAcceptedAt || undefined;
+
+    // Stage 4: Out for Delivery
+    const isOutOrDelivered = ["outfordelivery", "delivered"].includes(rawStatus);
+    const s4Completed = rawStatus === "delivered";
+    const s4Active = rawStatus === "outfordelivery" || rawStatus === "orderpickedup";
+    const s4Time = ord.deliveryOutAt || ord.pickedUpAt || undefined;
+
+    // Stage 5: Delivered
+    const s5Completed = rawStatus === "delivered";
+    const s5Active = false;
+    const s5Time = ord.deliveryCompletedAt || (ord as any).completedAt || undefined;
+
+    const timeline: TrackingStage[] = [
+      {
+        step: 1,
+        id: "CONFIRMED",
+        title: "Order Confirmed",
+        description: "Your order has been placed and received by the supermarket.",
+        isCompleted: s1Completed,
+        isActive: s1Active,
+        isPending: false,
+        timestamp: s1Time,
+      },
+      {
+        step: 2,
+        id: "PREPARING",
+        title: "Preparing Your Order",
+        description: "The store is picking, packing, and quality-checking your groceries.",
+        isCompleted: s2Completed,
+        isActive: s2Active,
+        isPending: !isPrepOrPast,
+        timestamp: s2Time,
+      },
+      {
+        step: 3,
+        id: "ASSIGNED",
+        title: "Delivery Partner Assigned",
+        description: ord.assignedStaffName
+          ? `${ord.assignedStaffName} has been assigned to deliver your package.`
+          : "A dedicated delivery partner will be assigned shortly.",
+        isCompleted: s3Completed,
+        isActive: s3Active,
+        isPending: !isAssignedOrPast,
+        timestamp: s3Time,
+      },
+      {
+        step: 4,
+        id: "OUT_FOR_DELIVERY",
+        title: "Out for Delivery",
+        description: "Your delivery partner is on route to your delivery address.",
+        isCompleted: s4Completed,
+        isActive: s4Active,
+        isPending: !isOutOrDelivered,
+        timestamp: s4Time,
+      },
+      {
+        step: 5,
+        id: "DELIVERED",
+        title: "Delivered",
+        description: "Package safely delivered to your doorstep. Enjoy your items!",
+        isCompleted: s5Completed,
+        isActive: s5Active,
+        isPending: !s5Completed,
+        timestamp: s5Time,
+      },
+    ];
+
+    // Delivery Partner Details (Requirement 3: strictly hidden until assigned!)
+    let partner: DeliveryPartner | null = null;
+    const hasAssignedStaff = Boolean(ord.assignedStaff || ord.assignedStaffName);
+    if (isAssignedOrPast && hasAssignedStaff) {
+      const staffObj = typeof ord.assignedStaff === "object" ? ord.assignedStaff : null;
+      partner = {
+        _id: staffObj?._id || (typeof ord.assignedStaff === "string" ? ord.assignedStaff : undefined),
+        name: ord.assignedStaffName || staffObj?.name || "Delivery Partner",
+        phone: ord.assignedStaffPhone || staffObj?.phone || "",
+        photoUrl: staffObj?.photoUrl || "",
+        status:
+          rawStatus === "delivered"
+            ? "Delivered"
+            : rawStatus === "outfordelivery"
+            ? "Out for Delivery"
+            : "Assigned",
+      };
+    }
+
+    // ETA calculation
+    const createD = ord.createdAt ? new Date(ord.createdAt) : new Date();
+    const etaD = new Date(createD.getTime() + 35 * 60 * 1000);
+    const estimatedTime =
+      ord.estimatedDeliveryTime ||
+      etaD.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+    const estimatedDate =
+      ord.estimatedDeliveryDate ||
+      etaD.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+
+    return {
+      stages: timeline,
+      partner,
+      estimatedTime,
+      estimatedDate,
+    };
+  }, []);
+
+  // Fetch Order and Tracking Metadata from Backend API
+  const fetchOrderTracking = useCallback(async (isSilent = false) => {
+    if (!orderId) {
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
+    if (!isSilent) setLoading(true);
+
+    try {
+      if (API_URL) {
+        const res = await safeFetch(`${API_URL}/orders/${orderId}/tracking`, {}, 5000);
+        const data = await res.json();
+
+        if (data.success && data.order) {
+          const fetchedOrder: OrderRecord = data.order;
+          setOrder(fetchedOrder);
+
+          if (Array.isArray(data.stages) && data.stages.length === 5) {
+            setStages(data.stages);
+            setDeliveryPartner(data.deliveryPartner || null);
+            setEtaTime(data.estimatedDeliveryTime || "");
+            setEtaDate(data.estimatedDeliveryDate || "");
+          } else {
+            const calculated = computeStages(fetchedOrder);
+            setStages(calculated.stages);
+            setDeliveryPartner(calculated.partner);
+            setEtaTime(calculated.estimatedTime);
+            setEtaDate(calculated.estimatedDate);
+          }
+          setLastUpdated(new Date());
+          return;
+        }
+      }
+
+      // Fallback: Check local cache in recentOrders
+      const matched = recentOrders.find(
+        (o) => o._id === orderId || o.orderNumber === orderId
+      );
+      if (matched) {
+        setOrder(matched);
+        const calculated = computeStages(matched);
+        setStages(calculated.stages);
+        setDeliveryPartner(calculated.partner);
+        setEtaTime(calculated.estimatedTime);
+        setEtaDate(calculated.estimatedDate);
+        setLastUpdated(new Date());
+      }
+    } catch (err: any) {
+      console.warn("Tracking fetch notice:", err.message);
+      // If error, attempt to find in recentOrders
+      const matched = recentOrders.find(
+        (o) => o._id === orderId || o.orderNumber === orderId
+      );
+      if (matched) {
+        setOrder(matched);
+        const calculated = computeStages(matched);
+        setStages(calculated.stages);
+        setDeliveryPartner(calculated.partner);
+        setEtaTime(calculated.estimatedTime);
+        setEtaDate(calculated.estimatedDate);
+      }
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [orderId, recentOrders, computeStages]);
+
+  // Initial load
+  useEffect(() => {
+    fetchOrderTracking(false);
+  }, [fetchOrderTracking]);
+
+  // Real-Time Auto-Polling: Refreshes every 2.5s for live updates without refreshing
+  useEffect(() => {
+    const timer = setInterval(() => {
+      fetchOrderTracking(true);
+    }, 2500);
+
+    return () => clearInterval(timer);
+  }, [fetchOrderTracking]);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchOrderTracking(true);
+  };
+
+  const handleCallPartner = (phone?: string) => {
+    if (!phone) {
+      Alert.alert("No Contact Number", "Delivery partner phone number is currently not available.");
+      return;
+    }
+    const cleanNumber = phone.replace(/[^\d+]/g, "");
+    Linking.openURL(`tel:${cleanNumber}`);
+  };
+
+  const formatTimestamp = (ts?: string | Date) => {
+    if (!ts) return "";
+    try {
+      const d = new Date(ts);
+      return (
+        d.toLocaleDateString("en-IN", { day: "numeric", month: "short" }) +
+        " • " +
+        d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })
+      );
+    } catch {
+      return String(ts);
+    }
+  };
+
+  // Calculate Progress percentage for progress bar
+  const getProgressPercentage = () => {
+    if (!stages || stages.length === 0) return 20;
+    const completedCount = stages.filter((s) => s.isCompleted).length;
+    const activeCount = stages.filter((s) => s.isActive).length;
+    if (completedCount === 5) return 100;
+    return Math.min(95, Math.max(15, (completedCount * 20) + (activeCount * 10)));
+  };
+
+  const currentStatusTitle = () => {
+    if (!order) return "Processing Order";
+    const st = (order.deliveryStatus || "New").toLowerCase();
+    if (st === "delivered") return "Delivered to Your Doorstep";
+    if (st === "outfordelivery" || st === "orderpickedup") return "Out for Delivery";
+    if (st === "assigned" || st === "accepted") return "Delivery Partner Assigned";
+    if (st === "preparing") return "Preparing Your Order";
+    return "Order Confirmed";
+  };
+
+  return (
+    <View style={styles.container}>
+      <StatusBar style="light" />
+
+      {/* Top Amazon-Style Brand Header */}
+      <View style={styles.header}>
+        <SafeAreaView edges={["top"]} style={styles.safeHeader}>
+          <View style={styles.headerRow}>
+            <TouchableOpacity
+              style={styles.backBtn}
+              onPress={() => router.back()}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.backBtnArrow}>‹</Text>
+            </TouchableOpacity>
+
+            <View style={styles.headerTitleWrap}>
+              <Text style={styles.headerTitle}>Order Tracking</Text>
+              <Text style={styles.headerSubtitle} numberOfLines={1}>
+                {order?.supermarketName || selectedSupermarket?.name || "GrocerEase Supermarket"}
+              </Text>
+            </View>
+
+            {/* Real-time Tracking Pulse Indicator */}
+            <View style={styles.liveIndicatorPill}>
+              <Animated.View
+                style={[
+                  styles.liveDot,
+                  { opacity: pulseAnim },
+                ]}
+              />
+              <Text style={styles.liveIndicatorText}>LIVE</Text>
+            </View>
+          </View>
+        </SafeAreaView>
+      </View>
+
+      <ScrollView
+        style={styles.mainScroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#3B0764"
+            colors={["#3B0764", "#059669"]}
+          />
+        }
+      >
+        {loading && !order ? (
+          <View style={styles.centerLoading}>
+            <ActivityIndicator size="large" color="#3B0764" />
+            <Text style={styles.loadingText}>Connecting to real-time order tracking...</Text>
+          </View>
+        ) : !order ? (
+          <View style={styles.notFoundBox}>
+            <Text style={{ fontSize: 50, marginBottom: 12 }}>📦</Text>
+            <Text style={styles.notFoundTitle}>Order Not Found</Text>
+            <Text style={styles.notFoundDesc}>
+              We couldn't locate this order in the tracking system. Please check your order history.
+            </Text>
+            <TouchableOpacity
+              style={styles.actionOutlineBtn}
+              onPress={() => router.replace("/orders")}
+            >
+              <Text style={styles.actionOutlineBtnText}>View My Orders</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
+            {/* ========================================================= */}
+            {/* 1. HERO ETA & LIVE STATUS BANNER                          */}
+            {/* ========================================================= */}
+            <View style={styles.etaHeroCard}>
+              <View style={styles.etaTopRow}>
+                <View style={styles.etaBadge}>
+                  <Text style={styles.etaBadgeEmoji}>🚚</Text>
+                  <Text style={styles.etaBadgeText}>Doorstep Delivery</Text>
+                </View>
+
+                <Text style={styles.orderNumberPill}>
+                  #{order.orderNumber}
+                </Text>
+              </View>
+
+              <Text style={styles.currentStatusHeading}>
+                {currentStatusTitle()}
+              </Text>
+
+              {order.deliveryStatus === "Delivered" ? (
+                <View style={styles.deliveredHighlight}>
+                  <Text style={styles.deliveredHighlightEmoji}>✅</Text>
+                  <Text style={styles.deliveredHighlightText}>
+                    Successfully Delivered on {formatTimestamp(order.deliveryCompletedAt || order.createdAt)}
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.etaTimeBox}>
+                  <Text style={styles.etaLabel}>Estimated Arrival:</Text>
+                  <Text style={styles.etaTimeVal}>
+                    {etaTime ? `${etaTime} (${etaDate || "Today"})` : "Within 30–45 Mins"}
+                  </Text>
+                </View>
+              )}
+
+              {/* Dynamic Horizontal Progress Bar */}
+              <View style={styles.progressBarTrack}>
+                <View
+                  style={[
+                    styles.progressBarFill,
+                    {
+                      width: `${getProgressPercentage()}%`,
+                      backgroundColor:
+                        order.deliveryStatus === "Delivered" ? "#16A34A" : "#3B0764",
+                    },
+                  ]}
+                />
+              </View>
+
+              <View style={styles.etaFooterRow}>
+                <Text style={styles.etaFooterHint}>
+                  {order.deliveryStatus === "Delivered"
+                    ? "Order completed and verified."
+                    : "Real-time updates synced with store delivery fleet"}
+                </Text>
+                <Text style={styles.etaSyncTime}>
+                  Updated {lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                </Text>
+              </View>
+            </View>
+
+            {/* ========================================================= */}
+            {/* 2. DELIVERY PARTNER CARD (Strictly shown once assigned)   */}
+            {/* ========================================================= */}
+            {deliveryPartner ? (
+              <View style={styles.partnerCard}>
+                <View style={styles.partnerHeader}>
+                  <View style={styles.partnerAvatarCircle}>
+                    {deliveryPartner.photoUrl ? (
+                      <Image
+                        source={{ uri: deliveryPartner.photoUrl }}
+                        style={styles.partnerPhoto}
+                      />
+                    ) : (
+                      <Text style={styles.partnerAvatarInitial}>
+                        {deliveryPartner.name.slice(0, 2).toUpperCase()}
+                      </Text>
+                    )}
+                  </View>
+
+                  <View style={styles.partnerInfo}>
+                    <View style={styles.partnerNameRow}>
+                      <Text style={styles.partnerName}>{deliveryPartner.name}</Text>
+                      <View style={styles.verifiedBadge}>
+                        <Text style={styles.verifiedBadgeText}>✓ Verified</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.partnerRoleText}>
+                      Authorized GrocerEase Delivery Partner
+                    </Text>
+                    <View style={styles.partnerStatusPill}>
+                      <View style={styles.partnerGreenDot} />
+                      <Text style={styles.partnerStatusText}>
+                        Status: {deliveryPartner.status}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Call Delivery Partner Action Button */}
+                {deliveryPartner.phone ? (
+                  <TouchableOpacity
+                    style={styles.callPartnerBtn}
+                    onPress={() => handleCallPartner(deliveryPartner.phone)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.callPartnerBtnIcon}>📞</Text>
+                    <Text style={styles.callPartnerBtnText}>
+                      Call Delivery Partner ({deliveryPartner.phone})
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+
+                <View style={styles.partnerSecurityNotice}>
+                  <Text style={styles.shieldEmoji}>🛡️</Text>
+                  <Text style={styles.securityNoticeText}>
+                    Contact details are private &amp; delivery is protected by GrocerEase security protocols.
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+
+            {/* ========================================================= */}
+            {/* 3. AMAZON-STYLE 5-STAGE VERTICAL TIMELINE                 */}
+            {/* ========================================================= */}
+            <View style={styles.timelineCard}>
+              <Text style={styles.sectionTitle}>Delivery Progress</Text>
+              <Text style={styles.sectionSubtitle}>
+                Step-by-step fulfillment timeline for your order
+              </Text>
+
+              <View style={styles.timelineList}>
+                {stages.map((stage, idx) => {
+                  const isLast = idx === stages.length - 1;
+                  const isCompleted = stage.isCompleted;
+                  const isActive = stage.isActive;
+                  const isPending = stage.isPending;
+
+                  return (
+                    <View key={stage.id} style={styles.timelineItemRow}>
+                      {/* Left Column: Icon/Indicator & Connecting Line */}
+                      <View style={styles.timelineIndicatorCol}>
+                        <View
+                          style={[
+                            styles.timelineNode,
+                            isCompleted && styles.timelineNodeCompleted,
+                            isActive && styles.timelineNodeActive,
+                            isPending && styles.timelineNodePending,
+                          ]}
+                        >
+                          {isCompleted ? (
+                            <Text style={styles.nodeCheckmark}>✓</Text>
+                          ) : isActive ? (
+                            <Animated.View
+                              style={[
+                                styles.nodeActivePulse,
+                                { opacity: pulseAnim },
+                              ]}
+                            />
+                          ) : (
+                            <Text style={styles.nodeStepNum}>{stage.step}</Text>
+                          )}
+                        </View>
+
+                        {/* Connecting Line to next step */}
+                        {!isLast && (
+                          <View
+                            style={[
+                              styles.timelineLine,
+                              isCompleted
+                                ? styles.timelineLineCompleted
+                                : styles.timelineLinePending,
+                            ]}
+                          />
+                        )}
+                      </View>
+
+                      {/* Right Column: Stage Title, Description, Timestamp */}
+                      <View style={styles.timelineContentCol}>
+                        <View style={styles.stageTitleRow}>
+                          <Text
+                            style={[
+                              styles.stageTitle,
+                              isCompleted && styles.stageTitleCompleted,
+                              isActive && styles.stageTitleActive,
+                              isPending && styles.stageTitlePending,
+                            ]}
+                          >
+                            {stage.title}
+                          </Text>
+
+                          {isActive && (
+                            <View style={styles.currentPill}>
+                              <Text style={styles.currentPillText}>In Progress</Text>
+                            </View>
+                          )}
+                        </View>
+
+                        <Text style={styles.stageDescription}>
+                          {stage.description}
+                        </Text>
+
+                        {stage.timestamp ? (
+                          <Text style={styles.stageTimestamp}>
+                            ⏱ {formatTimestamp(stage.timestamp)}
+                          </Text>
+                        ) : isPending ? (
+                          <Text style={styles.stagePendingNotice}>Pending</Text>
+                        ) : null}
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* ========================================================= */}
+            {/* 4. DELIVERY ADDRESS CARD                                  */}
+            {/* ========================================================= */}
+            <View style={styles.detailCard}>
+              <View style={styles.detailCardHeader}>
+                <Text style={styles.detailHeaderIcon}>📍</Text>
+                <Text style={styles.detailCardTitle}>Delivery Address</Text>
+              </View>
+
+              <Text style={styles.recipientName}>
+                {order.deliveryCustomerName || order.customer?.name || "Customer"}
+              </Text>
+              {order.deliveryPhone || order.customer?.phone ? (
+                <Text style={styles.recipientPhone}>
+                  Phone: {order.deliveryPhone || order.customer?.phone}
+                </Text>
+              ) : null}
+
+              <Text style={styles.recipientAddress}>
+                {order.deliveryAddress || order.customer?.address || "Address provided at checkout"}
+              </Text>
+
+              {order.deliveryNotes ? (
+                <View style={styles.notesBox}>
+                  <Text style={styles.notesLabel}>Delivery Instructions:</Text>
+                  <Text style={styles.notesText}>{order.deliveryNotes}</Text>
+                </View>
+              ) : null}
+            </View>
+
+            {/* ========================================================= */}
+            {/* 5. ORDERED PRODUCTS BREAKDOWN                             */}
+            {/* ========================================================= */}
+            <View style={styles.detailCard}>
+              <View style={styles.detailCardHeader}>
+                <Text style={styles.detailHeaderIcon}>🛍️</Text>
+                <Text style={styles.detailCardTitle}>
+                  Items in this Order ({order.totalItems || order.items?.length || 1})
+                </Text>
+              </View>
+
+              <View style={styles.itemsList}>
+                {order.items && order.items.length > 0 ? (
+                  order.items.map((it, idx) => (
+                    <View key={idx} style={styles.itemRow}>
+                      <View style={styles.itemThumbWrap}>
+                        <Image
+                          source={
+                            it.imageUrl
+                              ? { uri: it.imageUrl }
+                              : require("@/assets/images/react-logo.png")
+                          }
+                          style={styles.itemThumb}
+                          resizeMode="contain"
+                        />
+                      </View>
+
+                      <View style={styles.itemMeta}>
+                        <Text style={styles.itemName} numberOfLines={2}>
+                          {it.name}
+                        </Text>
+                        {it.brand ? (
+                          <Text style={styles.itemBrand}>{it.brand}</Text>
+                        ) : null}
+                        <Text style={styles.itemQtyPrice}>
+                          Qty: {it.quantity} × ₹{Number(it.price).toFixed(2)}
+                        </Text>
+                      </View>
+
+                      <Text style={styles.itemSubtotal}>
+                        ₹{(Number(it.price) * it.quantity).toFixed(2)}
+                      </Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={styles.noItemsText}>Order item details recorded.</Text>
+                )}
+              </View>
+
+              {/* Price Calculation Summary */}
+              <View style={styles.priceSummaryDivider} />
+
+              <View style={styles.priceRow}>
+                <Text style={styles.priceRowLabel}>Subtotal</Text>
+                <Text style={styles.priceRowVal}>
+                  ₹{(order.subtotalAmount || order.totalAmount).toFixed(2)}
+                </Text>
+              </View>
+
+              {order.discountAmount ? (
+                <View style={styles.priceRow}>
+                  <Text style={[styles.priceRowLabel, { color: "#16A34A" }]}>Savings / Discount</Text>
+                  <Text style={[styles.priceRowVal, { color: "#16A34A" }]}>
+                    -₹{Number(order.discountAmount).toFixed(2)}
+                  </Text>
+                </View>
+              ) : null}
+
+              <View style={styles.priceRow}>
+                <Text style={styles.priceRowLabel}>Delivery Fee</Text>
+                <Text style={[styles.priceRowVal, { color: "#16A34A" }]}>FREE</Text>
+              </View>
+
+              <View style={[styles.priceRow, styles.totalRow]}>
+                <Text style={styles.totalRowLabel}>Total Paid</Text>
+                <Text style={styles.totalRowVal}>₹{Number(order.totalAmount).toFixed(2)}</Text>
+              </View>
+
+              <View style={styles.paymentMethodPill}>
+                <Text style={styles.paymentMethodText}>
+                  💳 Paid via {order.paymentMethod || "UPI"} • Ref: {order.paymentStatus || "Completed"}
+                </Text>
+              </View>
+            </View>
+
+            {/* ========================================================= */}
+            {/* 6. BOTTOM NAVIGATION ACTIONS                              */}
+            {/* ========================================================= */}
+            <View style={styles.bottomActions}>
+              <TouchableOpacity
+                style={styles.primaryActionBtn}
+                onPress={() => router.replace("/orders")}
+                activeOpacity={0.88}
+              >
+                <Text style={styles.primaryActionBtnText}>View All My Orders 📋</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.secondaryActionBtn}
+                onPress={() => router.replace("/catalog")}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.secondaryActionBtnText}>Continue Shopping 🛒</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ height: 40 }} />
+          </>
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#F8FAFC",
+  },
+  header: {
+    backgroundColor: "#3B0764", // Deep rich GrocerEase purple
+    paddingBottom: 16,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  safeHeader: {
+    paddingHorizontal: 16,
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 8,
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.16)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  backBtnArrow: {
+    color: "#FFFFFF",
+    fontSize: 28,
+    fontWeight: "300",
+    marginTop: -3,
+  },
+  headerTitleWrap: {
+    flex: 1,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    letterSpacing: -0.3,
+  },
+  headerSubtitle: {
+    fontSize: 12,
+    color: "#E9D5FF",
+    marginTop: 2,
+    fontWeight: "500",
+  },
+  liveIndicatorPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(34, 197, 94, 0.2)",
+    borderWidth: 1,
+    borderColor: "#22C55E",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 16,
+  },
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#22C55E",
+    marginRight: 6,
+  },
+  liveIndicatorText: {
+    color: "#22C55E",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  mainScroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: 16,
+  },
+  centerLoading: {
+    paddingVertical: 80,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    marginTop: 14,
+    color: "#64748B",
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  notFoundBox: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 32,
+    alignItems: "center",
+    marginTop: 40,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  notFoundTitle: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  notFoundDesc: {
+    fontSize: 14,
+    color: "#64748B",
+    textAlign: "center",
+    marginTop: 8,
+    lineHeight: 20,
+  },
+  actionOutlineBtn: {
+    marginTop: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "#3B0764",
+  },
+  actionOutlineBtnText: {
+    color: "#3B0764",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+
+  // 1. ETA Hero Card
+  etaHeroCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: "#3B0764",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: "#F1F5F9",
+  },
+  etaTopRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  etaBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F3E8FF",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  etaBadgeEmoji: {
+    fontSize: 14,
+    marginRight: 6,
+  },
+  etaBadgeText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#6B21A8",
+  },
+  orderNumberPill: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#64748B",
+    backgroundColor: "#F1F5F9",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  currentStatusHeading: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#0F172A",
+    letterSpacing: -0.4,
+    marginBottom: 6,
+  },
+  etaTimeBox: {
+    marginBottom: 14,
+  },
+  etaLabel: {
+    fontSize: 13,
+    color: "#64748B",
+    fontWeight: "500",
+  },
+  etaTimeVal: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#059669",
+    marginTop: 2,
+  },
+  deliveredHighlight: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F0FDF4",
+    borderWidth: 1,
+    borderColor: "#86EFAC",
+    padding: 10,
+    borderRadius: 12,
+    marginBottom: 14,
+  },
+  deliveredHighlightEmoji: {
+    fontSize: 18,
+    marginRight: 8,
+  },
+  deliveredHighlightText: {
+    fontSize: 13,
+    color: "#166534",
+    fontWeight: "700",
+    flex: 1,
+  },
+  progressBarTrack: {
+    height: 8,
+    backgroundColor: "#E2E8F0",
+    borderRadius: 4,
+    overflow: "hidden",
+    marginVertical: 10,
+  },
+  progressBarFill: {
+    height: "100%",
+    borderRadius: 4,
+  },
+  etaFooterRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 6,
+  },
+  etaFooterHint: {
+    fontSize: 11,
+    color: "#64748B",
+    flex: 1,
+  },
+  etaSyncTime: {
+    fontSize: 11,
+    color: "#94A3B8",
+    fontWeight: "600",
+    marginLeft: 8,
+  },
+
+  // 2. Partner Card
+  partnerCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 18,
+    marginBottom: 16,
+    borderWidth: 1.5,
+    borderColor: "#E0E7FF",
+    shadowColor: "#4338CA",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  partnerHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  partnerAvatarCircle: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: "#4F46E5",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 14,
+    overflow: "hidden",
+  },
+  partnerPhoto: {
+    width: "100%",
+    height: "100%",
+  },
+  partnerAvatarInitial: {
+    color: "#FFFFFF",
+    fontSize: 20,
+    fontWeight: "800",
+  },
+  partnerInfo: {
+    flex: 1,
+  },
+  partnerNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  partnerName: {
+    fontSize: 17,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  verifiedBadge: {
+    backgroundColor: "#DCFCE7",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginLeft: 8,
+  },
+  verifiedBadgeText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#15803D",
+  },
+  partnerRoleText: {
+    fontSize: 12,
+    color: "#64748B",
+    marginTop: 2,
+  },
+  partnerStatusPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 4,
+  },
+  partnerGreenDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: "#16A34A",
+    marginRight: 5,
+  },
+  partnerStatusText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#16A34A",
+  },
+  callPartnerBtn: {
+    marginTop: 14,
+    backgroundColor: "#059669",
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 12,
+    borderRadius: 12,
+    shadowColor: "#059669",
+    shadowOpacity: 0.25,
+    shadowOffset: { width: 0, height: 3 },
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  callPartnerBtnIcon: {
+    fontSize: 16,
+    marginRight: 8,
+  },
+  callPartnerBtnText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  partnerSecurityNotice: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#F1F5F9",
+  },
+  shieldEmoji: {
+    fontSize: 14,
+    marginRight: 6,
+  },
+  securityNoticeText: {
+    fontSize: 11,
+    color: "#64748B",
+    flex: 1,
+    lineHeight: 15,
+  },
+
+  // 3. Amazon-Style Vertical Timeline
+  timelineCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: "#F1F5F9",
+  },
+  sectionTitle: {
+    fontSize: 17,
+    fontWeight: "800",
+    color: "#0F172A",
+    letterSpacing: -0.3,
+  },
+  sectionSubtitle: {
+    fontSize: 12,
+    color: "#64748B",
+    marginTop: 2,
+    marginBottom: 18,
+  },
+  timelineList: {
+    marginTop: 4,
+  },
+  timelineItemRow: {
+    flexDirection: "row",
+    minHeight: 80,
+  },
+  timelineIndicatorCol: {
+    alignItems: "center",
+    width: 32,
+    marginRight: 14,
+  },
+  timelineNode: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 2,
+  },
+  timelineNodeCompleted: {
+    backgroundColor: "#16A34A",
+  },
+  timelineNodeActive: {
+    backgroundColor: "#3B0764",
+    borderWidth: 3,
+    borderColor: "#E9D5FF",
+  },
+  timelineNodePending: {
+    backgroundColor: "#F1F5F9",
+    borderWidth: 2,
+    borderColor: "#CBD5E1",
+  },
+  nodeCheckmark: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  nodeActivePulse: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#FFFFFF",
+  },
+  nodeStepNum: {
+    color: "#94A3B8",
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  timelineLine: {
+    width: 3,
+    flex: 1,
+    marginVertical: -2,
+    zIndex: 1,
+  },
+  timelineLineCompleted: {
+    backgroundColor: "#16A34A",
+  },
+  timelineLinePending: {
+    backgroundColor: "#E2E8F0",
+  },
+  timelineContentCol: {
+    flex: 1,
+    paddingBottom: 22,
+  },
+  stageTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  stageTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  stageTitleCompleted: {
+    color: "#0F172A",
+  },
+  stageTitleActive: {
+    color: "#3B0764",
+    fontWeight: "800",
+  },
+  stageTitlePending: {
+    color: "#94A3B8",
+  },
+  currentPill: {
+    backgroundColor: "#F3E8FF",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  currentPillText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#6B21A8",
+  },
+  stageDescription: {
+    fontSize: 13,
+    color: "#64748B",
+    marginTop: 4,
+    lineHeight: 18,
+  },
+  stageTimestamp: {
+    fontSize: 11,
+    color: "#059669",
+    fontWeight: "600",
+    marginTop: 4,
+  },
+  stagePendingNotice: {
+    fontSize: 11,
+    color: "#94A3B8",
+    marginTop: 4,
+    fontStyle: "italic",
+  },
+
+  // 4. Detail Cards (Address & Items)
+  detailCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 18,
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: "#F1F5F9",
+  },
+  detailCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  detailHeaderIcon: {
+    fontSize: 18,
+    marginRight: 8,
+  },
+  detailCardTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  recipientName: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#0F172A",
+  },
+  recipientPhone: {
+    fontSize: 13,
+    color: "#475569",
+    marginTop: 2,
+  },
+  recipientAddress: {
+    fontSize: 13,
+    color: "#64748B",
+    marginTop: 4,
+    lineHeight: 19,
+  },
+  notesBox: {
+    marginTop: 10,
+    padding: 10,
+    backgroundColor: "#FFFBEB",
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+    borderRadius: 8,
+  },
+  notesLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#B45309",
+  },
+  notesText: {
+    fontSize: 12,
+    color: "#78350F",
+    marginTop: 2,
+  },
+
+  // Items List
+  itemsList: {
+    marginTop: 4,
+  },
+  itemRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
+  },
+  itemThumbWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+    overflow: "hidden",
+  },
+  itemThumb: {
+    width: 36,
+    height: 36,
+  },
+  itemMeta: {
+    flex: 1,
+  },
+  itemName: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#0F172A",
+  },
+  itemBrand: {
+    fontSize: 11,
+    color: "#64748B",
+  },
+  itemQtyPrice: {
+    fontSize: 12,
+    color: "#475569",
+    marginTop: 2,
+  },
+  itemSubtotal: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#0F172A",
+    marginLeft: 8,
+  },
+  noItemsText: {
+    color: "#94A3B8",
+    fontSize: 13,
+    paddingVertical: 10,
+  },
+  priceSummaryDivider: {
+    height: 1,
+    backgroundColor: "#E2E8F0",
+    marginVertical: 12,
+  },
+  priceRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 4,
+  },
+  priceRowLabel: {
+    fontSize: 13,
+    color: "#64748B",
+  },
+  priceRowVal: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#0F172A",
+  },
+  totalRow: {
+    marginTop: 6,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#E2E8F0",
+  },
+  totalRowLabel: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  totalRowVal: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#3B0764",
+  },
+  paymentMethodPill: {
+    marginTop: 12,
+    backgroundColor: "#F1F5F9",
+    padding: 8,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  paymentMethodText: {
+    fontSize: 11,
+    color: "#475569",
+    fontWeight: "600",
+  },
+
+  // 6. Bottom Actions
+  bottomActions: {
+    marginTop: 8,
+  },
+  primaryActionBtn: {
+    backgroundColor: "#3B0764",
+    paddingVertical: 15,
+    borderRadius: 14,
+    alignItems: "center",
+    marginBottom: 10,
+    shadowColor: "#3B0764",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  primaryActionBtnText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  secondaryActionBtn: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
+    borderColor: "#3B0764",
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: "center",
+  },
+  secondaryActionBtnText: {
+    color: "#3B0764",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+});
+

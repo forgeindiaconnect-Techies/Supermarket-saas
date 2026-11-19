@@ -82,12 +82,22 @@ export default function OrdersManagement() {
     }
   }, [searchParams]);
   const [selectedOrder, setSelectedOrder] = useState(null);
-  const [activeTab, setActiveTab] = useState("ALL");
+  const [fulfillmentTab, setFulfillmentTab] = useState("ONLINE_ALL");
+  const [statusFilter, setStatusFilter] = useState("ALL");
   const [paymentMethodFilter, setPaymentMethodFilter] = useState("All Payment Methods");
   const [dateFilter, setDateFilter] = useState("all");
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
   const [showTopProductsModal, setShowTopProductsModal] = useState(false);
+
+  // Live Supermarket Availability Configuration (Cases 1, 2, 3, 4)
+  const [storeAvailability, setStoreAvailability] = useState(() => ({
+    onlineDeliveryAvailable: currentSupermarket?.onlineDeliveryAvailable === true,
+    selfPickupAvailable: currentSupermarket?.selfPickupAvailable === true,
+    storeName: currentSupermarket?.name || "Supermarket",
+    storeCode: currentSupermarket?.code || "",
+    loaded: false,
+  }));
 
   // Async action tracking
   const [approvingId, setApprovingId] = useState(null);
@@ -95,10 +105,37 @@ export default function OrdersManagement() {
   const [actionMessage, setActionMessage] = useState("");
   const [copiedId, setCopiedId] = useState("");
 
+  const fetchStoreAvailability = async () => {
+    try {
+      const tenantId =
+        currentSupermarket?._id ||
+        user?.supermarket?._id ||
+        (typeof user?.supermarket === "string" ? user.supermarket : null) ||
+        currentSupermarket?.code;
+      if (tenantId) {
+        const res = await API.get(`/supermarkets/${tenantId}/availability`);
+        if (res.data?.success && res.data.supermarket) {
+          const sm = res.data.supermarket;
+          setStoreAvailability({
+            onlineDeliveryAvailable: sm.onlineDeliveryAvailable === true,
+            selfPickupAvailable: sm.selfPickupAvailable === true,
+            storeName: sm.name,
+            storeCode: sm.code,
+            loaded: true,
+          });
+        }
+      }
+    } catch (err) {
+      console.warn("Live store availability check:", err.message);
+    }
+  };
+
   const fetchOrders = async (showLoading = false) => {
     try {
       if (showLoading) setLoading(true);
-      const res = await API.get("/orders");
+      const res = await API.get("/orders", {
+        params: { source: "ONLINE", registrationType: "ONLINE" },
+      });
       if (res.data?.success && Array.isArray(res.data.orders)) {
         let orderList = res.data.orders;
         if (!isSuperAdmin) {
@@ -107,7 +144,10 @@ export default function OrdersManagement() {
           orderList = orderList.filter((o) => {
             const oId = o.supermarket ? (typeof o.supermarket === "object" ? String(o.supermarket._id || o.supermarket) : String(o.supermarket)) : null;
             const oCode = o.supermarketCode ? String(o.supermarketCode).toUpperCase() : null;
-            return (tenantId && oId && tenantId === oId) || (tenantCode && oCode && tenantCode === oCode);
+            const matchesTenant = (tenantId && oId && tenantId === oId) || (tenantCode && oCode && tenantCode === oCode);
+            // Strict Online filter: never display offline walk-in purchases in Order tab
+            const isOnline = o.purchaseMode === "ONLINE" || o.orderType === "DELIVERY" || o.orderType === "SELF_PICKUP";
+            return matchesTenant && isOnline;
           });
         }
         setOrders(orderList);
@@ -121,6 +161,7 @@ export default function OrdersManagement() {
 
   useEffect(() => {
     fetchOrders(true);
+    fetchStoreAvailability();
 
     // Auto-poll orders every 4 seconds
     const timer = setInterval(() => {
@@ -142,10 +183,31 @@ export default function OrdersManagement() {
       socket.on("new-order", refresh);
       socket.on("order-status-update", refresh);
       socket.on("platform:stats_updated", refresh);
+
+      socket.on("supermarket:availability_updated", (data) => {
+        const tenantId = currentSupermarket?._id ? String(currentSupermarket._id) : (user?.supermarket?._id ? String(user.supermarket._id) : null);
+        const tenantCode = (currentSupermarket?.code || user?.supermarketCode || "").toUpperCase();
+        if (
+          !tenantId ||
+          data?.supermarketId === tenantId ||
+          (data?.supermarketCode && data.supermarketCode.toUpperCase() === tenantCode)
+        ) {
+          setStoreAvailability((prev) => ({
+            ...prev,
+            onlineDeliveryAvailable: data.onlineDeliveryAvailable === true,
+            selfPickupAvailable: data.selfPickupAvailable === true,
+            loaded: true,
+          }));
+        }
+      });
+      socket.on("supermarket:updated", () => {
+        fetchStoreAvailability();
+      });
     } catch (_) {}
 
     const handleStorageUpdate = () => {
       fetchOrders(false);
+      fetchStoreAvailability();
     };
     window.addEventListener("grocerease_storage_updated", handleStorageUpdate);
 
@@ -240,7 +302,41 @@ export default function OrdersManagement() {
     }
   };
 
-  // 4. Simulate a Live Customer Pre-Booking order (for instant testing & verification)
+  // 4. Update Self-Pickup status (Pending, ReadyForPickup, Completed, Cancelled)
+  const handleUpdatePickupStatus = async (orderId, newStatus) => {
+    try {
+      const res = await API.put(`/orders/${orderId}/pickup-status`, { pickupStatus: newStatus });
+      if (res.data?.success) {
+        setActionMessage(`✓ Pickup status updated to "${newStatus}".`);
+        setTimeout(() => setActionMessage(""), 3500);
+        fetchOrders(false);
+        if (selectedOrder && selectedOrder._id === orderId) {
+          setSelectedOrder((prev) => ({ ...prev, pickupStatus: newStatus }));
+        }
+      }
+    } catch (err) {
+      alert(`Failed to update pickup status: ${err.response?.data?.message || err.message}`);
+    }
+  };
+
+  // 5. Update Delivery status (Pending, Assigned, OutForDelivery, Delivered, Failed)
+  const handleUpdateDeliveryStatus = async (orderId, newStatus) => {
+    try {
+      const res = await API.put(`/orders/${orderId}/delivery-status`, { deliveryStatus: newStatus });
+      if (res.data?.success) {
+        setActionMessage(`✓ Delivery status updated to "${newStatus}".`);
+        setTimeout(() => setActionMessage(""), 3500);
+        fetchOrders(false);
+        if (selectedOrder && selectedOrder._id === orderId) {
+          setSelectedOrder((prev) => ({ ...prev, deliveryStatus: newStatus }));
+        }
+      }
+    } catch (err) {
+      alert(`Failed to update delivery status: ${err.response?.data?.message || err.message}`);
+    }
+  };
+
+  // 6. Simulate a Live Customer Pre-Booking order (for instant testing & verification)
   const handleSimulateCustomerOrder = async () => {
     try {
       setActionMessage("⚡ Simulating real customer self-checkout from mobile app...");
@@ -255,6 +351,7 @@ export default function OrdersManagement() {
       const customerNames = ["Rahul Sharma", "Sneha Reddy", "Vikram Patel", "Divya Nair"];
       const randomName = customerNames[Math.floor(Math.random() * customerNames.length)];
       const randomPhone = `+91 ${Math.floor(7000000000 + Math.random() * 2999999999)}`;
+      const randomEmail = `${randomName.toLowerCase().replace(/\s+/g, ".")}@gmail.com`;
 
       // 1. Log cart activity (triggers live cart item notification)
       await API.post("/orders/cart-activity", {
@@ -265,6 +362,8 @@ export default function OrdersManagement() {
         price: chosenProd.price,
         action: "added",
       }).catch(() => {});
+
+      const isPickupMode = fulfillmentTab === "PICKUP" || (!storeAvailability.onlineDeliveryAvailable && storeAvailability.selfPickupAvailable);
 
       // 2. Checkout pre-booking order
       const checkoutRes = await API.post("/orders/checkout", {
@@ -277,19 +376,24 @@ export default function OrdersManagement() {
           },
         ],
         paymentMethod: "UPI",
+        orderType: isPickupMode ? "SELF_PICKUP" : "DELIVERY",
+        pickupDate: isPickupMode ? "Today" : undefined,
+        pickupTimeSlot: isPickupMode ? "10:00 AM - 12:00 PM" : undefined,
+        pickupStatus: isPickupMode ? "Pending" : undefined,
+        deliveryAddress: !isPickupMode ? "123 Indiranagar, 100ft Rd, Bangalore" : undefined,
         customer: {
           name: randomName,
           phone: randomPhone,
-          email: `${randomName.toLowerCase().replace(/\s+/g, ".")}@gmail.com`,
+          email: randomEmail,
           address: "Bangalore",
         },
       });
 
       if (checkoutRes.data?.success) {
-        setActionMessage(`✓ Real-time customer pre-booking created for ${randomName}! Notification bell updated.`);
+        setActionMessage(`✓ Real-time customer ${isPickupMode ? "pickup" : "delivery"} pre-booking created for ${randomName}! Notification bell updated.`);
         window.dispatchEvent(new Event("grocerease_storage_updated"));
         await fetchOrders(false);
-        setActiveTab("PENDING");
+        setStatusFilter("PENDING");
         setTimeout(() => setActionMessage(""), 5000);
       }
     } catch (err) {
@@ -306,7 +410,59 @@ export default function OrdersManagement() {
     setTimeout(() => setCopiedId(""), 2000);
   };
 
-  // Filtered Orders Calculation
+  // Determine Dynamic Fulfillment Tab Scenario based on Super Admin configuration:
+  // - Case 1: Only Online Delivery enabled -> Display ONLY Delivery tab
+  // - Case 2: Only Self Pickup enabled -> Display ONLY Pickup tab
+  // - Case 3: Both enabled -> Display exactly THREE tabs: Online Orders, Pickup, Delivery
+  // - Case 4: Both disabled -> Do not display these purchase-order management tabs
+  const isOnlineDeliveryEnabled = storeAvailability.onlineDeliveryAvailable === true;
+  const isSelfPickupEnabled = storeAvailability.selfPickupAvailable === true;
+
+  const fulfillmentScenario = useMemo(() => {
+    if (isSuperAdmin && !currentSupermarket) return "CASE_3_BOTH";
+
+    if (isOnlineDeliveryEnabled && isSelfPickupEnabled) return "CASE_3_BOTH";
+    if (isOnlineDeliveryEnabled && !isSelfPickupEnabled) return "CASE_1_DELIVERY_ONLY";
+    if (!isOnlineDeliveryEnabled && isSelfPickupEnabled) return "CASE_2_PICKUP_ONLY";
+    return "CASE_4_NEITHER";
+  }, [isSuperAdmin, currentSupermarket, isOnlineDeliveryEnabled, isSelfPickupEnabled]);
+
+  // Synchronize active fulfillment tab with scenario changes
+  useEffect(() => {
+    if (fulfillmentScenario === "CASE_1_DELIVERY_ONLY") {
+      setFulfillmentTab("DELIVERY");
+    } else if (fulfillmentScenario === "CASE_2_PICKUP_ONLY") {
+      setFulfillmentTab("PICKUP");
+    } else if (fulfillmentScenario === "CASE_3_BOTH") {
+      setFulfillmentTab((prev) =>
+        prev === "DELIVERY" || prev === "PICKUP" || prev === "ONLINE_ALL" ? prev : "ONLINE_ALL"
+      );
+    } else {
+      setFulfillmentTab("NONE");
+    }
+  }, [fulfillmentScenario]);
+
+  // Dedicated lists for fulfillment badge counts
+  const onlineOrdersList = useMemo(() => {
+    return orders.filter(
+      (o) => o.purchaseMode === "ONLINE" || o.orderType === "DELIVERY" || o.orderType === "SELF_PICKUP"
+    );
+  }, [orders]);
+
+  const pickupOrdersList = useMemo(() => {
+    return orders.filter(
+      (o) => o.orderType === "SELF_PICKUP" || Boolean(o.pickupDate) || Boolean(o.pickupTimeSlot)
+    );
+  }, [orders]);
+
+  const deliveryOrdersList = useMemo(() => {
+    return orders.filter((o) => {
+      const isPickup = o.orderType === "SELF_PICKUP" || Boolean(o.pickupDate) || Boolean(o.pickupTimeSlot);
+      return (o.orderType === "DELIVERY" || Boolean(o.deliveryAddress)) && !isPickup;
+    });
+  }, [orders]);
+
+  // Filtered Orders Calculation according to Fulfillment Tab and Status Filter
   const filteredOrders = useMemo(() => {
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -314,18 +470,35 @@ export default function OrdersManagement() {
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
     return orders.filter((o) => {
-      // 1. Status Tab filter
-      if (activeTab === "PENDING" && o.paymentStatus !== "Pending") return false;
-      if (activeTab === "APPROVED" && o.paymentStatus !== "Approved") return false;
-      if (activeTab === "COMPLETED" && o.paymentStatus !== "Completed") return false;
-      if (activeTab === "FAILED" && o.paymentStatus !== "Failed") return false;
+      // 1. Fulfillment Tab isolation
+      if (fulfillmentScenario === "CASE_4_NEITHER") {
+        return false;
+      }
 
-      // 2. Payment Method filter
+      const isPickup = o.orderType === "SELF_PICKUP" || Boolean(o.pickupDate) || Boolean(o.pickupTimeSlot);
+      const isDelivery = (o.orderType === "DELIVERY" || Boolean(o.deliveryAddress)) && !isPickup;
+      const isOnline = o.purchaseMode === "ONLINE" || isPickup || isDelivery;
+
+      if (fulfillmentTab === "DELIVERY") {
+        if (!isDelivery) return false;
+      } else if (fulfillmentTab === "PICKUP") {
+        if (!isPickup) return false;
+      } else if (fulfillmentTab === "ONLINE_ALL") {
+        if (!isOnline) return false;
+      }
+
+      // 2. Status Tab filter
+      if (statusFilter === "PENDING" && o.paymentStatus !== "Pending") return false;
+      if (statusFilter === "APPROVED" && o.paymentStatus !== "Approved") return false;
+      if (statusFilter === "COMPLETED" && o.paymentStatus !== "Completed") return false;
+      if (statusFilter === "FAILED" && o.paymentStatus !== "Failed") return false;
+
+      // 3. Payment Method filter
       if (paymentMethodFilter !== "All Payment Methods" && o.paymentMethod !== paymentMethodFilter) {
         return false;
       }
 
-      // 3. Date range filter
+      // 4. Date range filter
       if (dateFilter !== "all" && o.createdAt) {
         const orderDate = new Date(o.createdAt);
         if (dateFilter === "today" && orderDate < startOfToday) return false;
@@ -345,23 +518,34 @@ export default function OrdersManagement() {
         }
       }
 
-      // 4. Search query
+      // 5. Search query
       if (search.trim()) {
         const q = search.toLowerCase().trim();
         const matchNumber = o.orderNumber?.toLowerCase().includes(q);
         const matchCustomer = o.customer?.name?.toLowerCase().includes(q);
+        const matchEmail = o.customer?.email?.toLowerCase().includes(q);
         const matchPhone = o.customer?.phone?.toLowerCase().includes(q);
         const matchExit = o.exitBarcode?.toLowerCase().includes(q);
         const matchItem = o.items?.some((it) => it.name?.toLowerCase().includes(q));
 
-        if (!matchNumber && !matchCustomer && !matchPhone && !matchExit && !matchItem) {
+        if (!matchNumber && !matchCustomer && !matchEmail && !matchPhone && !matchExit && !matchItem) {
           return false;
         }
       }
 
       return true;
     });
-  }, [orders, activeTab, paymentMethodFilter, dateFilter, customStartDate, customEndDate, search]);
+  }, [
+    orders,
+    fulfillmentScenario,
+    fulfillmentTab,
+    statusFilter,
+    paymentMethodFilter,
+    dateFilter,
+    customStartDate,
+    customEndDate,
+    search,
+  ]);
 
   // Executive KPI Metrics
   const totalOrdersCount = orders.length;
@@ -504,12 +688,12 @@ export default function OrdersManagement() {
   return (
     <div className="grocer-page-container">
       {/* ========================================================================= */}
-      {/* 1. TOP HERO BANNER - EXACT MATCH TO REGISTER NEW PRODUCT                  */}
+      {/* 1. TOP HERO BANNER - STRICT ONLINE REGISTRATIONS ONLY                     */}
       {/* ========================================================================= */}
       <ErpPageBanner
-        title="Orders & Sales Management"
-        subtitle="Live customer self-checkouts, multi-method payment verification & verified revenue ledger"
-        badges={["Live Cart Monitoring", "UPI & Cash Verification", "Instant Tax Invoices"]}
+        title="Orders Management (Online Registrations Only)"
+        subtitle="Customer orders and pre-bookings from ONLINE registrations • Digital carts, pickup & delivery dispatch"
+        badges={["ONLINE Registrations Only", "Strict Multi-Tenant Scoping", "Real-Time Tracking"]}
         icon={<ShoppingCart size={22} color="#ffffff" strokeWidth={2.4} />}
       />
 
@@ -625,58 +809,162 @@ export default function OrdersManagement() {
       
 
       {/* ========================================================================= */}
-      {/* 4. STATUS TABS STRIP                                                      */}
+      {/* 4. DYNAMIC FULFILLMENT ORDER TABS (STRICT SUPER ADMIN CONFIGURATION)       */}
       {/* ========================================================================= */}
       <div style={{ marginBottom: "16px" }}>
-        <div className="om-tabs-strip">
-          <button
-            type="button"
-            className={`om-tab-btn ${activeTab === "ALL" ? "active" : ""}`}
-            onClick={() => setActiveTab("ALL")}
+        {fulfillmentScenario === "CASE_4_NEITHER" ? (
+          <div
+            style={{
+              background: "#FEF2F2",
+              border: "1.5px solid #FCA5A5",
+              borderRadius: "14px",
+              padding: "16px 20px",
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              color: "#991B1B",
+            }}
           >
-            <span>All Orders</span>
-            <span style={{ opacity: 0.85, fontSize: "11px" }}>({orders.length})</span>
-          </button>
+            <AlertTriangle size={24} color="#DC2626" />
+            <div>
+              <h4 style={{ margin: "0 0 4px 0", fontSize: "14px", fontWeight: 800 }}>
+                Online Ordering &amp; Fulfillment Disabled by Super Admin
+              </h4>
+              <p style={{ margin: 0, fontSize: "12.5px", color: "#B91C1C", lineHeight: 1.4 }}>
+                Neither <strong>Online Delivery</strong> nor <strong>Self Pickup</strong> is currently enabled for this supermarket.
+                Purchase order management tabs are hidden until permissions are configured by Super Admin.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            {/* Main Fulfillment Tabs */}
+            <div className="om-tabs-strip">
+              {/* Case 3: Both enabled -> Exactly THREE tabs: 1. Online Orders, 2. Pickup, 3. Delivery */}
+              {fulfillmentScenario === "CASE_3_BOTH" && (
+                <>
+                  <button
+                    type="button"
+                    className={`om-tab-btn ${fulfillmentTab === "ONLINE_ALL" ? "active" : ""}`}
+                    onClick={() => setFulfillmentTab("ONLINE_ALL")}
+                    style={{ fontSize: "13px", padding: "8px 18px" }}
+                  >
+                    <span>🌐 Online Orders</span>
+                    <span style={{ opacity: 0.85, fontSize: "11px", fontWeight: 800 }}>
+                      ({onlineOrdersList.length})
+                    </span>
+                  </button>
 
-          <button
-            type="button"
-            className={`om-tab-btn warning ${activeTab === "PENDING" ? "active" : ""}`}
-            onClick={() => setActiveTab("PENDING")}
-            style={pendingOrders.length > 0 && activeTab !== "PENDING" ? { borderColor: "#F59E0B", color: "#D97706" } : {}}
-          >
-            <span>⏳ Pending Approval</span>
-            <span style={{ opacity: 0.85, fontSize: "11px" }}>({pendingOrders.length})</span>
-          </button>
+                  <button
+                    type="button"
+                    className={`om-tab-btn ${fulfillmentTab === "PICKUP" ? "active" : ""}`}
+                    onClick={() => setFulfillmentTab("PICKUP")}
+                    style={
+                      fulfillmentTab === "PICKUP"
+                        ? { background: "#7C3AED", borderColor: "#7C3AED", color: "#FFFFFF" }
+                        : { borderColor: "#DDD6FE", color: "#6D28D9" }
+                    }
+                  >
+                    <span>🏪 Pickup</span>
+                    <span style={{ opacity: 0.85, fontSize: "11px", fontWeight: 800 }}>
+                      ({pickupOrdersList.length})
+                    </span>
+                  </button>
 
-          <button
-            type="button"
-            className={`om-tab-btn indigo ${activeTab === "APPROVED" ? "active" : ""}`}
-            onClick={() => setActiveTab("APPROVED")}
-            style={approvedOrders.length > 0 && activeTab !== "APPROVED" ? { borderColor: "#818CF8", color: "#4F46E5" } : {}}
-          >
-            <span>🛡️ Approved</span>
-            <span style={{ opacity: 0.85, fontSize: "11px" }}>({approvedOrders.length})</span>
-          </button>
+                  <button
+                    type="button"
+                    className={`om-tab-btn ${fulfillmentTab === "DELIVERY" ? "active" : ""}`}
+                    onClick={() => setFulfillmentTab("DELIVERY")}
+                    style={
+                      fulfillmentTab === "DELIVERY"
+                        ? { background: "#0284C7", borderColor: "#0284C7", color: "#FFFFFF" }
+                        : { borderColor: "#BAE6FD", color: "#0369A1" }
+                    }
+                  >
+                    <span>🚚 Delivery</span>
+                    <span style={{ opacity: 0.85, fontSize: "11px", fontWeight: 800 }}>
+                      ({deliveryOrdersList.length})
+                    </span>
+                  </button>
+                </>
+              )}
 
-          <button
-            type="button"
-            className={`om-tab-btn ${activeTab === "COMPLETED" ? "active" : ""}`}
-            onClick={() => setActiveTab("COMPLETED")}
-          >
-            <span>✓ Completed</span>
-            <span style={{ opacity: 0.85, fontSize: "11px" }}>({completedOrders.length})</span>
-          </button>
+              {/* Case 1: Only Online Delivery enabled -> Display ONLY Delivery tab */}
+              {fulfillmentScenario === "CASE_1_DELIVERY_ONLY" && (
+                <button
+                  type="button"
+                  className={`om-tab-btn ${fulfillmentTab === "DELIVERY" ? "active" : ""}`}
+                  onClick={() => setFulfillmentTab("DELIVERY")}
+                  style={{
+                    fontSize: "13px",
+                    padding: "8px 20px",
+                    background: "#0284C7",
+                    borderColor: "#0284C7",
+                    color: "#FFFFFF",
+                  }}
+                >
+                  <span>🚚 Delivery</span>
+                  <span style={{ opacity: 0.9, fontSize: "11px", fontWeight: 800 }}>
+                    ({deliveryOrdersList.length})
+                  </span>
+                </button>
+              )}
 
-          {failedOrders.length > 0 && (
-            <button
-              type="button"
-              className={`om-tab-btn ${activeTab === "FAILED" ? "active" : ""}`}
-              onClick={() => setActiveTab("FAILED")}
-            >
-              <span>✕ Failed / Cancelled ({failedOrders.length})</span>
-            </button>
-          )}
-        </div>
+              {/* Case 2: Only Self Pickup enabled -> Display ONLY Pickup tab */}
+              {fulfillmentScenario === "CASE_2_PICKUP_ONLY" && (
+                <button
+                  type="button"
+                  className={`om-tab-btn ${fulfillmentTab === "PICKUP" ? "active" : ""}`}
+                  onClick={() => setFulfillmentTab("PICKUP")}
+                  style={{
+                    fontSize: "13px",
+                    padding: "8px 20px",
+                    background: "#7C3AED",
+                    borderColor: "#7C3AED",
+                    color: "#FFFFFF",
+                  }}
+                >
+                  <span>🏪 Pickup</span>
+                  <span style={{ opacity: 0.9, fontSize: "11px", fontWeight: 800 }}>
+                    ({pickupOrdersList.length})
+                  </span>
+                </button>
+              )}
+            </div>
+
+            {/* Status Filter Sub-Strip */}
+            <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap", paddingTop: "2px" }}>
+              <span style={{ fontSize: "11.5px", fontWeight: 700, color: "#64748B", marginRight: "4px" }}>
+                Filter Status:
+              </span>
+              {[
+                { key: "ALL", label: `All (${filteredOrders.length})` },
+                { key: "PENDING", label: `⏳ Pending (${pendingOrders.length})` },
+                { key: "APPROVED", label: `🛡️ Approved (${approvedOrders.length})` },
+                { key: "COMPLETED", label: `✓ Completed (${completedOrders.length})` },
+              ].map((st) => (
+                <button
+                  key={st.key}
+                  type="button"
+                  onClick={() => setStatusFilter(st.key)}
+                  style={{
+                    padding: "4px 12px",
+                    borderRadius: "16px",
+                    border: statusFilter === st.key ? "1.5px solid #2563EB" : "1px solid #E2E8F0",
+                    background: statusFilter === st.key ? "#EFF6FF" : "#FFFFFF",
+                    color: statusFilter === st.key ? "#1D4ED8" : "#475569",
+                    fontWeight: 700,
+                    fontSize: "11px",
+                    cursor: "pointer",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  {st.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ========================================================================= */}
@@ -747,7 +1035,7 @@ export default function OrdersManagement() {
             </div>
             <h3 className="pm-catalog-heading">
               Orders Ledger ({filteredOrders.length} Records)
-              {activeTab === "PENDING" && " — Awaiting Cash or Staff Verification"}
+              {statusFilter === "PENDING" && " — Awaiting Cash or Staff Verification"}
             </h3>
           </div>
 
@@ -870,14 +1158,15 @@ export default function OrdersManagement() {
             <table className="pm-products-table">
               <thead>
                 <tr>
-                  <th style={{ width: "16%", whiteSpace: "nowrap" }}>ORDER ID & TIME</th>
-                  <th style={{ width: "12%", whiteSpace: "nowrap" }}>CUSTOMER</th>
-                  <th style={{ width: "16%" }}>PURCHASED PRODUCTS</th>
-                  <th style={{ width: "10%", whiteSpace: "nowrap" }}>PAYMENT</th>
-                  <th style={{ width: "10%", whiteSpace: "nowrap" }}>TOTAL</th>
-                  <th style={{ width: "11%", whiteSpace: "nowrap" }}>STATUS</th>
-                  <th style={{ width: "12%", whiteSpace: "nowrap" }}>EXIT BARCODE</th>
-                  <th style={{ width: "13%", textAlign: "center", whiteSpace: "nowrap" }}>ACTIONS</th>
+                  <th style={{ width: "13%", whiteSpace: "nowrap" }}>ORDER ID &amp; TIME</th>
+                  <th style={{ width: "15%", whiteSpace: "nowrap" }}>CUSTOMER DETAILS</th>
+                  <th style={{ width: "13%" }}>PRODUCTS</th>
+                  <th style={{ width: "19%" }}>FULFILLMENT &amp; DETAILS</th>
+                  <th style={{ width: "9%", whiteSpace: "nowrap" }}>PAYMENT</th>
+                  <th style={{ width: "9%", whiteSpace: "nowrap" }}>TOTAL</th>
+                  <th style={{ width: "8%", whiteSpace: "nowrap" }}>STATUS</th>
+                  <th style={{ width: "7%", whiteSpace: "nowrap" }}>EXIT PASS</th>
+                  <th style={{ width: "7%", textAlign: "center", whiteSpace: "nowrap" }}>ACTIONS</th>
                 </tr>
               </thead>
               <tbody>
@@ -897,6 +1186,9 @@ export default function OrdersManagement() {
                     hour: "2-digit",
                     minute: "2-digit",
                   });
+
+                  const isPickup = ord.orderType === "SELF_PICKUP" || Boolean(ord.pickupDate) || Boolean(ord.pickupTimeSlot);
+                  const isDelivery = (ord.orderType === "DELIVERY" || Boolean(ord.deliveryAddress)) && !isPickup;
 
                   return (
                     <tr key={ord._id}>
@@ -943,20 +1235,36 @@ export default function OrdersManagement() {
                         </div>
                       </td>
 
-                      {/* Customer Info */}
+                      {/* Customer Info: Name, Phone & Email */}
                       <td>
                         <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                          <strong style={{ fontSize: "13px", color: "#0F172A", whiteSpace: "nowrap" }}>
-                            {ord.customer?.name || "Guest Shopper"}
-                          </strong>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                            <strong style={{ fontSize: "13px", color: "#0F172A", whiteSpace: "nowrap" }}>
+                              {ord.customer?.name || "Customer"}
+                            </strong>
+                            <span
+                              style={{
+                                fontSize: "9.5px",
+                                fontWeight: 800,
+                                padding: "1px 6px",
+                                borderRadius: "4px",
+                                background: "#EFF6FF",
+                                color: "#1D4ED8",
+                                border: "1px solid #BFDBFE",
+                                letterSpacing: "0.3px",
+                              }}
+                            >
+                              ONLINE
+                            </span>
+                          </div>
                           {ord.customer?.phone && (
                             <span style={{ fontSize: "11px", color: "#64748B", display: "flex", alignItems: "center", gap: "4px", whiteSpace: "nowrap" }}>
                               <Phone size={11} /> {formatPhone(ord.customer.phone)}
                             </span>
                           )}
-                          {ord.customer?.address && (
-                            <span style={{ fontSize: "10.5px", color: "#94A3B8", maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={ord.customer.address}>
-                              📍 {ord.customer.address}
+                          {ord.customer?.email && (
+                            <span style={{ fontSize: "10.5px", color: "#2563EB", fontWeight: 600, whiteSpace: "nowrap" }}>
+                              ✉️ {ord.customer.email}
                             </span>
                           )}
                         </div>
@@ -983,7 +1291,7 @@ export default function OrdersManagement() {
                             style={{
                               fontSize: "12px",
                               color: "#475569",
-                              maxWidth: "200px",
+                              maxWidth: "180px",
                               whiteSpace: "nowrap",
                               overflow: "hidden",
                               textOverflow: "ellipsis",
@@ -994,6 +1302,175 @@ export default function OrdersManagement() {
                             {(ord.items || []).map((i) => `${i.name} (x${i.quantity})`).join(", ") || "Purchased Goods"}
                           </span>
                         </div>
+                      </td>
+
+                      {/* Fulfillment Details (Pickup / Delivery / In-Store) */}
+                      <td>
+                        {isPickup ? (
+                          <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                            <span
+                              style={{
+                                fontSize: "11px",
+                                fontWeight: 800,
+                                background: "#F5F3FF",
+                                color: "#7C3AED",
+                                border: "1px solid #DDD6FE",
+                                padding: "2px 7px",
+                                borderRadius: "5px",
+                                width: "fit-content",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              🏪 Self Pickup
+                            </span>
+                            <span style={{ fontSize: "11px", color: "#1E293B", fontWeight: 700, whiteSpace: "nowrap" }}>
+                              📅 {ord.pickupDate || "Today"} &bull; ⏰ {ord.pickupTimeSlot || "Standard"}
+                            </span>
+                            <div style={{ display: "flex", alignItems: "center", gap: "5px", marginTop: "2px" }}>
+                              <span
+                                style={{
+                                  fontSize: "10px",
+                                  fontWeight: 800,
+                                  padding: "2px 6px",
+                                  borderRadius: "4px",
+                                  background:
+                                    ord.pickupStatus === "Completed"
+                                      ? "#DCFCE7"
+                                      : ord.pickupStatus === "ReadyForPickup"
+                                      ? "#DBEAFE"
+                                      : "#FEF3C7",
+                                  color:
+                                    ord.pickupStatus === "Completed"
+                                      ? "#166534"
+                                      : ord.pickupStatus === "ReadyForPickup"
+                                      ? "#1E40AF"
+                                      : "#92400E",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                {ord.pickupStatus === "ReadyForPickup"
+                                  ? "Ready for Pickup"
+                                  : ord.pickupStatus === "Completed"
+                                  ? "✓ Picked Up"
+                                  : "⏳ Awaiting Pickup"}
+                              </span>
+                              {ord.pickupStatus !== "Completed" && (
+                                <select
+                                  value={ord.pickupStatus || "Pending"}
+                                  onChange={(e) => handleUpdatePickupStatus(ord._id, e.target.value)}
+                                  style={{
+                                    fontSize: "10px",
+                                    padding: "2px 4px",
+                                    borderRadius: "4px",
+                                    border: "1px solid #CBD5E1",
+                                    background: "#FFFFFF",
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  <option value="Pending">Pending</option>
+                                  <option value="ReadyForPickup">Ready</option>
+                                  <option value="Completed">Completed</option>
+                                </select>
+                              )}
+                            </div>
+                          </div>
+                        ) : isDelivery ? (
+                          <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                            <span
+                              style={{
+                                fontSize: "11px",
+                                fontWeight: 800,
+                                background: "#EFF6FF",
+                                color: "#0284C7",
+                                border: "1px solid #BAE6FD",
+                                padding: "2px 7px",
+                                borderRadius: "5px",
+                                width: "fit-content",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              🚚 Online Delivery
+                            </span>
+                            <span
+                              style={{
+                                fontSize: "11px",
+                                color: "#334155",
+                                maxWidth: "180px",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                              title={ord.deliveryAddress || ord.customer?.address}
+                            >
+                              📍 {ord.deliveryAddress || ord.customer?.address || "Address on file"}
+                            </span>
+                            <div style={{ display: "flex", alignItems: "center", gap: "5px", marginTop: "2px" }}>
+                              <span
+                                style={{
+                                  fontSize: "10px",
+                                  fontWeight: 800,
+                                  padding: "2px 6px",
+                                  borderRadius: "4px",
+                                  background:
+                                    ord.deliveryStatus === "Delivered"
+                                      ? "#DCFCE7"
+                                      : ord.deliveryStatus === "OutForDelivery"
+                                      ? "#DBEAFE"
+                                      : "#FEF3C7",
+                                  color:
+                                    ord.deliveryStatus === "Delivered"
+                                      ? "#166534"
+                                      : ord.deliveryStatus === "OutForDelivery"
+                                      ? "#1E40AF"
+                                      : "#92400E",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                {ord.deliveryStatus || "Pending"}
+                              </span>
+                              {ord.deliveryStatus !== "Delivered" && (
+                                <select
+                                  value={ord.deliveryStatus || "Pending"}
+                                  onChange={(e) => handleUpdateDeliveryStatus(ord._id, e.target.value)}
+                                  style={{
+                                    fontSize: "10px",
+                                    padding: "2px 4px",
+                                    borderRadius: "4px",
+                                    border: "1px solid #CBD5E1",
+                                    background: "#FFFFFF",
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  <option value="Pending">Pending</option>
+                                  <option value="Assigned">Assigned</option>
+                                  <option value="OutForDelivery">Out for Delivery</option>
+                                  <option value="Delivered">Delivered</option>
+                                </select>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                            <span
+                              style={{
+                                fontSize: "11px",
+                                fontWeight: 800,
+                                background: "#F0FDF4",
+                                color: "#16A34A",
+                                border: "1px solid #BBF7D0",
+                                padding: "2px 7px",
+                                borderRadius: "5px",
+                                width: "fit-content",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              🛒 In-Store POS
+                            </span>
+                            <span style={{ fontSize: "10.5px", color: "#64748B" }}>
+                              Self Clearance
+                            </span>
+                          </div>
+                        )}
                       </td>
 
                       {/* Payment Method */}
@@ -1186,7 +1663,7 @@ export default function OrdersManagement() {
               {/* Order Meta */}
               <div className="om-receipt-row">
                 <span>Customer Name:</span>
-                <strong>{selectedOrder.customer?.name || "Guest Shopper"}</strong>
+                <strong>{selectedOrder.customer?.name || "Customer"}</strong>
               </div>
               {selectedOrder.customer?.phone && (
                 <div className="om-receipt-row">
@@ -1194,10 +1671,53 @@ export default function OrdersManagement() {
                   <span>{formatPhone(selectedOrder.customer.phone)}</span>
                 </div>
               )}
-              {selectedOrder.customer?.address && (
+              {selectedOrder.customer?.email && (
+                <div className="om-receipt-row">
+                  <span>Customer Email:</span>
+                  <span style={{ color: "#2563EB", fontWeight: 700 }}>{selectedOrder.customer.email}</span>
+                </div>
+              )}
+              {/* Fulfillment Type & Details */}
+              <div className="om-receipt-row">
+                <span>Fulfillment Mode:</span>
+                <strong style={{ color: selectedOrder.orderType === "SELF_PICKUP" ? "#7C3AED" : (selectedOrder.orderType === "DELIVERY" ? "#0284C7" : "#16A34A") }}>
+                  {selectedOrder.orderType === "SELF_PICKUP" ? "🏪 Self Pickup" : (selectedOrder.orderType === "DELIVERY" ? "🚚 Online Delivery" : "🛒 In-Store Scan & Go")}
+                </strong>
+              </div>
+              {selectedOrder.pickupDate && (
+                <div className="om-receipt-row">
+                  <span>Pickup Date &amp; Slot:</span>
+                  <span>{selectedOrder.pickupDate} • {selectedOrder.pickupTimeSlot || "Standard"}</span>
+                </div>
+              )}
+              {selectedOrder.pickupStatus && (
+                <div className="om-receipt-row">
+                  <span>Pickup Status:</span>
+                  <strong style={{ color: "#7C3AED" }}>{selectedOrder.pickupStatus}</strong>
+                </div>
+              )}
+              {(selectedOrder.deliveryAddress || selectedOrder.customer?.address) && (
                 <div className="om-receipt-row">
                   <span>Delivery Address:</span>
-                  <span style={{ maxWidth: "260px", textAlign: "right" }}>{selectedOrder.customer.address}</span>
+                  <span style={{ maxWidth: "260px", textAlign: "right" }}>{selectedOrder.deliveryAddress || selectedOrder.customer.address}</span>
+                </div>
+              )}
+              {selectedOrder.deliveryPhone && (
+                <div className="om-receipt-row">
+                  <span>Delivery Contact:</span>
+                  <span>{formatPhone(selectedOrder.deliveryPhone)}</span>
+                </div>
+              )}
+              {selectedOrder.assignedStaffName && (
+                <div className="om-receipt-row">
+                  <span>Delivery Staff:</span>
+                  <span>{selectedOrder.assignedStaffName}</span>
+                </div>
+              )}
+              {selectedOrder.deliveryStatus && (
+                <div className="om-receipt-row">
+                  <span>Delivery Status:</span>
+                  <strong style={{ color: "#0284C7" }}>{selectedOrder.deliveryStatus}</strong>
                 </div>
               )}
               <div className="om-receipt-row">

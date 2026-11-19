@@ -233,25 +233,40 @@ exports.createSupermarket = async (req, res) => {
       timeZone = "Asia/Kolkata",
       status = "Active",
       themeColor = "#16a34a",
+      onlineDeliveryAvailable,
+      selfPickupAvailable,
       onlineAvailable,
       offlineAvailable,
       isOnlineAvailable,
       isOfflineAvailable,
+      deliveryCredentials,
+      deliveryUsername,
+      deliveryPassword,
+      deliveryStaffName,
+      deliveryPhone,
+      deliveryBannerUrl,
     } = req.body;
 
-    let finalOnlineAvailable = null;
-    if (onlineAvailable !== undefined && onlineAvailable !== null) {
-      finalOnlineAvailable = Boolean(onlineAvailable);
+    let finalOnlineDeliveryAvailable = false;
+    if (onlineDeliveryAvailable !== undefined && onlineDeliveryAvailable !== null) {
+      finalOnlineDeliveryAvailable = Boolean(onlineDeliveryAvailable);
+    } else if (onlineAvailable !== undefined && onlineAvailable !== null) {
+      finalOnlineDeliveryAvailable = Boolean(onlineAvailable);
     } else if (isOnlineAvailable !== undefined && isOnlineAvailable !== null) {
-      finalOnlineAvailable = Boolean(isOnlineAvailable);
+      finalOnlineDeliveryAvailable = Boolean(isOnlineAvailable);
     }
 
-    let finalOfflineAvailable = null;
-    if (offlineAvailable !== undefined && offlineAvailable !== null) {
-      finalOfflineAvailable = Boolean(offlineAvailable);
+    let finalSelfPickupAvailable = true;
+    if (selfPickupAvailable !== undefined && selfPickupAvailable !== null) {
+      finalSelfPickupAvailable = Boolean(selfPickupAvailable);
+    } else if (offlineAvailable !== undefined && offlineAvailable !== null) {
+      finalSelfPickupAvailable = Boolean(offlineAvailable);
     } else if (isOfflineAvailable !== undefined && isOfflineAvailable !== null) {
-      finalOfflineAvailable = Boolean(isOfflineAvailable);
+      finalSelfPickupAvailable = Boolean(isOfflineAvailable);
     }
+
+    let finalOnlineAvailable = Boolean(finalOnlineDeliveryAvailable || finalSelfPickupAvailable);
+    let finalOfflineAvailable = Boolean(finalSelfPickupAvailable);
 
     // 1. Validation - Required fields
     if (!name || !name.trim()) {
@@ -381,8 +396,26 @@ exports.createSupermarket = async (req, res) => {
       sendCredentialsEmail: Boolean(sendCredentialsEmail),
       status: status || "Active",
       themeColor: themeColor || "#16a34a",
+      onlineDeliveryAvailable: finalOnlineDeliveryAvailable,
+      selfPickupAvailable: finalSelfPickupAvailable,
       onlineAvailable: finalOnlineAvailable,
       offlineAvailable: finalOfflineAvailable,
+      deliveryBannerUrl: deliveryBannerUrl?.trim() || "",
+      deliveryCredentials: {
+        username: finalOnlineDeliveryAvailable
+          ? (deliveryUsername || deliveryCredentials?.username || `${cleanCode.toLowerCase().replace(/[^a-z0-9]/g, "")}_delivery`).trim().toLowerCase()
+          : "",
+        password: finalOnlineDeliveryAvailable
+          ? (deliveryPassword || deliveryCredentials?.password || "Delivery@123").trim()
+          : "",
+        staffName: finalOnlineDeliveryAvailable
+          ? (deliveryStaffName || deliveryCredentials?.staffName || `${trimmedName} Delivery Fleet`).trim()
+          : "",
+        phone: finalOnlineDeliveryAvailable
+          ? (deliveryPhone || deliveryCredentials?.phone || `+91 ${phone10}`).trim()
+          : "",
+        active: Boolean(finalOnlineDeliveryAvailable),
+      },
       settings: {
         currency: currency === "INR" || currency === "₹" ? "₹" : currency || "₹",
         taxRate: taxSettings?.rate !== undefined ? Number(taxSettings.rate) : 5,
@@ -429,6 +462,33 @@ exports.createSupermarket = async (req, res) => {
         forcePasswordChange: Boolean(forcePasswordChange),
         status: status === "Inactive" || status === "Suspended" ? "Suspended" : "Active",
       });
+    }
+
+    // 9b. Create Dedicated Delivery Staff Account if Online Delivery was enabled by Super Admin
+    let createdDeliveryUser = null;
+    if (finalOnlineDeliveryAvailable) {
+      const dCreds = newSupermarket.deliveryCredentials;
+      if (dCreds?.username) {
+        try {
+          createdDeliveryUser = await User.findOneAndUpdate(
+            { username: dCreds.username },
+            {
+              name: dCreds.staffName || `${trimmedName} Delivery Fleet`,
+              username: dCreds.username,
+              password: dCreds.password,
+              role: "DELIVERY_STAFF",
+              supermarket: newSupermarket._id,
+              supermarketCode: newSupermarket.code,
+              supermarketName: newSupermarket.name,
+              phone: dCreds.phone || `+91 ${phone10}`,
+              status: status === "Inactive" || status === "Suspended" ? "Suspended" : "Active",
+            },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+          );
+        } catch (delivErr) {
+          console.warn("Notice: Delivery user auto-provisioning:", delivErr.message);
+        }
+      }
     }
 
     // 10. Automatic Supermarket Registration Welcome Email (via Brevo API / SMTP Relay)
@@ -524,6 +584,13 @@ exports.createSupermarket = async (req, res) => {
         adminEmail: createdUser.email,
         loginUrl: "/login",
       },
+      deliveryCredentials: finalOnlineDeliveryAvailable && newSupermarket.deliveryCredentials ? {
+        username: newSupermarket.deliveryCredentials.username,
+        password: newSupermarket.deliveryCredentials.password,
+        staffName: newSupermarket.deliveryCredentials.staffName,
+        phone: newSupermarket.deliveryCredentials.phone,
+        active: true,
+      } : null,
     });
   } catch (error) {
     console.error("Create supermarket error:", error);
@@ -555,13 +622,29 @@ exports.updateSupermarket = async (req, res) => {
       adminName,
       themeColor,
       logoUrl,
+      onlineDeliveryAvailable,
+      selfPickupAvailable,
       onlineAvailable,
       offlineAvailable,
       isOnlineAvailable,
       isOfflineAvailable,
+      deliveryCredentials,
+      deliveryUsername,
+      deliveryPassword,
+      deliveryStaffName,
+      deliveryPhone,
+      deliveryBannerUrl,
     } = req.body;
 
-    const supermarket = await Supermarket.findById(id);
+    let supermarket = null;
+    if (mongoose.Types.ObjectId.isValid(id) && /^[0-9a-fA-F]{24}$/.test(String(id))) {
+      supermarket = await Supermarket.findById(id);
+    }
+    if (!supermarket) {
+      supermarket = await Supermarket.findOne({
+        $or: [{ code: id }, { slug: id }, { adminUsername: id }],
+      });
+    }
     if (!supermarket) {
       return res.status(404).json({
         success: false,
@@ -569,16 +652,77 @@ exports.updateSupermarket = async (req, res) => {
       });
     }
 
-    if (onlineAvailable !== undefined) {
-      supermarket.onlineAvailable = onlineAvailable === null ? null : Boolean(onlineAvailable);
+    let nextOnlineDelivery = supermarket.onlineDeliveryAvailable;
+    let nextSelfPickup = supermarket.selfPickupAvailable;
+
+    if (onlineDeliveryAvailable !== undefined) {
+      nextOnlineDelivery = onlineDeliveryAvailable === null ? false : Boolean(onlineDeliveryAvailable);
+    } else if (onlineAvailable !== undefined) {
+      nextOnlineDelivery = onlineAvailable === null ? false : Boolean(onlineAvailable);
     } else if (isOnlineAvailable !== undefined) {
-      supermarket.onlineAvailable = isOnlineAvailable === null ? null : Boolean(isOnlineAvailable);
+      nextOnlineDelivery = isOnlineAvailable === null ? false : Boolean(isOnlineAvailable);
     }
 
-    if (offlineAvailable !== undefined) {
-      supermarket.offlineAvailable = offlineAvailable === null ? null : Boolean(offlineAvailable);
+    if (selfPickupAvailable !== undefined) {
+      nextSelfPickup = selfPickupAvailable === null ? false : Boolean(selfPickupAvailable);
+    } else if (offlineAvailable !== undefined) {
+      nextSelfPickup = offlineAvailable === null ? false : Boolean(offlineAvailable);
     } else if (isOfflineAvailable !== undefined) {
-      supermarket.offlineAvailable = isOfflineAvailable === null ? null : Boolean(isOfflineAvailable);
+      nextSelfPickup = isOfflineAvailable === null ? false : Boolean(isOfflineAvailable);
+    }
+
+    supermarket.onlineDeliveryAvailable = nextOnlineDelivery;
+    supermarket.selfPickupAvailable = nextSelfPickup;
+    supermarket.onlineAvailable = Boolean(nextOnlineDelivery || nextSelfPickup);
+    supermarket.offlineAvailable = Boolean(nextSelfPickup);
+
+    if (deliveryBannerUrl !== undefined) {
+      supermarket.deliveryBannerUrl = String(deliveryBannerUrl).trim();
+    }
+
+    // Synchronize delivery credentials & user account
+    const dUser = (deliveryUsername || deliveryCredentials?.username || supermarket.deliveryCredentials?.username || `${supermarket.code.toLowerCase().replace(/[^a-z0-9]/g, "")}_delivery`).trim().toLowerCase();
+    const dPass = (deliveryPassword || deliveryCredentials?.password || supermarket.deliveryCredentials?.password || "Delivery@123").trim();
+    const dStaff = (deliveryStaffName || deliveryCredentials?.staffName || supermarket.deliveryCredentials?.staffName || `${supermarket.name} Delivery Fleet`).trim();
+    const dPhone = (deliveryPhone || deliveryCredentials?.phone || supermarket.deliveryCredentials?.phone || supermarket.phone).trim();
+
+    if (supermarket.onlineDeliveryAvailable) {
+      supermarket.deliveryCredentials = {
+        username: dUser,
+        password: dPass,
+        staffName: dStaff,
+        phone: dPhone,
+        active: true,
+      };
+
+      try {
+        await User.findOneAndUpdate(
+          { username: dUser },
+          {
+            name: dStaff,
+            username: dUser,
+            password: dPass,
+            role: "DELIVERY_STAFF",
+            supermarket: supermarket._id,
+            supermarketCode: supermarket.code,
+            supermarketName: supermarket.name,
+            phone: dPhone,
+            status: supermarket.status === "Suspended" ? "Suspended" : "Active",
+          },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+      } catch (dErr) {
+        console.warn("Delivery user sync notice:", dErr.message);
+      }
+    } else {
+      if (supermarket.deliveryCredentials) {
+        supermarket.deliveryCredentials.active = false;
+      }
+      // Rule Case 6: If Online Delivery is disabled later: block new delivery access, preserve historical records
+      await User.updateMany(
+        { supermarket: supermarket._id, role: "DELIVERY_STAFF" },
+        { status: "Suspended" }
+      );
     }
 
     if (name) supermarket.name = name.trim();
@@ -660,6 +804,7 @@ exports.updateSupermarket = async (req, res) => {
 
     clearTenantCache();
 
+    
     try {
       const io = req.app?.get("io");
       if (io) {
@@ -667,6 +812,8 @@ exports.updateSupermarket = async (req, res) => {
         io.emit("supermarket:availability_updated", {
           supermarketId: String(supermarket._id),
           supermarketCode: supermarket.code,
+          onlineDeliveryAvailable: supermarket.onlineDeliveryAvailable,
+          selfPickupAvailable: supermarket.selfPickupAvailable,
           onlineAvailable: supermarket.onlineAvailable,
           offlineAvailable: supermarket.offlineAvailable,
         });
@@ -845,6 +992,45 @@ exports.resetStorePassword = async (req, res) => {
       });
     }
 
+    // Dispatch real-time password reset email notification via Brevo
+    const targetEmail =
+      supermarket.email && !supermarket.email.includes("@grocerease.store") && !supermarket.email.includes("@example.com")
+        ? supermarket.email.trim().toLowerCase()
+        : (process.env.SMTP_FROM_EMAIL || "forgeindiaconnectfic@gmail.com");
+
+    const appLoginUrl = `${process.env.FRONTEND_URL || "https://super-market-scan.vercel.app"}/login`;
+
+    try {
+      await sendMail({
+        to: targetEmail,
+        subject: `Password Reset Notification – ${supermarket.name}`,
+        html: `
+          <div style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width:560px; margin:0 auto; padding:28px; background:#ffffff; border-radius:12px; border:1px solid #e2e8f0; box-shadow:0 4px 14px rgba(0,0,0,0.06);">
+            <div style="text-align:center; margin-bottom:20px;">
+              <h2 style="color:#059669; margin:0 0 6px 0;">GrocerEase Supermarket Network</h2>
+              <p style="color:#64748b; font-size:13px; margin:0;">Store Admin Password Reset</p>
+            </div>
+            <p style="font-size:14px; color:#1e293b;">Your admin account credentials for <strong>${supermarket.name}</strong> (${supermarket.code}) have been updated by the platform Super Admin.</p>
+            <div style="background:#f8fafc; border-radius:8px; padding:16px; border:1px solid #e2e8f0; margin:18px 0; font-size:13.5px;">
+              <p style="margin:4px 0;"><strong>Username:</strong> <span style="color:#059669; font-weight:700;">${supermarket.adminUsername}</span></p>
+              <p style="margin:4px 0;"><strong>New Password:</strong> <code style="background:#e2e8f0; padding:3px 8px; border-radius:4px; font-weight:700; color:#0f172a;">${newPassword}</code></p>
+            </div>
+            <p style="font-size:13px; color:#64748b;">Please log in using your updated password to access your supermarket inventory, barcode management, and POS checkout:</p>
+            <div style="text-align:center; margin:24px 0 12px 0;">
+              <a href="${appLoginUrl}" style="display:inline-block; background:#059669; color:#ffffff; padding:11px 26px; border-radius:8px; text-decoration:none; font-weight:700; font-size:14px; box-shadow:0 3px 8px rgba(5,150,105,0.3);">Log In to Store Dashboard &rarr;</a>
+            </div>
+            <p style="font-size:11.5px; color:#94a3b8; text-align:center; margin-top:24px; border-top:1px solid #f1f5f9; padding-top:14px;">
+              &copy; ${new Date().getFullYear()} GrocerEase. Automated notification delivered via Brevo.
+            </p>
+          </div>
+        `,
+        text: `Your password for ${supermarket.name} (${supermarket.code}) has been reset. Username: ${supermarket.adminUsername}, New Password: ${newPassword}. Login at: ${appLoginUrl}`,
+      });
+      console.log(`✓ [BREVO REAL-TIME] Password reset email delivered to ${targetEmail}`);
+    } catch (mailErr) {
+      console.warn("⚠️ Password reset email dispatch notice:", mailErr.message);
+    }
+
     return res.status(200).json({
       success: true,
       message: `Password reset successfully for "${supermarket.name}". New password: ${newPassword}`,
@@ -886,21 +1072,9 @@ exports.getPlatformAnalytics = async (req, res) => {
     const inactiveSupermarkets = supermarkets.filter((s) => s.status === "Suspended" || s.status === "Inactive").length;
     const pendingRegistrations = supermarkets.filter((s) => s.status === "Pending" || s.status === "Trial").length;
 
-    // SaaS Recurring Revenue Calculation based on active subscription tiers
-    const planRateMap = {
-      Basic: 4999,
-      Standard: 9999,
-      Professional: 9999,
-      Business: 12499,
-      Premium: 19999,
-      Enterprise: 24999,
-    };
-    const subscriptionRevenue = supermarkets.reduce((sum, s) => {
-      const rate = s.subscriptionAmount || planRateMap[s.plan] || 4999;
-      return sum + rate;
-    }, 0);
-
-    const totalRevenue = subscriptionRevenue + totalStoreSales;
+    // Real-Time Platform Revenue: strictly 100% genuine sales revenue from all customer orders
+    const totalRevenue = Number(totalStoreSales) || 0;
+    const subscriptionRevenue = 0; // Pure actual billing receipts; no fabricated tier sums
 
     // Total online POS & Turnstiles across all onboarded supermarkets (real-time sum)
     const totalPosTurnstilesOnline = supermarkets.reduce((sum, s) => {
@@ -974,31 +1148,59 @@ exports.getPlatformAnalytics = async (req, res) => {
       });
     }
 
-    // Real Platform Growth Calculation: compare past 7 days to prior 7 days
+    // Real-Time Platform & Revenue Growth Calculation (Past 7 days vs Prior 7 days)
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
 
     const [currPeriodOrders, prevPeriodOrders] = await Promise.all([
       Order.aggregate([
         { $match: { createdAt: { $gte: sevenDaysAgo }, paymentStatus: { $in: ["Completed", "Approved", "Pending", "completed", "approved", "paid"] } } },
-        { $group: { _id: null, rev: { $sum: "$totalAmount" } } },
+        { $group: { _id: null, rev: { $sum: "$totalAmount" }, count: { $sum: 1 } } },
       ]),
       Order.aggregate([
         { $match: { createdAt: { $gte: fourteenDaysAgo, $lt: sevenDaysAgo }, paymentStatus: { $in: ["Completed", "Approved", "Pending", "completed", "approved", "paid"] } } },
-        { $group: { _id: null, rev: { $sum: "$totalAmount" } } },
+        { $group: { _id: null, rev: { $sum: "$totalAmount" }, count: { $sum: 1 } } },
       ]),
     ]);
 
     const currRev = currPeriodOrders[0]?.rev || 0;
     const prevRev = prevPeriodOrders[0]?.rev || 0;
+    const currCount = currPeriodOrders[0]?.count || 0;
+    const prevCount = prevPeriodOrders[0]?.count || 0;
+
+    // Genuine mathematical revenue growth rate (%)
+    let revenueGrowth = 0;
+    if (prevRev > 0) {
+      revenueGrowth = Math.round(((currRev - prevRev) / prevRev) * 100);
+    } else if (currRev > 0) {
+      revenueGrowth = 100; // First active sales period above zero baseline
+    } else {
+      revenueGrowth = 0;
+    }
+
+    // Genuine mathematical platform activity / network growth rate (%)
     let platformGrowth = 0;
-    if (totalSupermarkets > 0) {
-      if (prevRev > 0) {
-        const computed = Math.round(((currRev - prevRev) / prevRev) * 100);
-        platformGrowth = Math.min(95, Math.max(0, computed));
-      } else if (currRev > 0) {
-        platformGrowth = 25;
+    if (prevCount > 0) {
+      platformGrowth = Math.round(((currCount - prevCount) / prevCount) * 100);
+    } else if (currCount > 0) {
+      platformGrowth = 100; // New active order flow established
+    } else if (totalSupermarkets > 0) {
+      // If no orders yet in the periods, calculate supermarket onboarding growth
+      const currStores = supermarkets.filter(
+        (s) => s.createdAt && new Date(s.createdAt) >= sevenDaysAgo
+      ).length;
+      const prevStores = supermarkets.filter(
+        (s) => s.createdAt && new Date(s.createdAt) >= fourteenDaysAgo && new Date(s.createdAt) < sevenDaysAgo
+      ).length;
+      if (prevStores > 0) {
+        platformGrowth = Math.round(((currStores - prevStores) / prevStores) * 100);
+      } else if (currStores > 0) {
+        platformGrowth = 100;
+      } else {
+        platformGrowth = 0;
       }
+    } else {
+      platformGrowth = 0;
     }
 
     // Per-supermarket breakdown
@@ -1057,7 +1259,12 @@ exports.getPlatformAnalytics = async (req, res) => {
         inactiveSupermarkets,
         pendingRegistrations,
         totalProductsCount: allProductsCount,
+        revenueGrowth,
         platformGrowth,
+        currPeriodRevenue: currRev,
+        prevPeriodRevenue: prevRev,
+        currPeriodOrders: currCount,
+        prevPeriodOrders: prevCount,
         totalPosTurnstilesOnline,
         newStoresThisMonth,
       },
@@ -2368,9 +2575,24 @@ exports.clearDemoData = async (req, res) => {
 exports.updateSupermarketAvailability = async (req, res) => {
   try {
     const { id } = req.params;
-    const { onlineAvailable, offlineAvailable, isOnlineAvailable, isOfflineAvailable } = req.body;
+    const {
+      onlineAvailable,
+      offlineAvailable,
+      isOnlineAvailable,
+      isOfflineAvailable,
+      onlineDeliveryAvailable,
+      selfPickupAvailable,
+    } = req.body;
 
-    const supermarket = await Supermarket.findById(id);
+    let supermarket = null;
+    if (mongoose.Types.ObjectId.isValid(id) && /^[0-9a-fA-F]{24}$/.test(String(id))) {
+      supermarket = await Supermarket.findById(id);
+    }
+    if (!supermarket) {
+      supermarket = await Supermarket.findOne({
+        $or: [{ code: id }, { slug: id }, { adminUsername: id }],
+      });
+    }
     if (!supermarket) {
       return res.status(404).json({
         success: false,
@@ -2378,16 +2600,35 @@ exports.updateSupermarketAvailability = async (req, res) => {
       });
     }
 
-    if (onlineAvailable !== undefined) {
-      supermarket.onlineAvailable = onlineAvailable === null ? null : Boolean(onlineAvailable);
+    let nextOnlineDelivery = supermarket.onlineDeliveryAvailable;
+    let nextSelfPickup = supermarket.selfPickupAvailable;
+
+    if (onlineDeliveryAvailable !== undefined) {
+      nextOnlineDelivery = onlineDeliveryAvailable === null ? false : Boolean(onlineDeliveryAvailable);
+    } else if (onlineAvailable !== undefined) {
+      nextOnlineDelivery = onlineAvailable === null ? false : Boolean(onlineAvailable);
     } else if (isOnlineAvailable !== undefined) {
-      supermarket.onlineAvailable = isOnlineAvailable === null ? null : Boolean(isOnlineAvailable);
+      nextOnlineDelivery = isOnlineAvailable === null ? false : Boolean(isOnlineAvailable);
     }
 
-    if (offlineAvailable !== undefined) {
-      supermarket.offlineAvailable = offlineAvailable === null ? null : Boolean(offlineAvailable);
+    if (selfPickupAvailable !== undefined) {
+      nextSelfPickup = selfPickupAvailable === null ? false : Boolean(selfPickupAvailable);
+    } else if (offlineAvailable !== undefined) {
+      nextSelfPickup = offlineAvailable === null ? false : Boolean(offlineAvailable);
     } else if (isOfflineAvailable !== undefined) {
-      supermarket.offlineAvailable = isOfflineAvailable === null ? null : Boolean(isOfflineAvailable);
+      nextSelfPickup = isOfflineAvailable === null ? false : Boolean(isOfflineAvailable);
+    }
+
+    supermarket.onlineDeliveryAvailable = nextOnlineDelivery;
+    supermarket.selfPickupAvailable = nextSelfPickup;
+    supermarket.onlineAvailable = Boolean(nextOnlineDelivery || nextSelfPickup);
+    supermarket.offlineAvailable = Boolean(nextSelfPickup);
+
+    // If Online Delivery is disabled, disable delivery credentials active state
+    if (!nextOnlineDelivery && supermarket.deliveryCredentials) {
+      supermarket.deliveryCredentials.active = false;
+    } else if (nextOnlineDelivery && supermarket.deliveryCredentials) {
+      supermarket.deliveryCredentials.active = true;
     }
 
     await supermarket.save();
@@ -2401,6 +2642,8 @@ exports.updateSupermarketAvailability = async (req, res) => {
         io.emit("supermarket:availability_updated", {
           supermarketId: String(supermarket._id),
           supermarketCode: supermarket.code,
+          onlineDeliveryAvailable: supermarket.onlineDeliveryAvailable,
+          selfPickupAvailable: supermarket.selfPickupAvailable,
           onlineAvailable: supermarket.onlineAvailable,
           offlineAvailable: supermarket.offlineAvailable,
         });
@@ -2410,13 +2653,15 @@ exports.updateSupermarketAvailability = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: `Availability updated for "${supermarket.name}": Online is ${supermarket.onlineAvailable === true ? "Available" : (supermarket.onlineAvailable === false ? "Not Available" : "Not Configured")}, Offline is ${supermarket.offlineAvailable === true ? "Available" : (supermarket.offlineAvailable === false ? "Not Available" : "Not Configured")}.`,
+      message: `Availability updated for "${supermarket.name}": Online Delivery is ${supermarket.onlineDeliveryAvailable === true ? "Available" : (supermarket.onlineDeliveryAvailable === false ? "Not Available" : "Not Configured")}, Self Pickup is ${supermarket.selfPickupAvailable === true ? "Available" : (supermarket.selfPickupAvailable === false ? "Not Available" : "Not Configured")}.`,
       supermarket,
       availability: {
+        onlineDeliveryAvailable: supermarket.onlineDeliveryAvailable,
+        selfPickupAvailable: supermarket.selfPickupAvailable,
         onlineAvailable: supermarket.onlineAvailable,
         offlineAvailable: supermarket.offlineAvailable,
-        onlineStatus: supermarket.onlineAvailable === true ? "Available" : (supermarket.onlineAvailable === false ? "Not Available" : "Not Configured"),
-        offlineStatus: supermarket.offlineAvailable === true ? "Available" : (supermarket.offlineAvailable === false ? "Not Available" : "Not Configured"),
+        onlineStatus: supermarket.onlineDeliveryAvailable === true ? "Available" : (supermarket.onlineDeliveryAvailable === false ? "Not Available" : "Not Configured"),
+        offlineStatus: supermarket.selfPickupAvailable === true ? "Available" : (supermarket.selfPickupAvailable === false ? "Not Available" : "Not Configured"),
       },
     });
   } catch (error) {

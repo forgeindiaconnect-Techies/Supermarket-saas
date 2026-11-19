@@ -17,6 +17,7 @@ import {
 import { io } from "socket.io-client";
 import API, { SOCKET_URL } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
+import ErpPageBanner from "../../components/ErpPageBanner";
 import "./ProductManagement.css";
 import "./StoreChat.css";
 
@@ -162,80 +163,18 @@ export default function StoreChat() {
   };
 
   return (
-    <div className="store-chat-page-wrapper">
-      {/* 1. Header with Breadcrumb & Supermarket Badge */}
-      <div className="store-chat-header-row">
-        <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: 0, flex: "1 1 auto" }}>
-          <div
-            style={{
-              width: "44px",
-              height: "44px",
-              borderRadius: "14px",
-              background: "#dcfce7",
-              color: "#16a34a",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              boxShadow: "0 2px 8px rgba(22, 163, 74, 0.15)",
-              flexShrink: 0,
-            }}
-          >
-            <MessageSquare size={24} strokeWidth={2.4} />
-          </div>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-              <h1 style={{ margin: 0, fontSize: "1.35rem", fontWeight: 800, color: "#0f172a" }}>
-                Super Admin Chat
-              </h1>
-              <span
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "4px",
-                  background: "#dcfce7",
-                  color: "#15803d",
-                  padding: "2px 8px",
-                  borderRadius: "9999px",
-                  fontSize: "0.72rem",
-                  fontWeight: 750,
-                  whiteSpace: "nowrap",
-                }}
-              >
-                <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#16a34a" }} />
-                Online &bull; Private Line
-              </span>
-            </div>
-            <p style={{ margin: "2px 0 0 0", fontSize: "0.82rem", color: "#64748b" }}>
-              Direct encrypted communication channel with GrocerEase Super Admin
-            </p>
-          </div>
-        </div>
-
-        {/* Store Identifier Badge */}
-        <div
-          className="store-chat-store-badge"
-          style={{
-            background: "#ffffff",
-            border: "1px solid #e2e8f0",
-            borderRadius: "12px",
-            padding: "8px 14px",
-            display: "flex",
-            alignItems: "center",
-            gap: "10px",
-            boxShadow: "0 2px 6px rgba(15, 23, 42, 0.04)",
-          }}
-        >
-          <Building2 size={16} color="#059669" />
-          <div>
-            <div style={{ fontSize: "0.86rem", fontWeight: 750, color: "#0f172a" }}>
-              {storeInfo.name}
-            </div>
-            <div style={{ fontSize: "0.74rem", color: "#64748b", fontWeight: 600 }}>
-              Tenant ID: {storeInfo.code || "Branch"}
-            </div>
-          </div>
-        </div>
-      </div>
+    <div className="grocer-page-container store-chat-page-wrapper">
+      {/* 1. TOP HERO BANNER WITH FRESH PRODUCE CART ART (EXACT ERP STYLE) */}
+      <ErpPageBanner
+        title="Super Admin Chat"
+        subtitle={`Direct encrypted communication channel with GrocerEase Super Admin • Dedicated private support line for ${storeInfo.name}`}
+        badges={[
+          "Online • Dedicated Private Line",
+          "End-to-End Encrypted",
+          `Tenant ID: ${storeInfo.code || "SM-Branch"}`
+        ]}
+        icon={<MessageSquare size={22} color="#ffffff" strokeWidth={2.4} />}
+      />
 
       {/* 2. Main Chat Box Container */}
       <div className="store-chat-box">
@@ -273,20 +212,43 @@ export default function StoreChat() {
             </div>
           </div>
 
-          <div
-            className="store-chat-encrypted-badge"
-            style={{
-              fontSize: "0.76rem",
-              color: "#15803d",
-              background: "#f0fdf4",
-              border: "1px solid #bbf7d0",
-              padding: "4px 10px",
-              borderRadius: "8px",
-              fontWeight: 700,
-              whiteSpace: "nowrap",
-            }}
-          >
-            Encrypted &bull; Strictly Tenant-Isolated
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+            {/* Store Identifier Pill */}
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                background: "#ffffff",
+                border: "1px solid #e2e8f0",
+                padding: "4px 10px",
+                borderRadius: "8px",
+                fontSize: "0.76rem",
+                fontWeight: 700,
+                color: "#0f172a",
+                boxShadow: "0 1px 3px rgba(0, 0, 0, 0.04)",
+              }}
+            >
+              <Building2 size={13} color="#059669" />
+              <span>{storeInfo.name}</span>
+              <span style={{ color: "#64748b", fontWeight: 600 }}>({storeInfo.code || "Branch"})</span>
+            </div>
+
+            <div
+              className="store-chat-encrypted-badge"
+              style={{
+                fontSize: "0.76rem",
+                color: "#15803d",
+                background: "#f0fdf4",
+                border: "1px solid #bbf7d0",
+                padding: "4px 10px",
+                borderRadius: "8px",
+                fontWeight: 700,
+                whiteSpace: "nowrap",
+              }}
+            >
+              Encrypted &bull; Strictly Tenant-Isolated
+            </div>
           </div>
         </div>
 

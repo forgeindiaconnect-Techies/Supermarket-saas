@@ -17,9 +17,16 @@ router.get("/", async (req, res) => {
     };
 
     if (mode === "online") {
-      filter.onlineAvailable = true;
+      filter.$or = [
+        { onlineDeliveryAvailable: true },
+        { selfPickupAvailable: true },
+        { onlineAvailable: true },
+      ];
     } else if (mode === "offline") {
-      filter.offlineAvailable = true;
+      filter.$or = [
+        { selfPickupAvailable: true },
+        { offlineAvailable: true },
+      ];
     }
 
     if (search && search.trim()) {
@@ -36,7 +43,7 @@ router.get("/", async (req, res) => {
     }
 
     const supermarkets = await Supermarket.find(filter)
-      .select("_id name code slug tagline city state address pincode phone logoUrl themeColor onlineAvailable offlineAvailable status")
+      .select("_id name code slug tagline city state address pincode phone logoUrl deliveryBannerUrl themeColor onlineDeliveryAvailable selfPickupAvailable onlineAvailable offlineAvailable status")
       .sort({ createdAt: -1 })
       .limit(Number(limit) || 50);
 
@@ -55,8 +62,11 @@ router.get("/", async (req, res) => {
         pincode: s.pincode || "",
         phone: s.phone || "",
         logoUrl: s.logoUrl || "",
-        onlineAvailable: s.onlineAvailable === true,
-        offlineAvailable: s.offlineAvailable === true,
+        deliveryBannerUrl: s.deliveryBannerUrl || s.logoUrl || "",
+        onlineDeliveryAvailable: s.onlineDeliveryAvailable === true,
+        selfPickupAvailable: s.selfPickupAvailable === true,
+        onlineAvailable: s.onlineDeliveryAvailable === true || s.selfPickupAvailable === true || s.onlineAvailable === true,
+        offlineAvailable: s.selfPickupAvailable === true || s.offlineAvailable === true,
         status: s.status,
       })),
     });
@@ -101,8 +111,11 @@ router.get("/:id/availability", async (req, res) => {
         city: store.city,
         state: store.state,
         address: store.address,
-        onlineAvailable: store.onlineAvailable === true,
-        offlineAvailable: store.offlineAvailable === true,
+        onlineDeliveryAvailable: store.onlineDeliveryAvailable === true,
+        selfPickupAvailable: store.selfPickupAvailable === true,
+        onlineAvailable: store.onlineDeliveryAvailable === true || store.selfPickupAvailable === true || store.onlineAvailable === true,
+        offlineAvailable: store.selfPickupAvailable === true || store.offlineAvailable === true,
+        deliveryBannerUrl: store.deliveryBannerUrl || store.logoUrl || "",
         status: store.status,
       },
     });
@@ -117,7 +130,7 @@ router.get("/:id/availability", async (req, res) => {
 
 /**
  * 3. POST /api/supermarkets/validate-mode
- * Validates whether the requested purchase mode (online/offline) is enabled by Super Admin.
+ * Validates whether the requested purchase mode (online delivery / self pickup) is enabled by Super Admin.
  */
 router.post("/validate-mode", async (req, res) => {
   try {
@@ -141,34 +154,59 @@ router.post("/validate-mode", async (req, res) => {
       });
     }
 
+    const isDeliveryAllowed = store.onlineDeliveryAvailable === true;
+    const isPickupAllowed = store.selfPickupAvailable === true || store.offlineAvailable === true;
+    const isAnyOnlineAllowed = isDeliveryAllowed || isPickupAllowed;
+
     const normalizedMode = String(mode || "").toLowerCase().trim();
 
     if (normalizedMode === "online") {
-      if (store.onlineAvailable !== true) {
+      if (!isAnyOnlineAllowed) {
         return res.status(200).json({
           success: false,
           allowed: false,
-          message: "This supermarket does not currently support Online Purchase. Please choose an available option.",
+          message: "This supermarket has disabled online ordering. Both Online Delivery and Self Pickup are unavailable.",
           supermarket: {
             _id: store._id.toString(),
             name: store.name,
             code: store.code,
+            onlineDeliveryAvailable: false,
+            selfPickupAvailable: false,
             onlineAvailable: false,
-            offlineAvailable: store.offlineAvailable === true,
+            offlineAvailable: isPickupAllowed,
           },
         });
       }
-    } else if (normalizedMode === "offline") {
-      if (store.offlineAvailable !== true) {
+    } else if (normalizedMode === "delivery" || normalizedMode === "online_delivery") {
+      if (!isDeliveryAllowed) {
         return res.status(200).json({
           success: false,
           allowed: false,
-          message: "This supermarket does not currently support Offline Purchase. Please choose an available option.",
+          message: "This supermarket does not currently support Online Delivery. Please choose Self Pickup.",
           supermarket: {
             _id: store._id.toString(),
             name: store.name,
             code: store.code,
-            onlineAvailable: store.onlineAvailable === true,
+            onlineDeliveryAvailable: false,
+            selfPickupAvailable: isPickupAllowed,
+            onlineAvailable: isAnyOnlineAllowed,
+            offlineAvailable: isPickupAllowed,
+          },
+        });
+      }
+    } else if (normalizedMode === "offline" || normalizedMode === "pickup" || normalizedMode === "self_pickup") {
+      if (!isPickupAllowed) {
+        return res.status(200).json({
+          success: false,
+          allowed: false,
+          message: "This supermarket does not currently support In-Store / Self Pickup shopping.",
+          supermarket: {
+            _id: store._id.toString(),
+            name: store.name,
+            code: store.code,
+            onlineDeliveryAvailable: isDeliveryAllowed,
+            selfPickupAvailable: false,
+            onlineAvailable: isDeliveryAllowed,
             offlineAvailable: false,
           },
         });
@@ -191,8 +229,10 @@ router.post("/validate-mode", async (req, res) => {
         code: store.code,
         city: store.city,
         address: store.address,
-        onlineAvailable: store.onlineAvailable === true,
-        offlineAvailable: store.offlineAvailable === true,
+        onlineDeliveryAvailable: isDeliveryAllowed,
+        selfPickupAvailable: isPickupAllowed,
+        onlineAvailable: isAnyOnlineAllowed,
+        offlineAvailable: isPickupAllowed,
       },
     });
   } catch (err) {

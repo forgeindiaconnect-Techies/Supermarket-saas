@@ -90,8 +90,8 @@ export default function SupermarketSearchModal({
   const handleStorePress = (store: SupermarketInfo) => {
     const isSupported =
       mode === "online"
-        ? store.onlineAvailable === true
-        : store.offlineAvailable === true;
+        ? (store.onlineDeliveryAvailable === true || store.selfPickupAvailable === true || store.onlineAvailable === true)
+        : (store.selfPickupAvailable === true || store.offlineAvailable === true);
 
     if (!isSupported) {
       if (onUnavailableSelected) {
@@ -186,8 +186,8 @@ export default function SupermarketSearchModal({
             renderItem={({ item }) => {
               const isModeEnabled =
                 mode === "online"
-                  ? item.onlineAvailable === true
-                  : item.offlineAvailable === true;
+                  ? (item.onlineDeliveryAvailable === true || item.selfPickupAvailable === true || item.onlineAvailable === true)
+                  : (item.selfPickupAvailable === true || item.offlineAvailable === true);
 
               return (
                 <TouchableOpacity

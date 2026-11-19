@@ -77,6 +77,11 @@ const orderSchema = new mongoose.Schema(
       default: "",
     },
     customer: {
+      customerId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Customer",
+        default: null,
+      },
       name: { type: String, default: "Guest Shopper" },
       phone: { type: String, default: "" },
       email: { type: String, default: "" },
@@ -91,6 +96,159 @@ const orderSchema = new mongoose.Schema(
       enum: ["ONLINE", "OFFLINE"],
       default: "OFFLINE",
       index: true,
+    },
+    orderType: {
+      type: String,
+      enum: [
+        "DELIVERY",
+        "SELF_PICKUP",
+        "ONLINE_DELIVERY",
+        "SELF_PICKUP_DOORSTEP",
+        "SELF_PICKUP_STORE_COLLECTION",
+        "IN_STORE",
+      ],
+      default: "IN_STORE",
+      index: true,
+    },
+    fulfillmentChoice: {
+      type: String,
+      enum: ["DOORSTEP_DELIVERY", "STORE_COLLECTION", "PENDING_SELECTION", ""],
+      default: "",
+    },
+    pickupDate: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    pickupTimeSlot: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    estimatedReadyTime: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    estimatedReadyDate: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    pickupInstructions: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    pickupReadyNotificationSent: {
+      type: Boolean,
+      default: false,
+    },
+    customerPickupConfirmed: {
+      type: Boolean,
+      default: false,
+    },
+    customerPickupCompletedAt: {
+      type: Date,
+    },
+    pickupStatus: {
+      type: String,
+      enum: ["New", "Pending", "Preparing", "ReadyForPickup", "Completed", "Cancelled"],
+      default: "New",
+      index: true,
+    },
+    deliveryStatus: {
+      type: String,
+      enum: [
+        "New",
+        "Pending",
+        "Preparing",
+        "Accepted",
+        "Assigned",
+        "OrderPickedUp",
+        "OutForDelivery",
+        "Delivered",
+        "Cancelled",
+      ],
+      default: "New",
+      index: true,
+    },
+    orderConfirmedAt: {
+      type: Date,
+      default: Date.now,
+    },
+    preparingAt: {
+      type: Date,
+    },
+    assignedAt: {
+      type: Date,
+    },
+    pickedUpAt: {
+      type: Date,
+    },
+    estimatedDeliveryTime: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    estimatedDeliveryDate: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    trackingTimeline: [
+      {
+        status: { type: String, default: "" },
+        title: { type: String, default: "" },
+        description: { type: String, default: "" },
+        timestamp: { type: Date, default: Date.now },
+        updatedBy: { type: String, default: "" },
+        role: { type: String, default: "" },
+      },
+    ],
+    deliveryAddress: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    deliveryPhone: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    deliveryCustomerName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    deliveryNotes: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    assignedStaff: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    assignedStaffName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    assignedStaffPhone: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    deliveryAcceptedAt: {
+      type: Date,
+    },
+    deliveryOutAt: {
+      type: Date,
+    },
+    deliveryCompletedAt: {
+      type: Date,
     },
     supermarket: {
       type: mongoose.Schema.Types.ObjectId,
@@ -117,6 +275,8 @@ const orderSchema = new mongoose.Schema(
 
 orderSchema.index({ supermarket: 1, createdAt: -1 });
 orderSchema.index({ supermarket: 1, paymentStatus: 1 });
+orderSchema.index({ supermarket: 1, deliveryStatus: 1 });
+orderSchema.index({ supermarket: 1, orderType: 1 });
 
 module.exports = mongoose.model("Order", orderSchema);
 
