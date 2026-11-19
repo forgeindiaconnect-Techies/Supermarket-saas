@@ -19,18 +19,6 @@ function syncInitialAssets() {
     if (!fs.existsSync(publicDir)) fs.mkdirSync(publicDir, { recursive: true });
     if (!fs.existsSync(mobileAssetsDir)) fs.mkdirSync(mobileAssetsDir, { recursive: true });
 
-    // Execute crop and git push
-    const psWorker = path.join(__dirname, "crop_worker.ps1");
-    if (fs.existsSync(psWorker)) {
-      try {
-        const { execSync } = require("child_process");
-        execSync(`powershell -NoProfile -ExecutionPolicy Bypass -File "${psWorker}"`, { encoding: "utf8" });
-        console.log("✓ Cropped pristine hero banner and scooter rider -> delivery-hero-banner.jpg");
-      } catch (e) {
-        console.warn("Crop worker notice:", e.message);
-      }
-    }
-
     const brainDir = "C:\\Users\\Forgeindiaconnect\\.gemini\\antigravity\\brain\\fb582fb9-2b2b-411c-ac43-40149f4c94a9";
     const syncList = [
       { src: path.join(brainDir, "sidebar_abstract_blue_waves_1794046512095.jpg"), names: ["sidebar-waves-bg.jpg", "sidebar_abstract_blue_waves.jpg"] },
@@ -135,6 +123,8 @@ function syncInitialAssets() {
 
     // Cleanup temporary debug files
     const debugFiles = [
+      "crop_worker.ps1",
+      "git_crop_result.txt",
       "banner_scan.txt",
       "crop_worker_out.txt",
       "conv_images.json",
