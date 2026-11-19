@@ -38,7 +38,7 @@ function performGitPush() {
 
     // git commit
     try {
-      const commitRes = execSync('git commit -m "feat: complete order tracking, delivery staff UI, customer registration separation, and TS fixes"', opts);
+      const commitRes = execSync('git commit -m "fix(mobile): CartContext TypeScript return typing annotation"', opts);
       log.push("GIT COMMIT:\n" + commitRes);
     } catch (commitErr) {
       log.push("GIT COMMIT NOTICE: " + (commitErr.stdout || commitErr.message));
