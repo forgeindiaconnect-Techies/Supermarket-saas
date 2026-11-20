@@ -3,7 +3,7 @@ import { Platform } from "react-native";
 
 // Supermarket API Configuration & Safe Fetch Helper
 
-export const DEFAULT_SERVER_URL = "https://super-market-scan.onrender.com/api";
+export const DEFAULT_SERVER_URL = "https://supermarket-saas-hprw.onrender.com/api";
 
 /**
  * Dynamically resolves the development host IP address.
@@ -66,6 +66,7 @@ export function computeApiUrl(): string {
 }
 
 export const API_URL = computeApiUrl();
+export const SOCKET_URL = API_URL.replace(/\/api\/?$/, "");
 
 /**
  * Resilient fetch with AbortController timeout and automatic fallback

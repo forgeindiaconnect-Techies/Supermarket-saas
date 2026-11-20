@@ -8,7 +8,7 @@ const isLocalhost =
     window.location.hostname === "127.0.0.1" ||
     window.location.hostname.startsWith("192.168."));
 
-const LIVE_BACKEND_URL = "https://super-market-scan.onrender.com";
+const LIVE_BACKEND_URL = "https://supermarket-saas-hprw.onrender.com";
 const LOCAL_BACKEND_URL = "http://localhost:5001";
 
 const DEFAULT_BACKEND_URL = isLocalhost ? LOCAL_BACKEND_URL : LIVE_BACKEND_URL;
