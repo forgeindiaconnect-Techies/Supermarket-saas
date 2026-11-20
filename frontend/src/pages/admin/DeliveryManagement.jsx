@@ -520,12 +520,14 @@ export default function DeliveryManagement() {
           {/* Full-Width Standard Search Box */}
           <div className="del-search-card">
             <div className="del-search-box">
-              <Search size={18} color="#64748B" />
+              <Search size={18} color="#2563EB" />
               <input
                 type="text"
                 placeholder="Search by Order #, Customer Name, Mobile Number, or Delivery Address..."
                 value={orderSearch}
                 onChange={(e) => setOrderSearch(e.target.value)}
+                autoComplete="off"
+                spellCheck="false"
               />
               {orderSearch && (
                 <button type="button" onClick={() => setOrderSearch("")} className="del-clear-btn" title="Clear Search">
@@ -765,19 +767,23 @@ export default function DeliveryManagement() {
         <div className="del-view-wrap">
           {/* Search & Status Filter */}
           <div className="del-staff-filter-bar">
-            <div className="del-search-box" style={{ flex: 1, maxWidth: 450 }}>
-              <Search size={16} color="#94A3B8" />
-              <input
-                type="text"
-                placeholder="Search staff by Name, Mobile, Email, or Username..."
-                value={staffSearch}
-                onChange={(e) => setStaffSearch(e.target.value)}
-              />
-              {staffSearch && (
-                <button type="button" onClick={() => setStaffSearch("")} className="del-clear-btn">
-                  ✕
-                </button>
-              )}
+            <div className="del-search-card del-staff-search-card">
+              <div className="del-search-box">
+                <Search size={18} color="#2563EB" />
+                <input
+                  type="text"
+                  placeholder="Search staff by Name, Mobile, Email, or Username..."
+                  value={staffSearch}
+                  onChange={(e) => setStaffSearch(e.target.value)}
+                  autoComplete="off"
+                  spellCheck="false"
+                />
+                {staffSearch && (
+                  <button type="button" onClick={() => setStaffSearch("")} className="del-clear-btn" title="Clear Search">
+                    ✕
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="del-filter-pills">

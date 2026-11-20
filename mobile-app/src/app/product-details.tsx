@@ -56,7 +56,7 @@ export default function ProductDetailsScreen() {
         headers["x-supermarket-code"] = selectedSupermarket.code || "";
       }
 
-      const res = await safeFetch(endpoint, { headers }, 6000);
+      const res = await safeFetch(endpoint, { headers }, 15000);
       const data = await res.json();
 
       if (res.ok && data.success && data.product) {
