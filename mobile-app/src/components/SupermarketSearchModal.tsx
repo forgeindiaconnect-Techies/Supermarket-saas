@@ -35,30 +35,21 @@ export default function SupermarketSearchModal({
   onClose,
   onUnavailableSelected,
 }: SupermarketSearchModalProps) {
-  const [search, setSearch] = useState("");
   const [stores, setStores] = useState<SupermarketInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const modalTitle =
-    title ||
-    (mode === "online"
-      ? "Select Supermarket by Location"
-      : "Select Supermarket by Name");
+    title || "Select Supermarket";
 
-  const searchPlaceholder =
-    mode === "online"
-      ? "Search by City, Location, Area, or Store Name..."
-      : "Search by Supermarket Name or Code...";
-
-  const fetchStores = async (query = "") => {
+  const fetchStores = async () => {
     try {
       setLoading(true);
       setError("");
 
       if (!API_URL) throw new Error("API URL missing");
 
-      const endpoint = `${API_URL}/supermarkets?search=${encodeURIComponent(query)}&_t=${Date.now()}`;
+      const endpoint = `${API_URL}/supermarkets?_t=${Date.now()}`;
       const res = await safeFetch(endpoint, {}, 6000);
       const data = await res.json();
 
@@ -77,15 +68,9 @@ export default function SupermarketSearchModal({
 
   useEffect(() => {
     if (visible) {
-      setSearch("");
-      fetchStores("");
+      fetchStores();
     }
   }, [visible]);
-
-  const handleSearchChange = (text: string) => {
-    setSearch(text);
-    fetchStores(text);
-  };
 
   const handleStorePress = (store: SupermarketInfo) => {
     const isSupported =
@@ -119,39 +104,14 @@ export default function SupermarketSearchModal({
           <View style={styles.headerTextWrap}>
             <Text style={styles.headerTitle}>{modalTitle}</Text>
             <Text style={styles.headerSub}>
-              {subtitle || (mode === "online" ? "Registered Supermarkets by Super Admin" : "Verify Store for Offline Checkout")}
+              {subtitle || "Available Registered Supermarkets"}
             </Text>
           </View>
 
           <View style={{ width: 36 }} />
         </View>
 
-        {/* Search Input Bar */}
-        <View style={styles.searchBarWrap}>
-          <View style={styles.searchBox}>
-            <Text style={styles.searchIcon}>🔍</Text>
-            <TextInput
-              style={styles.searchInput}
-              placeholder={searchPlaceholder}
-              placeholderTextColor="#94A3B8"
-              value={search}
-              onChangeText={handleSearchChange}
-              autoCapitalize="none"
-              autoCorrect={false}
-              returnKeyType="search"
-            />
-            {search.length > 0 ? (
-              <TouchableOpacity
-                onPress={() => handleSearchChange("")}
-                style={styles.clearBtn}
-              >
-                <Text style={styles.clearBtnText}>✕</Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-        </View>
-
-        {/* Store List */}
+        {/* Store List (Search bar removed per exact specification) */}
         {loading ? (
           <View style={styles.centerBox}>
             <ActivityIndicator size="large" color="#3B0764" />
@@ -163,7 +123,7 @@ export default function SupermarketSearchModal({
             <Text style={styles.errorText}>{error}</Text>
             <TouchableOpacity
               style={styles.retryBtn}
-              onPress={() => fetchStores(search)}
+              onPress={() => fetchStores()}
             >
               <Text style={styles.retryBtnText}>Retry</Text>
             </TouchableOpacity>
@@ -173,9 +133,7 @@ export default function SupermarketSearchModal({
             <Text style={styles.emptyIcon}>🏪</Text>
             <Text style={styles.emptyTitle}>No Supermarkets Found</Text>
             <Text style={styles.emptySub}>
-              {search
-                ? `No registered supermarket found matching "${search}".`
-                : "No supermarkets currently registered by the Super Admin."}
+              No supermarkets currently registered by the Super Admin.
             </Text>
           </View>
         ) : (

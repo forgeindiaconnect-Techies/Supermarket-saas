@@ -449,6 +449,12 @@ export default function OrdersManagement() {
     );
   }, [orders]);
 
+  const offlineOrdersList = useMemo(() => {
+    return orders.filter(
+      (o) => o.purchaseMode === "OFFLINE" || o.orderType === "IN_STORE"
+    );
+  }, [orders]);
+
   const pickupOrdersList = useMemo(() => {
     return orders.filter(
       (o) => o.orderType === "SELF_PICKUP" || Boolean(o.pickupDate) || Boolean(o.pickupTimeSlot)
@@ -471,20 +477,21 @@ export default function OrdersManagement() {
 
     return orders.filter((o) => {
       // 1. Fulfillment Tab isolation
-      if (fulfillmentScenario === "CASE_4_NEITHER") {
-        return false;
-      }
-
       const isPickup = o.orderType === "SELF_PICKUP" || Boolean(o.pickupDate) || Boolean(o.pickupTimeSlot);
       const isDelivery = (o.orderType === "DELIVERY" || Boolean(o.deliveryAddress)) && !isPickup;
       const isOnline = o.purchaseMode === "ONLINE" || isPickup || isDelivery;
+      const isOfflineOrder = o.purchaseMode === "OFFLINE" || o.orderType === "IN_STORE";
 
-      if (fulfillmentTab === "DELIVERY") {
+      if (fulfillmentTab === "OFFLINE") {
+        if (!isOfflineOrder) return false;
+      } else if (fulfillmentTab === "DELIVERY") {
         if (!isDelivery) return false;
       } else if (fulfillmentTab === "PICKUP") {
         if (!isPickup) return false;
       } else if (fulfillmentTab === "ONLINE_ALL") {
         if (!isOnline) return false;
+      } else if (fulfillmentScenario === "CASE_4_NEITHER" && !isOfflineOrder) {
+        return false;
       }
 
       // 2. Status Tab filter
@@ -889,6 +896,23 @@ export default function OrdersManagement() {
                 </>
               )}
 
+              {/* In-Store OFFLINE Barcode Scan Orders Tab */}
+              <button
+                type="button"
+                className={`om-tab-btn ${fulfillmentTab === "OFFLINE" ? "active" : ""}`}
+                onClick={() => setFulfillmentTab("OFFLINE")}
+                style={
+                  fulfillmentTab === "OFFLINE"
+                    ? { background: "#D97706", borderColor: "#D97706", color: "#FFFFFF" }
+                    : { borderColor: "#FDE68A", color: "#B45309" }
+                }
+              >
+                <span>⚡ In-Store Scan (OFFLINE)</span>
+                <span style={{ opacity: 0.85, fontSize: "11px", fontWeight: 800 }}>
+                  ({offlineOrdersList.length})
+                </span>
+              </button>
+
               {/* Case 1: Only Online Delivery enabled -> Display ONLY Delivery tab */}
               {fulfillmentScenario === "CASE_1_DELIVERY_ONLY" && (
                 <button
@@ -1229,9 +1253,25 @@ export default function OrdersManagement() {
                               {copiedId === ord.orderNumber ? <Check size={13} /> : <Copy size={13} />}
                             </button>
                           </div>
-                          <span style={{ fontSize: "11px", color: "#64748B", whiteSpace: "nowrap" }}>
-                            {formattedDate} &bull; {formattedTime}
-                          </span>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                            <span style={{ fontSize: "11px", color: "#64748B", whiteSpace: "nowrap" }}>
+                              {formattedDate} &bull; {formattedTime}
+                            </span>
+                            <span
+                              style={{
+                                fontSize: "9.5px",
+                                fontWeight: 800,
+                                padding: "1px 6px",
+                                borderRadius: "4px",
+                                width: "fit-content",
+                                background: ord.purchaseMode === "OFFLINE" ? "#FEF3C7" : "#EFF6FF",
+                                color: ord.purchaseMode === "OFFLINE" ? "#B45309" : "#1D4ED8",
+                                border: `1px solid ${ord.purchaseMode === "OFFLINE" ? "#FCD34D" : "#BFDBFE"}`,
+                              }}
+                            >
+                              {ord.purchaseMode === "OFFLINE" ? "⚡ OFFLINE" : "🌐 ONLINE"}
+                            </span>
+                          </div>
                         </div>
                       </td>
 

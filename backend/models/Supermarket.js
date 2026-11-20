@@ -218,15 +218,18 @@ supermarketSchema.pre("save", function (next) {
   if (this.adminUsername) {
     this.adminUsername = String(this.adminUsername).trim().toLowerCase();
   }
-  // Sync onlineDeliveryAvailable and onlineAvailable
-  if (this.onlineDeliveryAvailable !== undefined) {
-    this.onlineAvailable = Boolean(this.onlineDeliveryAvailable);
+  // Sync onlineDeliveryAvailable, selfPickupAvailable, onlineAvailable, and offlineAvailable
+  const deliveryAvail = this.onlineDeliveryAvailable === true;
+  const pickupAvail = this.selfPickupAvailable === true;
+
+  if (this.onlineDeliveryAvailable !== undefined || this.selfPickupAvailable !== undefined) {
+    this.onlineAvailable = Boolean(deliveryAvail || pickupAvail);
   } else if (this.onlineAvailable !== undefined && this.onlineAvailable !== null) {
     this.onlineDeliveryAvailable = Boolean(this.onlineAvailable);
   }
-  // Sync selfPickupAvailable and offlineAvailable
+
   if (this.selfPickupAvailable !== undefined) {
-    this.offlineAvailable = Boolean(this.selfPickupAvailable);
+    this.offlineAvailable = Boolean(pickupAvail);
   } else if (this.offlineAvailable !== undefined && this.offlineAvailable !== null) {
     this.selfPickupAvailable = Boolean(this.offlineAvailable);
   }

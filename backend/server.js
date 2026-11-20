@@ -63,6 +63,17 @@ function syncInitialAssets() {
       fs.copyFileSync(deliveryRefCandidate, path.join(publicDir, "delivery-reference-master.jpg"));
     }
 
+    // Sync exact user-provided Mobile App Welcome / Login Screen image with Delivery Button
+    const generatedWelcomeCandidate = "C:\\Users\\Forgeindiaconnect\\.gemini\\antigravity\\brain\\a56cf71a-e1f3-46be-861e-b3f62fc51713\\supermart_delivery_welcome_1795157880308.jpg";
+    const welcomeRefCandidate = "C:\\Users\\Forgeindiaconnect\\.gemini\\antigravity\\brain\\a56cf71a-e1f3-46be-861e-b3f62fc51713\\.user_uploaded\\media_1795157046387_ce8215a1.jpg";
+    const welcomeSrc = fs.existsSync(generatedWelcomeCandidate) ? generatedWelcomeCandidate : (fs.existsSync(welcomeRefCandidate) ? welcomeRefCandidate : null);
+    if (welcomeSrc) {
+      fs.copyFileSync(welcomeSrc, path.join(mobileAssetsDir, "supermart-welcome.jpg"));
+      fs.copyFileSync(welcomeSrc, path.join(publicDir, "supermart-welcome.jpg"));
+      fs.copyFileSync(welcomeSrc, path.join(assetsDir, "supermart-welcome.jpg"));
+      console.log("✓ Synced user welcome image with delivery button -> supermart-welcome.jpg");
+    }
+
     // Sync exact user-provided Super Admin Header Banner (pristine panorama from user prompt)
     const exactHeaderBanner = path.join(userUploadedDir, "media_1794807037848_916ec656.jpg");
     if (fs.existsSync(exactHeaderBanner)) {

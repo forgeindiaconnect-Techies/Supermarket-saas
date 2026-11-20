@@ -442,9 +442,9 @@ export default function CustomersManagement() {
       {/* 1. TOP HERO BANNER - STRICT OFFLINE CUSTOMER REGISTRATION DIRECTORY        */}
       {/* ========================================================================= */}
       <ErpPageBanner
-        title="Customer Directory (Offline Registrations)"
+        title="Offline Customers"
         subtitle="Directory of customers registered exclusively through the OFFLINE shopping flow • In-store walk-in shopper profiles"
-        badges={["OFFLINE Registrations Only", "In-Store Walk-In Shoppers", "Strictly Isolated from Online Orders"]}
+        badges={["OFFLINE Customers Only", "In-Store Walk-In Shoppers", "Strictly Isolated from Online Orders"]}
         icon={<Users size={22} color="#ffffff" strokeWidth={2.4} />}
       />
 

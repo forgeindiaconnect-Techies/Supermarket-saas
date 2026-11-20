@@ -963,7 +963,12 @@ exports.customerRegister = async (req, res) => {
     }
 
     // STRICT CHECK: Verify availability based on registration source
-    if (registrationType === "ONLINE" && store.onlineAvailable !== true) {
+    const isOnlineAllowed =
+      store.onlineDeliveryAvailable === true ||
+      store.selfPickupAvailable === true ||
+      store.onlineAvailable === true;
+
+    if (registrationType === "ONLINE" && !isOnlineAllowed) {
       return res.status(403).json({
         success: false,
         message: "This supermarket does not currently support Online Purchase. Please choose an available option.",
@@ -971,7 +976,7 @@ exports.customerRegister = async (req, res) => {
           _id: store._id,
           name: store.name,
           onlineAvailable: false,
-          offlineAvailable: store.offlineAvailable === true,
+          offlineAvailable: store.offlineAvailable === true || store.selfPickupAvailable === true,
         },
       });
     }
@@ -1112,7 +1117,12 @@ exports.customerLogin = async (req, res) => {
     }
 
     // Verify supermarket online availability
-    if (store.onlineAvailable !== true) {
+    const isOnlineAllowed =
+      store.onlineDeliveryAvailable === true ||
+      store.selfPickupAvailable === true ||
+      store.onlineAvailable === true;
+
+    if (!isOnlineAllowed) {
       return res.status(403).json({
         success: false,
         message: "This supermarket does not currently support Online Purchase. Please choose an available option.",
@@ -1120,7 +1130,7 @@ exports.customerLogin = async (req, res) => {
           _id: store._id,
           name: store.name,
           onlineAvailable: false,
-          offlineAvailable: store.offlineAvailable === true,
+          offlineAvailable: store.offlineAvailable === true || store.selfPickupAvailable === true,
         },
       });
     }

@@ -86,7 +86,7 @@ export default function ProfileScreen() {
           <Text style={styles.backArrow}>‹</Text>
         </TouchableOpacity>
 
-        <Text style={styles.headerTitle}>My Profile &amp; Store</Text>
+        <Text style={styles.headerTitle}>{"My Profile & Store"}</Text>
 
         <View style={{ width: 38 }} />
       </View>
@@ -200,7 +200,7 @@ export default function ProfileScreen() {
           >
             <Text style={styles.menuIcon}>📋</Text>
             <View style={{ flex: 1 }}>
-              <Text style={styles.menuTitle}>Order Receipts &amp; History</Text>
+              <Text style={styles.menuTitle}>{"Order Receipts & History"}</Text>
               <Text style={styles.menuSub}>View gate exit passes</Text>
             </View>
             <Text style={styles.menuArrow}>›</Text>
@@ -244,6 +244,24 @@ export default function ProfileScreen() {
               <Text style={styles.menuArrow}>›</Text>
             </TouchableOpacity>
           )}
+
+          {/* Dedicated Delivery Staff Portal Link */}
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => router.push("/delivery-login")}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.menuIcon}>🚚</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.menuTitle, { color: "#0284C7" }]}>
+                Delivery Staff Portal
+              </Text>
+              <Text style={styles.menuSub}>
+                Delivery personnel sign in & order dispatches
+              </Text>
+            </View>
+            <Text style={styles.menuArrow}>›</Text>
+          </TouchableOpacity>
         </View>
 
         <Text style={styles.appVersionText}>

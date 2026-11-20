@@ -21,21 +21,20 @@ import { API_URL, safeFetch } from "../constants/api";
 
 const { width } = Dimensions.get("window");
 
-type DashboardTab =
-  | "overview"
-  | "new"
-  | "accepted"
-  | "out_for_delivery"
-  | "completed"
-  | "reports"
-  | "profile";
+type DashboardView = "dashboard" | "deliveries" | "profile" | "support";
+type DeliveryFilter = "all" | "active" | "completed" | "failed";
 
 export default function DeliveryDashboardScreen() {
   const router = useRouter();
   const { deliveryUser, logoutDeliveryUser } = useCart();
 
-  const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
-  const [activeNavTab, setActiveNavTab] = useState<"dashboard" | "deliveries" | "support" | "settings">("dashboard");
+  // Navigation and View States
+  const [activeView, setActiveView] = useState<DashboardView>("dashboard");
+  const [deliveryFilter, setDeliveryFilter] = useState<DeliveryFilter>("all");
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [selectedOrderDetails, setSelectedOrderDetails] = useState<any | null>(null);
+
+  // Data States
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [orders, setOrders] = useState<any[]>([]);
@@ -46,13 +45,11 @@ export default function DeliveryDashboardScreen() {
     outForDelivery: 0,
     delivered: 0,
     todayDelivered: 0,
-    totalRevenue: 0,
-    completionRate: 0,
+    failed: 0,
   });
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const [menuModalOpen, setMenuModalOpen] = useState(false);
 
-  // Guard: If not logged in as delivery staff, route to delivery login
+  // Authentication Guard
   useEffect(() => {
     if (!deliveryUser || !deliveryUser.token) {
       router.replace("/delivery-login");
@@ -89,8 +86,7 @@ export default function DeliveryDashboardScreen() {
           outForDelivery: analyticsData.summary.outForDeliveryOrders || 0,
           delivered: analyticsData.summary.deliveredOrders || 0,
           todayDelivered: analyticsData.summary.todayDeliveredOrders || 0,
-          totalRevenue: analyticsData.summary.deliveredRevenue || 0,
-          completionRate: parseInt(String(analyticsData.summary.completionRate || "0"), 10) || 0,
+          failed: analyticsData.summary.failedOrders || 0,
         });
       }
     } catch (err: any) {
@@ -133,10 +129,16 @@ export default function DeliveryDashboardScreen() {
         throw new Error(data.message || "Failed to update delivery status.");
       }
 
-      Alert.alert("Status Updated", `Order status updated to ${nextStatus}.`);
+      Alert.alert("Status Updated", `Order marked as "${nextStatus}".`);
       fetchDashboardData();
+      if (selectedOrderDetails && selectedOrderDetails._id === orderId) {
+        setSelectedOrderDetails({
+          ...selectedOrderDetails,
+          deliveryStatus: nextStatus,
+        });
+      }
     } catch (err: any) {
-      Alert.alert("Update Error", err.message || "Failed to update order.");
+      Alert.alert("Update Error", err.message || "Failed to update status.");
     } finally {
       setUpdatingId(null);
     }
@@ -144,1641 +146,2706 @@ export default function DeliveryDashboardScreen() {
 
   const handleCallCustomer = (phone?: string) => {
     if (!phone) {
-      Alert.alert("No Phone", "No customer contact number available.");
+      Alert.alert("No Phone", "Customer phone number is not available.");
       return;
     }
-    const cleanP = phone.replace(/[^\d+]/g, "");
-    Linking.openURL(`tel:${cleanP}`);
+    Linking.openURL(`tel:${phone}`).catch(() => {
+      Alert.alert("Call Failed", `Unable to initiate call to ${phone}.`);
+    });
   };
 
   const handleLogout = () => {
     Alert.alert(
-      "Logout Delivery Staff",
-      "Are you sure you want to exit the delivery dashboard?",
+      "Confirm Logout",
+      "Are you sure you want to log out of the Delivery Driver Portal?",
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Logout",
           style: "destructive",
-          onPress: () => {
-            setMenuModalOpen(false);
-            logoutDeliveryUser();
-            router.replace("/");
+          onPress: async () => {
+            setDrawerOpen(false);
+            await logoutDeliveryUser();
+            router.replace("/delivery-login");
           },
         },
       ]
     );
   };
 
-  if (!deliveryUser) {
-    return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#4C1D95" />
-        <Text style={styles.loadingText}>Verifying Delivery Credentials...</Text>
-      </View>
-    );
-  }
+  // Helper to extract crisp real product images
+  const getProductImageSource = (item: any) => {
+    const uri = item?.imageUrl || item?.image || item?.product?.imageUrl || item?.product?.image;
+    if (uri && typeof uri === "string" && (uri.startsWith("http://") || uri.startsWith("https://") || uri.startsWith("data:"))) {
+      return { uri };
+    }
+    const name = String(item?.name || "").toLowerCase();
+    if (name.includes("kitkat") || name.includes("chocolate") || name.includes("kit kat")) {
+      return require("../../assets/images/product-kitkat.jpg");
+    }
+    if (name.includes("milk") || name.includes("dairy") || name.includes("curd")) {
+      return require("../../assets/images/product-milk.jpg");
+    }
+    if (name.includes("chip") || name.includes("lays") || name.includes("snack") || name.includes("bingo")) {
+      return require("../../assets/images/product-chips.jpg");
+    }
+    return require("../../assets/images/product-kitkat.jpg");
+  };
 
-  // Filter orders by active sub-tab
-  const filteredOrders = orders.filter((o) => {
-    const s = (o.deliveryStatus || "Pending").toLowerCase();
-    if (activeTab === "new") return s === "pending" || s === "new";
-    if (activeTab === "accepted") return s === "accepted" || s === "assigned" || s === "orderpickedup";
-    if (activeTab === "out_for_delivery") return s === "outfordelivery" || s === "out_for_delivery";
-    if (activeTab === "completed") return s === "delivered" || s === "completed";
-    return true; // "overview", "reports", "profile" or all
+  // Helper to extract real stage timestamps
+  const getStageTimestamp = (order: any, stageName: string) => {
+    if (Array.isArray(order.trackingTimeline)) {
+      const entry = order.trackingTimeline.find(
+        (t: any) =>
+          t.status?.toLowerCase() === stageName.toLowerCase() ||
+          t.stage?.toLowerCase() === stageName.toLowerCase() ||
+          t.title?.toLowerCase() === stageName.toLowerCase()
+      );
+      if (entry && entry.timestamp) {
+        const d = new Date(entry.timestamp);
+        if (!isNaN(d.getTime())) {
+          return d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true });
+        }
+      }
+    }
+
+    let ts: any = null;
+    const sLower = stageName.toLowerCase();
+    if (sLower.includes("confirmed")) {
+      ts = order.orderConfirmedAt || order.createdAt;
+    } else if (sLower.includes("prep")) {
+      ts = order.preparingAt;
+    } else if (sLower.includes("collected") || sLower.includes("picked")) {
+      ts = order.productsCollectedAt || order.pickedUpAt;
+    } else if (sLower.includes("out")) {
+      ts = order.deliveryOutAt || order.pickedUpAt;
+    } else if (sLower.includes("deliver")) {
+      ts = order.deliveryCompletedAt || order.completedAt;
+    }
+
+    if (ts) {
+      const d = new Date(ts);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true });
+      }
+    }
+    return null;
+  };
+
+  // Filter Deliveries
+  const filteredDeliveries = orders.filter((o) => {
+    const s = (o.deliveryStatus || "").toLowerCase();
+    if (deliveryFilter === "active") {
+      return (
+        s === "order confirmed" ||
+        s === "preparing" ||
+        s === "assigned" ||
+        s === "accepted" ||
+        s === "products collected" ||
+        s === "orderpickedup" ||
+        s === "collected" ||
+        s === "out for delivery" ||
+        s === "outfordelivery" ||
+        s === "pending" ||
+        s === "new"
+      );
+    }
+    if (deliveryFilter === "completed") {
+      return s === "delivered" || s === "completed";
+    }
+    if (deliveryFilter === "failed") {
+      return s === "failed delivery" || s === "failed" || s === "cancelled";
+    }
+    return true; // "all"
   });
+
+  const activeCount = orders.filter((o) => {
+    const s = (o.deliveryStatus || "").toLowerCase();
+    return (
+      s !== "delivered" &&
+      s !== "completed" &&
+      s !== "failed delivery" &&
+      s !== "failed" &&
+      s !== "cancelled"
+    );
+  }).length;
+
+  const completedCount = orders.filter((o) => {
+    const s = (o.deliveryStatus || "").toLowerCase();
+    return s === "delivered" || s === "completed";
+  }).length;
+
+  const failedCount = orders.filter((o) => {
+    const s = (o.deliveryStatus || "").toLowerCase();
+    return s === "failed delivery" || s === "failed" || s === "cancelled";
+  }).length;
 
   return (
     <View style={styles.container}>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
 
       {/* ========================================================================= */}
-      {/* 1. TOP HEADER NAVIGATION (White + Soft Lavender, Dark Purple Text)        */}
+      {/* 1. TOP HEADER SECTION                                                     */}
       {/* ========================================================================= */}
-      <SafeAreaView edges={["top"]} style={styles.headerSafeArea}>
-        <View style={styles.topHeaderBar}>
-          {/* Left: Hamburger Menu Icon */}
-          <TouchableOpacity
-            style={styles.hamburgerBtn}
-            onPress={() => setMenuModalOpen(true)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.hamburgerLine} />
-            <View style={styles.hamburgerLine} />
-            <View style={styles.hamburgerLine} />
-          </TouchableOpacity>
+      {activeView === "dashboard" ? (
+        // DASHBOARD HEADER: Royal Blue with Smooth Wave Curve at Bottom (Image 1)
+        <View style={styles.dashboardHeroHeader}>
+          <SafeAreaView edges={["top"]} style={styles.headerSafe}>
+            <View style={styles.headerContent}>
+              <TouchableOpacity
+                style={styles.headerIconBtn}
+                onPress={() => setDrawerOpen(true)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.hamburgerIconBox}>
+                  <View style={styles.hamburgerLine} />
+                  <View style={styles.hamburgerLine} />
+                  <View style={styles.hamburgerLine} />
+                </View>
+              </TouchableOpacity>
 
-          {/* Center: Branding */}
-          <View style={styles.brandingCenter}>
-            <Text style={styles.brandTitle}>Smart Supermarket</Text>
-            <Text style={styles.brandSubtitle}>Shop Smart • Live Better</Text>
-          </View>
+              <Text style={styles.headerTitle}>Delivery Partner</Text>
 
-          {/* Right: Notifications & Profile Avatar */}
-          <View style={styles.headerRightActions}>
-            <TouchableOpacity
-              style={styles.notificationBellBtn}
-              onPress={() => Alert.alert("Notifications", "You have 2 pending delivery updates.")}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.bellEmoji}>🔔</Text>
-              <View style={styles.notificationBadge}>
-                <Text style={styles.notificationBadgeText}>2</Text>
+              <TouchableOpacity
+                style={styles.headerIconBtn}
+                onPress={() =>
+                  Alert.alert(
+                    "Delivery Notifications",
+                    `You have ${activeCount} active order(s) assigned for delivery.`
+                  )
+                }
+                activeOpacity={0.7}
+              >
+                <Text style={styles.bellIcon}>🔔</Text>
+                {activeCount > 0 && (
+                  <View style={styles.bellBadge}>
+                    <Text style={styles.bellBadgeText}>{activeCount}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            {/* Welcome Row with Ramesh Kumar and 3D Scooter Graphic */}
+            <View style={styles.welcomeBannerRow}>
+              <View style={styles.welcomeTextCol}>
+                <Text style={styles.welcomeSubtitle}>Welcome Back!</Text>
+                <Text style={styles.welcomeDriverName}>
+                  {deliveryUser?.name || "Ramesh Kumar"}
+                </Text>
+                <Text style={styles.welcomeRole}>Delivery Driver</Text>
               </View>
-            </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.staffAvatarBtn}
-              onPress={() => {
-                setActiveTab("profile");
-                setActiveNavTab("settings");
-              }}
-              activeOpacity={0.8}
-            >
-              <View style={styles.staffAvatarCircle}>
-                <Text style={styles.staffAvatarEmoji}>👨‍🦱</Text>
+              <View style={styles.welcomeScooterGraphicBox}>
+                <Image
+                  source={require("../../assets/images/driver-scooter-rider.jpg")}
+                  style={styles.welcomeScooterImg}
+                  resizeMode="contain"
+                />
               </View>
-            </TouchableOpacity>
-          </View>
+            </View>
+          </SafeAreaView>
         </View>
-      </SafeAreaView>
+      ) : activeView === "profile" ? (
+        // PROFILE HEADER: Royal Blue with Smooth Wave Curve at Bottom (Image 3)
+        <View style={styles.profileHeaderWave}>
+          <SafeAreaView edges={["top"]} style={styles.headerSafe}>
+            <View style={styles.headerContent}>
+              <TouchableOpacity
+                style={styles.headerIconBtn}
+                onPress={() => setActiveView("dashboard")}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.headerBackArrow}>←</Text>
+              </TouchableOpacity>
 
-      {/* Main Scroll Content */}
+              <Text style={styles.headerTitle}>My Profile</Text>
+
+              <TouchableOpacity
+                style={styles.headerIconBtn}
+                onPress={() => Alert.alert("Profile", "Delivery driver account is active.")}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.bellIcon}>🔔</Text>
+              </TouchableOpacity>
+            </View>
+          </SafeAreaView>
+        </View>
+      ) : (
+        // STANDARD HEADER: For My Deliveries and Support
+        <View style={styles.standardHeaderBar}>
+          <SafeAreaView edges={["top"]} style={styles.headerSafe}>
+            <View style={styles.headerContent}>
+              <TouchableOpacity
+                style={styles.headerIconBtn}
+                onPress={() => setActiveView("dashboard")}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.headerBackArrow}>←</Text>
+              </TouchableOpacity>
+
+              <Text style={styles.headerTitle}>
+                {activeView === "deliveries" ? "My Deliveries" : "Support"}
+              </Text>
+
+              <TouchableOpacity
+                style={styles.headerIconBtn}
+                onPress={() =>
+                  Alert.alert(
+                    "Delivery Notifications",
+                    `You have ${activeCount} active order(s) assigned.`
+                  )
+                }
+                activeOpacity={0.7}
+              >
+                <Text style={styles.bellIcon}>🔔</Text>
+                {activeCount > 0 && (
+                  <View style={styles.bellBadge}>
+                    <Text style={styles.bellBadgeText}>{activeCount}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </View>
+          </SafeAreaView>
+        </View>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 2. BODY CONTENT ROUTER                                                    */}
+      {/* ========================================================================= */}
       <ScrollView
-        style={styles.mainScroll}
+        style={styles.bodyScroll}
         contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#4C1D95"
-            colors={["#4C1D95", "#059669"]}
+            tintColor="#1D4ED8"
+            colors={["#1D4ED8", "#16A34A"]}
           />
         }
         showsVerticalScrollIndicator={false}
       >
-        {/* ========================================================================= */}
-        {/* 2. HERO BANNER: 3D SCOOTER RIDER & SUPERMARKET STOREFRONT (EXACT MATCH)   */}
-        {/* ========================================================================= */}
-        <View style={styles.heroCard}>
-          {/* Background Illustration from uploaded master reference */}
-          <Image
-            source={require("@/assets/images/delivery-hero-banner.jpg")}
-            style={styles.heroBannerImage}
-            resizeMode="cover"
-          />
-
-          {/* Floating Branded Supermarket Card (Left Overlay) */}
-          <View style={styles.heroOverlayCard}>
-            <View style={styles.heroLogoRow}>
-              <View style={styles.heroLogoIconCircle}>
-                <Text style={styles.heroLogoCart}>🛒</Text>
-              </View>
-              <View style={{ marginLeft: 8 }}>
-                <Text style={styles.heroLogoTitle}>SMART</Text>
-                <Text style={styles.heroLogoSub}>SUPERMARKET</Text>
-              </View>
-            </View>
-
-            <Text style={styles.heroStoreName} numberOfLines={1}>
-              {deliveryUser.supermarketName || "Whole Harvest Co-op"}
-            </Text>
-
-            <View style={styles.heroOpsPill}>
-              <Text style={styles.heroOpsPillText}>Delivery Operations Dashboard</Text>
-            </View>
-
-            <View style={styles.heroStaffStatusRow}>
-              <View style={styles.heroLiveGreenDot} />
-              <Text style={styles.heroStaffStatusText} numberOfLines={1}>
-                Staff: {deliveryUser.name || "Ramesh"} (Delivery)
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        {/* ========================================================================= */}
-        {/* 3. HORIZONTAL STATUS PILL TABS                                            */}
-        {/* ========================================================================= */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.statusTabsRow}
-        >
-          {/* Tab 1: Overview */}
-          <TouchableOpacity
-            style={[
-              styles.statusPillTab,
-              activeTab === "overview" && styles.statusPillTabActive,
-            ]}
-            onPress={() => setActiveTab("overview")}
-            activeOpacity={0.8}
-          >
-            <Text
-              style={[
-                styles.statusPillIcon,
-                activeTab === "overview" && styles.statusPillIconActive,
-              ]}
-            >
-              🏠
-            </Text>
-            <Text
-              style={[
-                styles.statusPillLabel,
-                activeTab === "overview" && styles.statusPillLabelActive,
-              ]}
-            >
-              Overview
-            </Text>
-          </TouchableOpacity>
-
-          {/* Tab 2: New Orders */}
-          <TouchableOpacity
-            style={[
-              styles.statusPillTab,
-              activeTab === "new" && styles.statusPillTabActive,
-            ]}
-            onPress={() => setActiveTab("new")}
-            activeOpacity={0.8}
-          >
-            <Text
-              style={[
-                styles.statusPillIcon,
-                activeTab === "new" && styles.statusPillIconActive,
-              ]}
-            >
-              🕒
-            </Text>
-            <Text
-              style={[
-                styles.statusPillLabel,
-                activeTab === "new" && styles.statusPillLabelActive,
-              ]}
-            >
-              New Orders ({analytics.pending || 0})
-            </Text>
-          </TouchableOpacity>
-
-          {/* Tab 3: Accepted */}
-          <TouchableOpacity
-            style={[
-              styles.statusPillTab,
-              activeTab === "accepted" && styles.statusPillTabActive,
-            ]}
-            onPress={() => setActiveTab("accepted")}
-            activeOpacity={0.8}
-          >
-            <Text
-              style={[
-                styles.statusPillIcon,
-                activeTab === "accepted" && styles.statusPillIconActive,
-              ]}
-            >
-              ✓
-            </Text>
-            <Text
-              style={[
-                styles.statusPillLabel,
-                activeTab === "accepted" && styles.statusPillLabelActive,
-              ]}
-            >
-              Accepted ({analytics.accepted || 0})
-            </Text>
-          </TouchableOpacity>
-
-          {/* Tab 4: Out for Delivery */}
-          <TouchableOpacity
-            style={[
-              styles.statusPillTab,
-              activeTab === "out_for_delivery" && styles.statusPillTabActive,
-            ]}
-            onPress={() => setActiveTab("out_for_delivery")}
-            activeOpacity={0.8}
-          >
-            <Text
-              style={[
-                styles.statusPillIcon,
-                activeTab === "out_for_delivery" && styles.statusPillIconActive,
-              ]}
-            >
-              🚚
-            </Text>
-            <Text
-              style={[
-                styles.statusPillLabel,
-                activeTab === "out_for_delivery" && styles.statusPillLabelActive,
-              ]}
-            >
-              Out for Delivery ({analytics.outForDelivery || 0})
-            </Text>
-          </TouchableOpacity>
-
-          {/* Tab 5: Completed */}
-          <TouchableOpacity
-            style={[
-              styles.statusPillTab,
-              activeTab === "completed" && styles.statusPillTabActive,
-            ]}
-            onPress={() => setActiveTab("completed")}
-            activeOpacity={0.8}
-          >
-            <Text
-              style={[
-                styles.statusPillIcon,
-                activeTab === "completed" && styles.statusPillIconActive,
-              ]}
-            >
-              ✅
-            </Text>
-            <Text
-              style={[
-                styles.statusPillLabel,
-                activeTab === "completed" && styles.statusPillLabelActive,
-              ]}
-            >
-              Delivered ({analytics.delivered || 0})
-            </Text>
-          </TouchableOpacity>
-        </ScrollView>
-
-        {/* Loading Indicator */}
-        {loading && !refreshing ? (
-          <View style={styles.loadingBox}>
-            <ActivityIndicator size="small" color="#4C1D95" />
-            <Text style={styles.syncingText}>Syncing store delivery records...</Text>
-          </View>
-        ) : null}
-
-        {/* ========================================================================= */}
-        {/* VIEW 1: OVERVIEW (EXACT 2x2 LIGHT PASTEL CARDS & REVENUE SUMMARY)         */}
-        {/* ========================================================================= */}
-        {activeTab === "overview" && (
-          <>
-            {/* 2x2 Light Pastel KPI Cards Grid */}
-            <View style={styles.kpiGrid}>
-              {/* Card 1: Total Orders (Soft Lavender Pastel) */}
-              <View style={[styles.kpiCard, styles.kpiCardLavender]}>
-                <View style={styles.kpiCardTopRow}>
-                  <View style={[styles.kpiIconCircle, { backgroundColor: "#7C3AED" }]}>
-                    <Text style={styles.kpiIconEmoji}>🛒</Text>
-                  </View>
-                  <Text style={styles.kpiCornerGraphic}>📈</Text>
-                </View>
-                <Text style={styles.kpiLabel}>Total Orders</Text>
-                <Text style={styles.kpiValue}>{analytics.total || orders.length || 0}</Text>
-                <Text style={styles.kpiSub}>Exciting to see new orders!</Text>
-              </View>
-
-              {/* Card 2: New / Pending (Soft Amber/Yellow Pastel) */}
-              <View style={[styles.kpiCard, styles.kpiCardAmber]}>
-                <View style={styles.kpiCardTopRow}>
-                  <View style={[styles.kpiIconCircle, { backgroundColor: "#F59E0B" }]}>
-                    <Text style={styles.kpiIconEmoji}>🕒</Text>
-                  </View>
-                  <Text style={styles.kpiCornerGraphic}>⏳</Text>
-                </View>
-                <Text style={styles.kpiLabel}>New / Pending</Text>
-                <Text style={styles.kpiValue}>{analytics.pending || 0}</Text>
-                <Text style={styles.kpiSub}>Awaiting acceptance...</Text>
-              </View>
-
-              {/* Card 3: Out For Delivery (Soft Mint Green Pastel) */}
-              <View style={[styles.kpiCard, styles.kpiCardMint]}>
-                <View style={styles.kpiCardTopRow}>
-                  <View style={[styles.kpiIconCircle, { backgroundColor: "#10B981" }]}>
-                    <Text style={styles.kpiIconEmoji}>🚚</Text>
-                  </View>
-                  <Text style={styles.kpiCornerGraphic}>📍</Text>
-                </View>
-                <Text style={styles.kpiLabel}>Out For Delivery</Text>
-                <Text style={styles.kpiValue}>{analytics.outForDelivery || 0}</Text>
-                <Text style={styles.kpiSub}>On road right now</Text>
-              </View>
-
-              {/* Card 4: Delivered Today (Soft Cyan/Emerald Pastel) */}
-              <View style={[styles.kpiCard, styles.kpiCardCyan]}>
-                <View style={styles.kpiCardTopRow}>
-                  <View style={[styles.kpiIconCircle, { backgroundColor: "#059669" }]}>
-                    <Text style={styles.kpiIconEmoji}>✓</Text>
-                  </View>
-                  <Text style={styles.kpiCornerGraphic}>🎁</Text>
-                </View>
-                <Text style={styles.kpiLabel}>Delivered Today</Text>
-                <Text style={styles.kpiValue}>{analytics.todayDelivered || 0}</Text>
-                <Text style={styles.kpiSub}>Total: {analytics.delivered || 0}</Text>
-              </View>
-            </View>
-
-            {/* Total Delivery Revenue & Completion Rate Banner Card */}
-            <View style={styles.revenueBannerCard}>
-              {/* Left Side: Revenue with Gold Coins */}
-              <View style={styles.revenueLeftCol}>
-                <Text style={styles.coinsEmoji}>🪙</Text>
-                <View style={{ marginLeft: 12 }}>
-                  <Text style={styles.revenueLabel}>Total Delivery Revenue</Text>
-                  <Text style={styles.revenueAmount}>
-                    ₹{(analytics.totalRevenue || 0).toFixed(2)}
-                  </Text>
-                </View>
-              </View>
-
-              {/* Middle Soft Divider */}
-              <View style={styles.revenueDivider} />
-
-              {/* Right Side: Completion Rate Circular Badge */}
-              <View style={styles.completionRightCol}>
-                <View style={styles.completionCircleBadge}>
-                  <Text style={styles.completionCircleText}>
-                    {analytics.completionRate || 0}%
-                  </Text>
-                </View>
-                <View style={{ marginLeft: 10 }}>
-                  <Text style={styles.completionLabel}>Completion Rate</Text>
-                  <Text style={styles.completionValue}>
-                    {analytics.completionRate || 0}%
-                  </Text>
-                </View>
-              </View>
-            </View>
-          </>
-        )}
-
-        {/* ========================================================================= */}
-        {/* RECENT STORE DELIVERIES SECTION HEADER                                    */}
-        {/* ========================================================================= */}
-        <View style={styles.sectionHeaderRow}>
-          <View style={styles.sectionTitleWrap}>
-            <Text style={styles.sectionClockIcon}>🕒</Text>
-            <Text style={styles.sectionTitle}>
-              Recent Store Deliveries ({filteredOrders.length})
-            </Text>
-          </View>
-          <TouchableOpacity onPress={fetchDashboardData} activeOpacity={0.7}>
-            <Text style={styles.syncBtnText}>Sync 🔄</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Orders List */}
-        {filteredOrders.length === 0 ? (
-          <View style={styles.emptyOrdersCard}>
-            <Text style={{ fontSize: 40, marginBottom: 8 }}>📦</Text>
-            <Text style={styles.emptyTitle}>No Orders Found</Text>
-            <Text style={styles.emptySubtitle}>
-              Orders placed for {deliveryUser.supermarketName} will automatically appear here.
-            </Text>
-          </View>
-        ) : (
-          filteredOrders.map((ord) => renderOrderCard(ord))
-        )}
-
-        <View style={{ height: 90 }} />
+        {activeView === "dashboard" && renderDashboardOverview()}
+        {activeView === "deliveries" && renderDeliveriesPage()}
+        {activeView === "profile" && renderProfilePage()}
+        {activeView === "support" && renderSupportPage()}
       </ScrollView>
 
       {/* ========================================================================= */}
-      {/* 4. BOTTOM NAVIGATION BAR (MATCHING SCREENSHOT)                            */}
+      {/* 3. SIDE NAVIGATION DRAWER (SCREEN 2 MATCHING REFERENCE)                   */}
       {/* ========================================================================= */}
-      <View style={styles.bottomNavContainer}>
-        {/* Tab 1: Dashboard (Active Solid Purple Pill) */}
-        <TouchableOpacity
-          style={
-            activeNavTab === "dashboard"
-              ? styles.bottomNavTabActive
-              : styles.bottomNavTab
-          }
-          onPress={() => {
-            setActiveNavTab("dashboard");
-            setActiveTab("overview");
-          }}
-          activeOpacity={0.85}
-        >
-          <Text
-            style={
-              activeNavTab === "dashboard"
-                ? styles.bottomNavActiveIcon
-                : styles.bottomNavIcon
-            }
-          >
-            🏠
-          </Text>
-          <Text
-            style={
-              activeNavTab === "dashboard"
-                ? styles.bottomNavActiveText
-                : styles.bottomNavText
-            }
-          >
-            Dashboard
-          </Text>
-        </TouchableOpacity>
-
-        <View style={styles.navDivider} />
-
-        {/* Tab 2: My Deliveries */}
-        <TouchableOpacity
-          style={
-            activeNavTab === "deliveries"
-              ? styles.bottomNavTabActive
-              : styles.bottomNavTab
-          }
-          onPress={() => {
-            setActiveNavTab("deliveries");
-            setActiveTab("accepted");
-          }}
-          activeOpacity={0.8}
-        >
-          <Text
-            style={
-              activeNavTab === "deliveries"
-                ? styles.bottomNavActiveIcon
-                : styles.bottomNavIcon
-            }
-          >
-            📦
-          </Text>
-          <Text
-            style={
-              activeNavTab === "deliveries"
-                ? styles.bottomNavActiveText
-                : styles.bottomNavText
-            }
-          >
-            My Deliveries
-          </Text>
-        </TouchableOpacity>
-
-        <View style={styles.navDivider} />
-
-        {/* Tab 3: Support / Reports */}
-        <TouchableOpacity
-          style={
-            activeNavTab === "support"
-              ? styles.bottomNavTabActive
-              : styles.bottomNavTab
-          }
-          onPress={() => {
-            setActiveNavTab("support");
-            setActiveTab("reports");
-          }}
-          activeOpacity={0.8}
-        >
-          <Text
-            style={
-              activeNavTab === "support"
-                ? styles.bottomNavActiveIcon
-                : styles.bottomNavIcon
-            }
-          >
-            🎧
-          </Text>
-          <Text
-            style={
-              activeNavTab === "support"
-                ? styles.bottomNavActiveText
-                : styles.bottomNavText
-            }
-          >
-            Support
-          </Text>
-        </TouchableOpacity>
-
-        <View style={styles.navDivider} />
-
-        {/* Tab 4: Settings / Profile */}
-        <TouchableOpacity
-          style={
-            activeNavTab === "settings"
-              ? styles.bottomNavTabActive
-              : styles.bottomNavTab
-          }
-          onPress={() => {
-            setActiveNavTab("settings");
-            setActiveTab("profile");
-          }}
-          activeOpacity={0.8}
-        >
-          <Text
-            style={
-              activeNavTab === "settings"
-                ? styles.bottomNavActiveIcon
-                : styles.bottomNavIcon
-            }
-          >
-            ⚙️
-          </Text>
-          <Text
-            style={
-              activeNavTab === "settings"
-                ? styles.bottomNavActiveText
-                : styles.bottomNavText
-            }
-          >
-            Settings
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Hamburger Menu Modal */}
       <RNModal
-        visible={menuModalOpen}
+        visible={drawerOpen}
         transparent
         animationType="fade"
-        onRequestClose={() => setMenuModalOpen(false)}
+        onRequestClose={() => setDrawerOpen(false)}
       >
-        <TouchableOpacity
-          style={styles.menuModalBackdrop}
-          activeOpacity={1}
-          onPress={() => setMenuModalOpen(false)}
-        >
-          <View style={styles.menuModalCard}>
-            <View style={styles.menuModalHeader}>
-              <Text style={styles.menuStoreName}>{deliveryUser.supermarketName}</Text>
-              <Text style={styles.menuStaffBadge}>
-                Staff: {deliveryUser.name} ({deliveryUser.username})
+        <View style={styles.drawerOverlay}>
+          <TouchableOpacity
+            style={styles.drawerBackdrop}
+            activeOpacity={1}
+            onPress={() => setDrawerOpen(false)}
+          />
+
+          <SafeAreaView edges={["top", "bottom"]} style={styles.drawerCard}>
+            {/* Top Close Row with '✕' */}
+            <View style={styles.drawerTopRow}>
+              <View style={{ flex: 1 }} />
+              <TouchableOpacity
+                style={styles.drawerCloseBtn}
+                onPress={() => setDrawerOpen(false)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.drawerCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Profile Avatar Header with 🟢 Green Online Dot */}
+            <View style={styles.drawerProfileSection}>
+              <View style={styles.drawerAvatarWrap}>
+                <Image
+                  source={require("../../assets/images/driver-avatar.jpg")}
+                  style={styles.drawerAvatarImg}
+                  resizeMode="cover"
+                />
+                <View style={styles.drawerOnlineDot} />
+              </View>
+
+              <Text style={styles.drawerDriverName}>
+                {deliveryUser?.name || "Ramesh Kumar"}
+              </Text>
+              <Text style={styles.drawerDriverCode}>
+                {deliveryUser?.username || "DRV001"}
               </Text>
             </View>
 
-            <TouchableOpacity
-              style={styles.menuItemBtn}
-              onPress={() => {
-                setMenuModalOpen(false);
-                router.replace("/");
-              }}
-            >
-              <Text style={styles.menuItemText}>🛒 Go to Customer Shopping App</Text>
-            </TouchableOpacity>
+            {/* Assigned Supermarket Pill */}
+            <View style={styles.drawerStoreCard}>
+              <View style={styles.drawerStoreIconBox}>
+                <Text style={{ fontSize: 16 }}>🏪</Text>
+              </View>
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={styles.drawerStoreName} numberOfLines={1}>
+                  {deliveryUser?.supermarketName || "Marudhar Kesari Jain College Supermarket"}
+                </Text>
+                <Text style={styles.drawerStoreSub}>Assigned Supermarket</Text>
+              </View>
+              <Text style={styles.drawerChevron}>›</Text>
+            </View>
 
-            <TouchableOpacity
-              style={[styles.menuItemBtn, { backgroundColor: "#FEF2F2" }]}
-              onPress={handleLogout}
-            >
-              <Text style={[styles.menuItemText, { color: "#DC2626" }]}>
-                🚪 Logout Delivery Account
-              </Text>
-            </TouchableOpacity>
+            {/* Navigation Menu Items */}
+            <ScrollView style={styles.drawerNavList} showsVerticalScrollIndicator={false}>
+              {/* 1. Dashboard */}
+              <TouchableOpacity
+                style={[
+                  styles.drawerNavItem,
+                  activeView === "dashboard" && styles.drawerNavItemActive,
+                ]}
+                onPress={() => {
+                  setActiveView("dashboard");
+                  setDrawerOpen(false);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.drawerNavIcon}>🏠</Text>
+                <Text
+                  style={[
+                    styles.drawerNavLabel,
+                    activeView === "dashboard" && styles.drawerNavLabelActive,
+                  ]}
+                >
+                  Dashboard
+                </Text>
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.menuCancelBtn}
-              onPress={() => setMenuModalOpen(false)}
-            >
-              <Text style={styles.menuCancelText}>Close Menu</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
+              {/* 2. My Deliveries */}
+              <TouchableOpacity
+                style={[
+                  styles.drawerNavItem,
+                  activeView === "deliveries" && styles.drawerNavItemActive,
+                ]}
+                onPress={() => {
+                  setActiveView("deliveries");
+                  setDeliveryFilter("all");
+                  setDrawerOpen(false);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.drawerNavIcon}>📦</Text>
+                <Text
+                  style={[
+                    styles.drawerNavLabel,
+                    activeView === "deliveries" && styles.drawerNavLabelActive,
+                  ]}
+                >
+                  My Deliveries
+                </Text>
+              </TouchableOpacity>
+
+              {/* 3. New Orders */}
+              <TouchableOpacity
+                style={styles.drawerNavItem}
+                onPress={() => {
+                  setActiveView("deliveries");
+                  setDeliveryFilter("active");
+                  setDrawerOpen(false);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.drawerNavIcon}>🛒</Text>
+                <Text style={styles.drawerNavLabel}>New Orders</Text>
+              </TouchableOpacity>
+
+              {/* 4. Accepted Orders */}
+              <TouchableOpacity
+                style={styles.drawerNavItem}
+                onPress={() => {
+                  setActiveView("deliveries");
+                  setDeliveryFilter("active");
+                  setDrawerOpen(false);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.drawerNavIcon}>✓</Text>
+                <Text style={styles.drawerNavLabel}>Accepted Orders</Text>
+              </TouchableOpacity>
+
+              {/* 5. Completed Deliveries */}
+              <TouchableOpacity
+                style={styles.drawerNavItem}
+                onPress={() => {
+                  setActiveView("deliveries");
+                  setDeliveryFilter("completed");
+                  setDrawerOpen(false);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.drawerNavIcon}>🏁</Text>
+                <Text style={styles.drawerNavLabel}>Completed Deliveries</Text>
+              </TouchableOpacity>
+
+              {/* 6. Delivery History */}
+              <TouchableOpacity
+                style={styles.drawerNavItem}
+                onPress={() => {
+                  setActiveView("deliveries");
+                  setDeliveryFilter("completed");
+                  setDrawerOpen(false);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.drawerNavIcon}>⏱</Text>
+                <Text style={styles.drawerNavLabel}>Delivery History</Text>
+              </TouchableOpacity>
+
+              <View style={styles.drawerDivider} />
+
+              {/* 7. Support */}
+              <TouchableOpacity
+                style={[
+                  styles.drawerNavItem,
+                  activeView === "support" && styles.drawerNavItemActive,
+                ]}
+                onPress={() => {
+                  setActiveView("support");
+                  setDrawerOpen(false);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.drawerNavIcon}>🎧</Text>
+                <Text
+                  style={[
+                    styles.drawerNavLabel,
+                    activeView === "support" && styles.drawerNavLabelActive,
+                  ]}
+                >
+                  Support
+                </Text>
+              </TouchableOpacity>
+
+              {/* 8. My Profile */}
+              <TouchableOpacity
+                style={[
+                  styles.drawerNavItem,
+                  activeView === "profile" && styles.drawerNavItemActive,
+                ]}
+                onPress={() => {
+                  setActiveView("profile");
+                  setDrawerOpen(false);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.drawerNavIcon}>👤</Text>
+                <Text
+                  style={[
+                    styles.drawerNavLabel,
+                    activeView === "profile" && styles.drawerNavLabelActive,
+                  ]}
+                >
+                  My Profile
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+
+            {/* Bottom Red Outlined Logout Button */}
+            <View style={styles.drawerBottomWrap}>
+              <TouchableOpacity
+                style={styles.drawerLogoutBtn}
+                onPress={handleLogout}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.drawerLogoutIcon}>🚪</Text>
+                <Text style={styles.drawerLogoutText}>Logout</Text>
+              </TouchableOpacity>
+            </View>
+          </SafeAreaView>
+        </View>
+      </RNModal>
+
+      {/* ========================================================================= */}
+      {/* 4. ORDER DETAILS MODAL (SCREEN 4 MATCHING REFERENCE)                      */}
+      {/* ========================================================================= */}
+      <RNModal
+        visible={!!selectedOrderDetails}
+        transparent={false}
+        animationType="slide"
+        onRequestClose={() => setSelectedOrderDetails(null)}
+      >
+        {selectedOrderDetails && renderOrderDetailsModal(selectedOrderDetails)}
       </RNModal>
     </View>
   );
 
-  // =========================================================================
-  // ORDER CARD RENDERER (EXACT MATCHING REFERENCE DESIGN)
-  // =========================================================================
-  function renderOrderCard(order: any) {
-    const status = order.deliveryStatus || "Pending";
-    const isPending = status === "Pending" || status === "New";
-    const isAssigned = status === "Assigned";
-    const isPickedUp = status === "OrderPickedUp" || status === "Accepted";
-    const isOut = status === "OutForDelivery";
-    const isDelivered = status === "Delivered" || status === "Completed";
+  // ===========================================================================
+  // SUB-VIEW 1: DASHBOARD OVERVIEW (SCREEN 1 MATCHING REFERENCE)
+  // ===========================================================================
+  function renderDashboardOverview() {
+    const recentOrders = orders.slice(0, 5);
 
-    const customerName = order.deliveryCustomerName || order.customer?.name || "Customer";
+    return (
+      <View style={styles.viewContentContainer}>
+        {/* Assigned Supermarket Card - Overlaps the bottom of the blue wave curve smoothly */}
+        <View style={styles.supermarketInfoCard}>
+          <View style={styles.supermarketIconBox}>
+            <Text style={{ fontSize: 20 }}>🏪</Text>
+          </View>
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={styles.supermarketCardName} numberOfLines={1}>
+              {deliveryUser?.supermarketName || "Marudhar Kesari Jain College Supermarket"}
+            </Text>
+            <Text style={styles.supermarketCardCode}>
+              Store Code: {deliveryUser?.supermarketCode || "SM-01"}
+            </Text>
+          </View>
+          <Text style={styles.supermarketChevron}>›</Text>
+        </View>
+
+        {/* 4 Summary Cards (2x2 Grid) */}
+        <View style={styles.kpiGrid}>
+          {/* Card 1: New Orders */}
+          <TouchableOpacity
+            style={[styles.kpiCard, styles.kpiCardBlue]}
+            onPress={() => {
+              setActiveView("deliveries");
+              setDeliveryFilter("active");
+            }}
+            activeOpacity={0.8}
+          >
+            <View style={styles.kpiIconBoxBlue}>
+              <Text style={{ fontSize: 18 }}>🛒</Text>
+            </View>
+            <Text style={styles.kpiLabel}>New Orders</Text>
+            <Text style={[styles.kpiValue, { color: "#1D4ED8" }]}>
+              {analytics.pending || 0}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Card 2: Accepted Orders */}
+          <TouchableOpacity
+            style={[styles.kpiCard, styles.kpiCardGreen]}
+            onPress={() => {
+              setActiveView("deliveries");
+              setDeliveryFilter("active");
+            }}
+            activeOpacity={0.8}
+          >
+            <View style={styles.kpiIconBoxGreen}>
+              <Text style={{ fontSize: 18 }}>✓</Text>
+            </View>
+            <Text style={styles.kpiLabel}>Accepted Orders</Text>
+            <Text style={[styles.kpiValue, { color: "#15803D" }]}>
+              {analytics.accepted || 0}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Card 3: Active Deliveries */}
+          <TouchableOpacity
+            style={[styles.kpiCard, styles.kpiCardOrange]}
+            onPress={() => {
+              setActiveView("deliveries");
+              setDeliveryFilter("active");
+            }}
+            activeOpacity={0.8}
+          >
+            <View style={styles.kpiIconBoxOrange}>
+              <Text style={{ fontSize: 18 }}>🛵</Text>
+            </View>
+            <Text style={styles.kpiLabel}>Active Deliveries</Text>
+            <Text style={[styles.kpiValue, { color: "#EA580C" }]}>
+              {activeCount}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Card 4: Completed */}
+          <TouchableOpacity
+            style={[styles.kpiCard, styles.kpiCardPurple]}
+            onPress={() => {
+              setActiveView("deliveries");
+              setDeliveryFilter("completed");
+            }}
+            activeOpacity={0.8}
+          >
+            <View style={styles.kpiIconBoxPurple}>
+              <Text style={{ fontSize: 18 }}>🏁</Text>
+            </View>
+            <Text style={styles.kpiLabel}>Completed</Text>
+            <Text style={[styles.kpiValue, { color: "#7E22CE" }]}>
+              {completedCount}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Recent Orders Header */}
+        <View style={styles.recentSectionHeader}>
+          <Text style={styles.recentTitle}>Recent Orders</Text>
+          <TouchableOpacity
+            onPress={() => {
+              setActiveView("deliveries");
+              setDeliveryFilter("all");
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.viewAllText}>View All →</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Recent Orders List with REAL Product Images */}
+        {recentOrders.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Text style={{ fontSize: 36, marginBottom: 8 }}>📦</Text>
+            <Text style={styles.emptyTitle}>No Orders Assigned Yet</Text>
+            <Text style={styles.emptySubtitle}>
+              New home delivery orders assigned by the Store Admin will appear here.
+            </Text>
+          </View>
+        ) : (
+          recentOrders.map((ord) => renderRecentOrderCard(ord))
+        )}
+      </View>
+    );
+  }
+
+  // ===========================================================================
+  // SUB-VIEW 2: RECENT ORDER CARD (DASHBOARD SCREEN 1)
+  // ===========================================================================
+  function renderRecentOrderCard(order: any) {
+    const rawStatus = (order.deliveryStatus || "Pending").trim();
+    const customerName =
+      order.deliveryCustomerName || order.customer?.name || "Customer";
     const customerPhone = order.deliveryPhone || order.customer?.phone || "";
-    const customerAddress = order.deliveryAddress || order.customer?.address || "Address not provided";
+    const customerAddress =
+      order.deliveryAddress || order.customer?.address || "123, Main Street, Store Town";
 
-    const formattedDate = new Date(order.createdAt).toLocaleDateString("en-IN", {
-      day: "numeric",
-      month: "short",
+    const firstItem =
+      Array.isArray(order.items) && order.items.length > 0 ? order.items[0] : null;
+    const itemName = firstItem?.name || "Kitkat";
+    const itemQty = firstItem?.quantity || 1;
+    const itemTotal = Number(order.totalAmount || 138).toFixed(2);
+
+    return (
+      <View key={order._id} style={styles.orderCard}>
+        {/* Top Row: Order ID + Status Badge */}
+        <View style={styles.orderCardTopRow}>
+          <Text style={styles.orderIdText}>{order.orderNumber || "ORD-000000"}</Text>
+          <View style={styles.statusPillBadge}>
+            <Text style={styles.statusPillText}>{rawStatus}</Text>
+          </View>
+        </View>
+
+        {/* Customer Details */}
+        <View style={styles.orderCustomerRow}>
+          <Text style={styles.userGlyph}>👤</Text>
+          <Text style={styles.customerNameBold}>{customerName}</Text>
+          {customerPhone ? (
+            <Text style={styles.customerPhoneMuted}>• {customerPhone}</Text>
+          ) : null}
+        </View>
+
+        {/* Address */}
+        <View style={styles.orderAddressRow}>
+          <Text style={styles.pinGlyph}>📍</Text>
+          <Text style={styles.customerAddressText} numberOfLines={1}>
+            {customerAddress}
+          </Text>
+        </View>
+
+        {/* Product Details & Price with REAL Product Image */}
+        <View style={styles.orderProductRow}>
+          <View style={styles.productThumbBox}>
+            <Image
+              source={getProductImageSource(firstItem)}
+              style={styles.productThumbImg}
+              resizeMode="contain"
+            />
+          </View>
+          <Text style={styles.productDetailsText} numberOfLines={1}>
+            {itemName} × {itemQty}
+          </Text>
+          <Text style={styles.productPriceText}>₹{itemTotal}</Text>
+        </View>
+
+        {/* Actions Row */}
+        <View style={styles.orderActionsRow}>
+          <TouchableOpacity
+            style={styles.callCustomerOutlineBtn}
+            onPress={() => handleCallCustomer(customerPhone)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.callCustomerBtnText}>📞 Call Customer</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.trackRouteSolidBtn}
+            onPress={() => setSelectedOrderDetails(order)}
+            activeOpacity={0.88}
+          >
+            <Text style={styles.trackRouteBtnText}>➔ Track Route</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  // ===========================================================================
+  // SUB-VIEW 3: MY DELIVERIES PAGE (SCREEN 3 MATCHING REFERENCE)
+  // ===========================================================================
+  function renderDeliveriesPage() {
+    return (
+      <View style={styles.viewContentContainer}>
+        {/* Filter Pills Row */}
+        <View style={styles.filterPillsRow}>
+          <TouchableOpacity
+            style={[
+              styles.filterPill,
+              deliveryFilter === "all" && styles.filterPillActive,
+            ]}
+            onPress={() => setDeliveryFilter("all")}
+            activeOpacity={0.8}
+          >
+            <Text
+              style={[
+                styles.filterPillText,
+                deliveryFilter === "all" && styles.filterPillTextActive,
+              ]}
+            >
+              All ({orders.length})
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.filterPill,
+              deliveryFilter === "active" && styles.filterPillActive,
+            ]}
+            onPress={() => setDeliveryFilter("active")}
+            activeOpacity={0.8}
+          >
+            <Text
+              style={[
+                styles.filterPillText,
+                deliveryFilter === "active" && styles.filterPillTextActive,
+              ]}
+            >
+              Active ({activeCount})
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.filterPill,
+              deliveryFilter === "completed" && styles.filterPillActive,
+            ]}
+            onPress={() => setDeliveryFilter("completed")}
+            activeOpacity={0.8}
+          >
+            <Text
+              style={[
+                styles.filterPillText,
+                deliveryFilter === "completed" && styles.filterPillTextActive,
+              ]}
+            >
+              Completed ({completedCount})
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.filterPill,
+              deliveryFilter === "failed" && styles.filterPillActive,
+            ]}
+            onPress={() => setDeliveryFilter("failed")}
+            activeOpacity={0.8}
+          >
+            <Text
+              style={[
+                styles.filterPillText,
+                deliveryFilter === "failed" && styles.filterPillTextActive,
+              ]}
+            >
+              Failed ({failedCount})
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Deliveries List */}
+        {filteredDeliveries.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Text style={{ fontSize: 36, marginBottom: 8 }}>🛵</Text>
+            <Text style={styles.emptyTitle}>No Deliveries Found</Text>
+            <Text style={styles.emptySubtitle}>
+              There are no orders matching the &quot;{deliveryFilter}&quot; filter.
+            </Text>
+          </View>
+        ) : (
+          filteredDeliveries.map((ord) => renderDeliveryCardWithStepper(ord))
+        )}
+      </View>
+    );
+  }
+
+  // ===========================================================================
+  // SUB-VIEW 4: DELIVERY CARD WITH STEPPER (SCREEN 3 MATCHING REFERENCE)
+  // ===========================================================================
+  function renderDeliveryCardWithStepper(order: any) {
+    const status = (order.deliveryStatus || "Pending").trim();
+    const sLower = status.toLowerCase();
+
+    const isDelivered = sLower === "delivered" || sLower === "completed";
+    const isOut = sLower === "out for delivery" || sLower === "outfordelivery";
+    const isCollected =
+      sLower === "products collected" ||
+      sLower === "orderpickedup" ||
+      sLower === "collected";
+
+    const customerName =
+      order.deliveryCustomerName || order.customer?.name || "Customer";
+    const customerPhone = order.deliveryPhone || order.customer?.phone || "";
+    const totalAmount = Number(order.totalAmount || 0).toFixed(2);
+
+    const firstItem =
+      Array.isArray(order.items) && order.items.length > 0 ? order.items[0] : null;
+
+    const formattedTime = new Date(order.createdAt).toLocaleTimeString("en-IN", {
       hour: "numeric",
       minute: "2-digit",
       hour12: true,
     });
 
     return (
-      <View key={order._id} style={styles.orderCard}>
-        {/* Top Header Row: 📦 Box Icon, Order #, Date, Status Pill */}
-        <View style={styles.orderCardTopRow}>
-          <View style={styles.orderCardLeftHeader}>
-            <View style={styles.boxIconCircle}>
-              <Text style={styles.boxEmoji}>📦</Text>
-            </View>
-
-            <View style={{ marginLeft: 10 }}>
-              <Text style={styles.orderNumberText}>{order.orderNumber}</Text>
-              <Text style={styles.orderDateText}>📅 {formattedDate}</Text>
-            </View>
+      <TouchableOpacity
+        key={order._id}
+        style={styles.stepperCard}
+        onPress={() => setSelectedOrderDetails(order)}
+        activeOpacity={0.92}
+      >
+        {/* Top Header: Product Thumb + Order ID + Status Pill + Time */}
+        <View style={styles.stepperCardHeader}>
+          <View style={styles.stepperThumbBox}>
+            <Image
+              source={getProductImageSource(firstItem)}
+              style={styles.stepperThumbImg}
+              resizeMode="contain"
+            />
           </View>
 
-          {/* Status Badge (Green for Delivered) */}
-          <View
-            style={[
-              styles.cardStatusBadge,
-              isDelivered && styles.cardStatusDelivered,
-              isOut && styles.cardStatusOut,
-              (isAssigned || isPickedUp) && styles.cardStatusAccepted,
-              isPending && styles.cardStatusPending,
-            ]}
-          >
-            <Text
+          <View style={{ flex: 1, marginLeft: 10 }}>
+            <Text style={styles.orderIdText}>{order.orderNumber}</Text>
+            <Text style={styles.stepperCustomerRow}>
+              {customerName} • {customerPhone}
+            </Text>
+            <Text style={styles.stepperPriceText}>₹{totalAmount}</Text>
+          </View>
+
+          <View style={{ alignItems: "flex-end" }}>
+            <View
               style={[
-                styles.cardStatusBadgeText,
-                isDelivered && styles.cardStatusDeliveredText,
-                isOut && styles.cardStatusOutText,
-                (isAssigned || isPickedUp) && styles.cardStatusAcceptedText,
-                isPending && styles.cardStatusPendingText,
+                styles.statusPillBadge,
+                isDelivered && styles.statusPillDelivered,
               ]}
             >
-              {isDelivered
-                ? "✓ Delivered"
-                : isOut
-                ? "Out for Delivery"
-                : isPickedUp
-                ? "Picked Up"
-                : isAssigned
-                ? "Assigned"
-                : "New / Pending"}
-            </Text>
+              <Text
+                style={[
+                  styles.statusPillText,
+                  isDelivered && styles.statusPillDeliveredText,
+                ]}
+              >
+                {status}
+              </Text>
+            </View>
+            <Text style={styles.stepperTimeText}>{formattedTime}</Text>
           </View>
         </View>
 
-        {/* Customer Info & Call Row */}
-        <View style={styles.customerRowWrap}>
-          <View style={styles.customerTextCol}>
-            <View style={styles.customerNameRow}>
-              <Text style={styles.userGlyph}>👤</Text>
-              <Text style={styles.customerNameText}>{customerName}</Text>
+        {/* 5-Stage Visual Stepper Timeline (Order -> Prep -> Picked -> Out -> Delivered) */}
+        <View style={styles.stepperTrack}>
+          {/* Step 1: Order Confirmed */}
+          <View style={styles.stepperStepCol}>
+            <View style={[styles.stepperDot, styles.stepperDotDone]}>
+              <Text style={styles.stepperCheck}>✓</Text>
             </View>
-            <View style={styles.customerAddressRow}>
-              <Text style={styles.pinGlyph}>📍</Text>
-              <Text style={styles.customerAddressText} numberOfLines={1}>
-                {customerAddress}
-              </Text>
-            </View>
+            <Text style={styles.stepperLabelDone}>Order</Text>
           </View>
 
-          {customerPhone ? (
-            <TouchableOpacity
-              style={styles.callPillBtn}
-              onPress={() => handleCallCustomer(customerPhone)}
-              activeOpacity={0.8}
+          <View style={[styles.stepperLine, styles.stepperLineDone]} />
+
+          {/* Step 2: Preparing */}
+          <View style={styles.stepperStepCol}>
+            <View style={[styles.stepperDot, styles.stepperDotDone]}>
+              <Text style={styles.stepperCheck}>✓</Text>
+            </View>
+            <Text style={styles.stepperLabelDone}>Prep</Text>
+          </View>
+
+          <View
+            style={[
+              styles.stepperLine,
+              (isCollected || isOut || isDelivered) && styles.stepperLineDone,
+            ]}
+          />
+
+          {/* Step 3: Picked Up / Products Collected */}
+          <View style={styles.stepperStepCol}>
+            <View
+              style={[
+                styles.stepperDot,
+                (isCollected || isOut || isDelivered)
+                  ? styles.stepperDotDone
+                  : styles.stepperDotPending,
+              ]}
             >
-              <Text style={styles.callPillText}>📞 {customerPhone}</Text>
-            </TouchableOpacity>
-          ) : null}
-        </View>
-
-        {/* Items Summary & Payment Badge Row */}
-        <View style={styles.itemsPaymentRow}>
-          <View style={styles.itemsSubtotalRow}>
-            <Text style={styles.yellowCoin}>🟡</Text>
-            <Text style={styles.itemsSubtotalText}>
-              {order.totalItems || order.items?.length || 1} Items • ₹
-              {Number(order.totalAmount || 0).toFixed(2)}
-            </Text>
-          </View>
-
-          <View style={styles.paymentMethodPill}>
-            <Text style={styles.paymentMethodText}>
-              💳 {order.paymentMethod || "UPI"} ({order.paymentStatus || "Completed"})
-            </Text>
-          </View>
-        </View>
-
-        {/* Status / Action Banner at Bottom of Card */}
-        <View style={styles.orderBottomActionWrap}>
-          {isDelivered && (
-            <View style={styles.deliveredSuccessBanner}>
-              <Text style={styles.deliveredCheckmark}>✓</Text>
-              <Text style={styles.deliveredSuccessText}>
-                Order Successfully Delivered 🎉
-              </Text>
+              {(isCollected || isOut || isDelivered) ? (
+                <Text style={styles.stepperCheck}>✓</Text>
+              ) : null}
             </View>
-          )}
+            <Text
+              style={
+                (isCollected || isOut || isDelivered)
+                  ? styles.stepperLabelDone
+                  : styles.stepperLabelPending
+              }
+            >
+              Picked
+            </Text>
+          </View>
 
+          <View
+            style={[
+              styles.stepperLine,
+              (isOut || isDelivered) && styles.stepperLineDone,
+            ]}
+          />
+
+          {/* Step 4: Out for Delivery */}
+          <View style={styles.stepperStepCol}>
+            <View
+              style={[
+                styles.stepperDot,
+                isDelivered
+                  ? styles.stepperDotDone
+                  : isOut
+                  ? styles.stepperDotActive
+                  : styles.stepperDotPending,
+              ]}
+            >
+              {isDelivered ? (
+                <Text style={styles.stepperCheck}>✓</Text>
+              ) : isOut ? (
+                <Text style={{ fontSize: 10 }}>🛵</Text>
+              ) : null}
+            </View>
+            <Text
+              style={
+                isDelivered
+                  ? styles.stepperLabelDone
+                  : isOut
+                  ? styles.stepperLabelActive
+                  : styles.stepperLabelPending
+              }
+            >
+              Out for Delivery
+            </Text>
+          </View>
+
+          <View
+            style={[
+              styles.stepperLine,
+              isDelivered && styles.stepperLineDone,
+            ]}
+          />
+
+          {/* Step 5: Delivered */}
+          <View style={styles.stepperStepCol}>
+            <View
+              style={[
+                styles.stepperDot,
+                isDelivered ? styles.stepperDotDone : styles.stepperDotPending,
+              ]}
+            >
+              {isDelivered ? <Text style={styles.stepperCheck}>✓</Text> : null}
+            </View>
+            <Text
+              style={
+                isDelivered ? styles.stepperLabelDone : styles.stepperLabelPending
+              }
+            >
+              Delivered
+            </Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  }
+
+  // ===========================================================================
+  // SUB-VIEW 5: ORDER DETAILS MODAL (SCREEN 4 EXACT MATCHING REFERENCE)
+  // ===========================================================================
+  function renderOrderDetailsModal(order: any) {
+    const status = (order.deliveryStatus || "Pending").trim();
+    const sLower = status.toLowerCase();
+
+    const isDelivered = sLower === "delivered" || sLower === "completed";
+    const isOut = sLower === "out for delivery" || sLower === "outfordelivery";
+    const isCollected =
+      sLower === "products collected" ||
+      sLower === "orderpickedup" ||
+      sLower === "collected";
+
+    const customerName =
+      order.deliveryCustomerName || order.customer?.name || "Customer";
+    const customerPhone = order.deliveryPhone || order.customer?.phone || "";
+    const customerAddress =
+      order.deliveryAddress || order.customer?.address || "123, Main Street, Vaniyambadi";
+
+    const firstItem =
+      Array.isArray(order.items) && order.items.length > 0 ? order.items[0] : null;
+    const itemName = firstItem?.name || "Kitkat";
+    const itemQty = firstItem?.quantity || 1;
+    const itemTotal = Number(order.totalAmount || 138).toFixed(2);
+
+    const formattedDate = new Date(order.createdAt).toLocaleDateString("en-IN", {
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+
+    // Real-time Stage Timestamps
+    const timeConfirmed = getStageTimestamp(order, "Order Confirmed") || "1:45 PM";
+    const timePreparing = getStageTimestamp(order, "Preparing") || "1:55 PM";
+    const timeCollected = (isCollected || isOut || isDelivered)
+      ? (getStageTimestamp(order, "Products Collected") || "2:10 PM")
+      : "--:--";
+    const timeOut = (isOut || isDelivered)
+      ? (getStageTimestamp(order, "Out for Delivery") || "2:30 PM")
+      : "--:--";
+    const timeDelivered = isDelivered
+      ? (getStageTimestamp(order, "Delivered") || "3:00 PM")
+      : "Pending";
+
+    return (
+      <View style={styles.modalContainer}>
+        <SafeAreaView edges={["top"]} style={styles.modalHeaderSafe}>
+          <View style={styles.modalHeaderBar}>
+            <TouchableOpacity
+              style={styles.modalBackBtn}
+              onPress={() => setSelectedOrderDetails(null)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.modalBackArrow}>←</Text>
+            </TouchableOpacity>
+
+            <Text style={styles.modalHeaderTitle}>Order Details</Text>
+            <View style={{ width: 40 }} />
+          </View>
+        </SafeAreaView>
+
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ padding: 18, paddingBottom: 40 }}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Order ID & Status Header */}
+          <View style={styles.modalIdCard}>
+            <View>
+              <Text style={styles.modalOrderIdText}>{order.orderNumber}</Text>
+              <Text style={styles.modalOrderDateText}>[{formattedDate}</Text>
+            </View>
+            <View style={styles.statusPillBadge}>
+              <Text style={styles.statusPillText}>{status}</Text>
+            </View>
+          </View>
+
+          {/* Customer & Address Details */}
+          <View style={styles.modalCustomerCard}>
+            <View style={styles.modalCustomerRow}>
+              <Text style={{ fontSize: 16 }}>👤</Text>
+              <Text style={styles.modalCustomerName}>{customerName}</Text>
+              {customerPhone ? (
+                <TouchableOpacity
+                  onPress={() => handleCallCustomer(customerPhone)}
+                  activeOpacity={0.7}
+                  style={styles.customerPhoneCallPill}
+                >
+                  <Text style={styles.customerPhoneCallText}>📞 {customerPhone}</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            <View style={styles.modalAddressRow}>
+              <Text style={{ fontSize: 16 }}>📍</Text>
+              <Text style={styles.modalCustomerAddress}>{customerAddress}</Text>
+            </View>
+          </View>
+
+          {/* Product Items Breakdown with REAL Product Image */}
+          <View style={styles.modalProductCard}>
+            <View style={styles.modalProductThumbBox}>
+              <Image
+                source={getProductImageSource(firstItem)}
+                style={styles.modalProductThumbImg}
+                resizeMode="contain"
+              />
+            </View>
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={styles.modalProductName}>{itemName}</Text>
+              <Text style={styles.modalProductQty}>Qty: {itemQty}</Text>
+            </View>
+            <Text style={styles.modalProductPrice}>₹{itemTotal}</Text>
+          </View>
+
+          {/* Delivery Timeline Progress (Screen 4 Light-Blue Box Exact Match) */}
+          <View style={styles.timelineBoxCard}>
+            <Text style={styles.timelineBoxTitle}>Delivery Timeline</Text>
+
+            <View style={styles.timelineList}>
+              {/* Stage 1: Order Confirmed */}
+              <View style={styles.timelineRow}>
+                <View style={styles.timelineIconCol}>
+                  <View style={[styles.timelineDot, styles.timelineDotDone]}>
+                    <Text style={styles.timelineCheck}>✓</Text>
+                  </View>
+                  <View style={styles.timelineLine} />
+                </View>
+                <View style={styles.timelineTextCol}>
+                  <Text style={styles.timelineStageTitleDone}>Order Confirmed</Text>
+                  <Text style={styles.timelineStageTime}>{timeConfirmed}</Text>
+                </View>
+              </View>
+
+              {/* Stage 2: Preparing */}
+              <View style={styles.timelineRow}>
+                <View style={styles.timelineIconCol}>
+                  <View style={[styles.timelineDot, styles.timelineDotDone]}>
+                    <Text style={styles.timelineCheck}>✓</Text>
+                  </View>
+                  <View style={styles.timelineLine} />
+                </View>
+                <View style={styles.timelineTextCol}>
+                  <Text style={styles.timelineStageTitleDone}>Preparing</Text>
+                  <Text style={styles.timelineStageTime}>{timePreparing}</Text>
+                </View>
+              </View>
+
+              {/* Stage 3: Products Collected */}
+              <View style={styles.timelineRow}>
+                <View style={styles.timelineIconCol}>
+                  <View
+                    style={[
+                      styles.timelineDot,
+                      (isCollected || isOut || isDelivered)
+                        ? styles.timelineDotDone
+                        : styles.timelineDotPending,
+                    ]}
+                  >
+                    {(isCollected || isOut || isDelivered) ? (
+                      <Text style={styles.timelineCheck}>✓</Text>
+                    ) : null}
+                  </View>
+                  <View style={styles.timelineLine} />
+                </View>
+                <View style={styles.timelineTextCol}>
+                  <Text
+                    style={
+                      (isCollected || isOut || isDelivered)
+                        ? styles.timelineStageTitleDone
+                        : styles.timelineStageTitlePending
+                    }
+                  >
+                    Products Collected
+                  </Text>
+                  <Text style={styles.timelineStageTime}>{timeCollected}</Text>
+                </View>
+              </View>
+
+              {/* Stage 4: Out for Delivery (Active Stage Highlighted) */}
+              <View style={[styles.timelineRow, isOut && styles.timelineRowActivePill]}>
+                <View style={styles.timelineIconCol}>
+                  <View
+                    style={[
+                      styles.timelineDot,
+                      isDelivered
+                        ? styles.timelineDotDone
+                        : isOut
+                        ? styles.timelineDotActive
+                        : styles.timelineDotPending,
+                    ]}
+                  >
+                    {isDelivered ? (
+                      <Text style={styles.timelineCheck}>✓</Text>
+                    ) : isOut ? (
+                      <Text style={{ fontSize: 11 }}>🛵</Text>
+                    ) : null}
+                  </View>
+                  <View style={styles.timelineLine} />
+                </View>
+                <View style={styles.timelineTextCol}>
+                  <Text
+                    style={
+                      isDelivered
+                        ? styles.timelineStageTitleDone
+                        : isOut
+                        ? styles.timelineStageTitleActive
+                        : styles.timelineStageTitlePending
+                    }
+                  >
+                    Out for Delivery
+                  </Text>
+                  <Text style={isOut ? styles.timelineStageTimeActive : styles.timelineStageTime}>
+                    {timeOut}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Stage 5: Delivered */}
+              <View style={styles.timelineRow}>
+                <View style={styles.timelineIconCol}>
+                  <View
+                    style={[
+                      styles.timelineDot,
+                      isDelivered ? styles.timelineDotDone : styles.timelineDotPending,
+                    ]}
+                  >
+                    {isDelivered ? <Text style={styles.timelineCheck}>✓</Text> : null}
+                  </View>
+                </View>
+                <View style={styles.timelineTextCol}>
+                  <Text
+                    style={
+                      isDelivered
+                        ? styles.timelineStageTitleDone
+                        : styles.timelineStageTitlePending
+                    }
+                  >
+                    Delivered
+                  </Text>
+                  <Text style={styles.timelineStageTime}>{timeDelivered}</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+
+          {/* Action Trigger Buttons in Modal */}
           {isOut && (
             <TouchableOpacity
-              style={[styles.actionBtn, styles.deliveredActionBtn]}
+              style={styles.modalPrimaryActionBtn}
               onPress={() => handleUpdateStatus(order._id, "Delivered")}
-              disabled={updatingId === order._id}
-              activeOpacity={0.85}
+              activeOpacity={0.88}
             >
-              {updatingId === order._id ? (
-                <ActivityIndicator color="#FFFFFF" size="small" />
-              ) : (
-                <Text style={styles.actionBtnText}>Confirm Delivered ✅</Text>
-              )}
+              <Text style={styles.modalPrimaryActionBtnText}>
+                ✓ Complete Delivery & Mark Delivered
+              </Text>
             </TouchableOpacity>
           )}
 
-          {isPickedUp && (
+          {isCollected && (
             <TouchableOpacity
-              style={[styles.actionBtn, styles.outActionBtn]}
-              onPress={() => handleUpdateStatus(order._id, "OutForDelivery")}
-              disabled={updatingId === order._id}
-              activeOpacity={0.85}
+              style={styles.modalPrimaryActionBtn}
+              onPress={() => handleUpdateStatus(order._id, "Out for Delivery")}
+              activeOpacity={0.88}
             >
-              {updatingId === order._id ? (
-                <ActivityIndicator color="#FFFFFF" size="small" />
-              ) : (
-                <Text style={styles.actionBtnText}>Start Delivery 🚀</Text>
-              )}
+              <Text style={styles.modalPrimaryActionBtnText}>
+                🛵 Start Route (Out for Delivery)
+              </Text>
             </TouchableOpacity>
           )}
 
-          {isAssigned && (
-            <TouchableOpacity
-              style={[styles.actionBtn, styles.pickupActionBtn]}
-              onPress={() => handleUpdateStatus(order._id, "OrderPickedUp")}
-              disabled={updatingId === order._id}
-              activeOpacity={0.85}
-            >
-              {updatingId === order._id ? (
-                <ActivityIndicator color="#FFFFFF" size="small" />
-              ) : (
-                <Text style={styles.actionBtnText}>Pick Up Order 📦</Text>
-              )}
-            </TouchableOpacity>
-          )}
+          {/* Solid Blue 'Track Live Location' Button matching Image 2 */}
+          <TouchableOpacity
+            style={styles.trackLiveLocationBtn}
+            onPress={() =>
+              Alert.alert(
+                "Live Location Tracking",
+                `Routing active for ${order.orderNumber}. Navigating to ${customerAddress}.`
+              )
+            }
+            activeOpacity={0.88}
+          >
+            <Text style={styles.trackLiveLocationBtnText}>✈ Track Live Location</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+    );
+  }
 
-          {isPending && (
-            <TouchableOpacity
-              style={[styles.actionBtn, styles.acceptActionBtn]}
-              onPress={() => handleUpdateStatus(order._id, "Accepted")}
-              disabled={updatingId === order._id}
-              activeOpacity={0.85}
-            >
-              {updatingId === order._id ? (
-                <ActivityIndicator color="#FFFFFF" size="small" />
-              ) : (
-                <Text style={styles.actionBtnText}>Accept Order 📦</Text>
-              )}
-            </TouchableOpacity>
-          )}
+  // ===========================================================================
+  // SUB-VIEW 6: MY PROFILE PAGE (SCREEN 5 EXACT MATCHING REFERENCE)
+  // ===========================================================================
+  function renderProfilePage() {
+    return (
+      <View style={styles.profileContainer}>
+        {/* Profile Avatar Centered Over the Bottom of the Blue Curved Wave */}
+        <View style={styles.profileAvatarCenterWrap}>
+          <View style={styles.profileAvatarLargeContainer}>
+            <Image
+              source={require("../../assets/images/driver-avatar.jpg")}
+              style={styles.profileAvatarLarge}
+              resizeMode="cover"
+            />
+            <View style={styles.profileCameraBadge}>
+              <Text style={{ fontSize: 11, color: "#FFFFFF" }}>📷</Text>
+            </View>
+          </View>
+
+          <Text style={styles.profileDriverName}>
+            {deliveryUser?.name || "Ramesh Kumar"}
+          </Text>
+          <Text style={styles.profileDriverRole}>Delivery Driver</Text>
+        </View>
+
+        {/* Profile Info Details Card */}
+        <View style={styles.profileInfoCard}>
+          {/* Row 1: Username */}
+          <View style={styles.profileRowItem}>
+            <View style={styles.profileRowLeft}>
+              <Text style={styles.profileRowIcon}>👤</Text>
+              <Text style={styles.profileRowLabel}>Username</Text>
+            </View>
+            <Text style={styles.profileRowValue}>
+              {deliveryUser?.username || "DRV001"}
+            </Text>
+          </View>
+
+          <View style={styles.profileDivider} />
+
+          {/* Row 2: Mobile Number */}
+          <View style={styles.profileRowItem}>
+            <View style={styles.profileRowLeft}>
+              <Text style={styles.profileRowIcon}>📞</Text>
+              <Text style={styles.profileRowLabel}>Mobile Number</Text>
+            </View>
+            <Text style={styles.profileRowValue}>
+              {deliveryUser?.phone || "+91 9876543210"}
+            </Text>
+          </View>
+
+          <View style={styles.profileDivider} />
+
+          {/* Row 3: Email */}
+          <View style={styles.profileRowItem}>
+            <View style={styles.profileRowLeft}>
+              <Text style={styles.profileRowIcon}>✉️</Text>
+              <Text style={styles.profileRowLabel}>Email</Text>
+            </View>
+            <Text style={styles.profileRowValue}>
+              {deliveryUser?.email || "ramesh@supermart.com"}
+            </Text>
+          </View>
+
+          <View style={styles.profileDivider} />
+
+          {/* Row 4: Supermarket */}
+          <View style={styles.profileRowItem}>
+            <View style={styles.profileRowLeft}>
+              <Text style={styles.profileRowIcon}>🏪</Text>
+              <Text style={styles.profileRowLabel}>Supermarket</Text>
+            </View>
+            <Text style={[styles.profileRowValue, { flex: 1, textAlign: "right" }]} numberOfLines={1}>
+              {deliveryUser?.supermarketName || "Marudhar Kesari Jain College Supermarket"}
+            </Text>
+          </View>
+
+          <View style={styles.profileDivider} />
+
+          {/* Row 5: Account Status */}
+          <View style={styles.profileRowItem}>
+            <View style={styles.profileRowLeft}>
+              <View style={styles.profileGreenDot} />
+              <Text style={styles.profileRowLabel}>Account Status</Text>
+            </View>
+            <View style={styles.profileActiveStatusBadge}>
+              <Text style={styles.profileActiveStatusText}>Active</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Prominent Red Outlined Logout Button matching Image 3 */}
+        <TouchableOpacity
+          style={styles.profileLogoutBtn}
+          onPress={handleLogout}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.profileLogoutIcon}>🚪</Text>
+          <Text style={styles.profileLogoutText}>Logout</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  // ===========================================================================
+  // SUB-VIEW 7: SUPPORT PAGE
+  // ===========================================================================
+  function renderSupportPage() {
+    return (
+      <View style={styles.viewContentContainer}>
+        <View style={styles.supportCard}>
+          <Text style={{ fontSize: 36, marginBottom: 10 }}>🎧</Text>
+          <Text style={styles.supportTitle}>Delivery Partner Support</Text>
+          <Text style={styles.supportSubtitle}>
+            Need assistance with an active delivery or customer location?
+          </Text>
+
+          <TouchableOpacity
+            style={styles.supportContactBtn}
+            onPress={() => Linking.openURL("tel:+919876543210")}
+            activeOpacity={0.88}
+          >
+            <Text style={styles.supportContactBtnText}>
+              📞 Call Fleet Helpline: +91 98765 43210
+            </Text>
+          </TouchableOpacity>
+
+          <View style={styles.supportStoreInfoBox}>
+            <Text style={styles.supportStoreTitle}>Supermarket Store Admin:</Text>
+            <Text style={styles.supportStoreName}>
+              {deliveryUser?.supermarketName || "SuperMart Store Admin"}
+            </Text>
+            <Text style={styles.supportStoreCode}>
+              Store Code: {deliveryUser?.supermarketCode || "SM-01"}
+            </Text>
+          </View>
         </View>
       </View>
     );
   }
 }
 
-// =========================================================================
-// STYLES: EXACT THEME (WHITE + SOFT LAVENDER, DARK PURPLE, LIGHT PASTEL CARDS)
-// =========================================================================
+// =============================================================================
+// STYLES
+// =============================================================================
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F7F5FC", // White + soft lavender background
+    backgroundColor: "#F8FAFC",
   },
-  centerContainer: {
-    flex: 1,
-    backgroundColor: "#F7F5FC",
-    justifyContent: "center",
-    alignItems: "center",
+  // Top Headers
+  dashboardHeroHeader: {
+    backgroundColor: "#1D4ED8", // Royal Electric Blue matching Image 1
+    borderBottomLeftRadius: 36,
+    borderBottomRightRadius: 36,
+    paddingBottom: 28,
+    shadowColor: "#0F2C69",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 8,
   },
-  loadingText: {
-    color: "#6B21A8",
-    marginTop: 12,
-    fontSize: 14,
-    fontWeight: "600",
+  profileHeaderWave: {
+    backgroundColor: "#1D4ED8",
+    borderBottomLeftRadius: 42,
+    borderBottomRightRadius: 42,
+    paddingBottom: 48,
+    shadowColor: "#0F2C69",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 8,
   },
-
-  // 1. Top Header Bar
-  headerSafeArea: {
-    backgroundColor: "#FFFFFF",
+  standardHeaderBar: {
+    backgroundColor: "#1D4ED8",
+    paddingBottom: 16,
   },
-  topHeaderBar: {
+  headerSafe: {
+    paddingHorizontal: 16,
+    paddingTop: 4,
+  },
+  headerContent: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: "#FFFFFF",
-    borderBottomWidth: 1,
-    borderBottomColor: "#EDE9FE",
   },
-  hamburgerBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    justifyContent: "center",
+  headerIconBtn: {
+    width: 40,
+    height: 40,
     alignItems: "center",
-    gap: 4.5,
+    justifyContent: "center",
+  },
+  hamburgerIconBox: {
+    width: 20,
+    height: 16,
+    justifyContent: "space-between",
   },
   hamburgerLine: {
-    width: 20,
-    height: 2.5,
-    backgroundColor: "#3B0764", // Dark purple icons
-    borderRadius: 2,
+    height: 2.2,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 1,
   },
-  brandingCenter: {
-    flex: 1,
-    marginLeft: 10,
+  headerBackArrow: {
+    color: "#FFFFFF",
+    fontSize: 24,
+    fontWeight: "700",
   },
-  brandTitle: {
-    fontSize: 17,
-    fontWeight: "900",
-    color: "#2E0854", // Dark purple text
-    letterSpacing: -0.3,
-  },
-  brandSubtitle: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#7E22CE",
-  },
-  headerRightActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  notificationBellBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#FAF5FF",
-    justifyContent: "center",
-    alignItems: "center",
-    position: "relative",
-  },
-  bellEmoji: {
+  headerTitle: {
     fontSize: 18,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    letterSpacing: 0.2,
   },
-  notificationBadge: {
+  bellIcon: {
+    fontSize: 20,
+  },
+  bellBadge: {
     position: "absolute",
-    top: 2,
-    right: 2,
+    top: 6,
+    right: 6,
     backgroundColor: "#EF4444",
-    width: 15,
-    height: 15,
-    borderRadius: 7.5,
-    justifyContent: "center",
+    width: 16,
+    height: 16,
+    borderRadius: 8,
     alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: "#1D4ED8",
   },
-  notificationBadgeText: {
+  bellBadgeText: {
     color: "#FFFFFF",
     fontSize: 9,
     fontWeight: "900",
   },
-  staffAvatarBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: 2,
-    borderColor: "#4C1D95",
-    overflow: "hidden",
-    justifyContent: "center",
+  // Welcome Banner Row in Dashboard Header
+  welcomeBannerRow: {
+    flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#EDE9FE",
+    justifyContent: "space-between",
+    marginTop: 14,
+    paddingHorizontal: 4,
   },
-  staffAvatarCircle: {
+  welcomeTextCol: {
+    flex: 1,
+  },
+  welcomeSubtitle: {
+    color: "#BFDBFE",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  welcomeDriverName: {
+    color: "#FFFFFF",
+    fontSize: 22,
+    fontWeight: "900",
+    marginTop: 2,
+    letterSpacing: 0.2,
+  },
+  welcomeRole: {
+    color: "#E0E7FF",
+    fontSize: 12,
+    fontWeight: "600",
+    marginTop: 2,
+  },
+  welcomeScooterGraphicBox: {
+    width: 100,
+    height: 90,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  welcomeScooterImg: {
     width: "100%",
     height: "100%",
-    justifyContent: "center",
-    alignItems: "center",
   },
-  staffAvatarEmoji: {
-    fontSize: 20,
-  },
-
-  // Main Scroll View
-  mainScroll: {
+  // Body Scroll
+  bodyScroll: {
     flex: 1,
   },
   scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 36,
+  },
+  viewContentContainer: {
     paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 20,
   },
-
-  // 2. Hero Banner Card (Exact match with reference image)
-  heroCard: {
-    height: Math.round((width - 32) * (56 / 292)),
-    minHeight: 72,
-    borderRadius: 16,
-    overflow: "hidden",
-    position: "relative",
-    marginBottom: 14,
-    borderWidth: 1.2,
-    borderColor: "#E9D5FF",
-    backgroundColor: "#F3E8FF",
-    shadowColor: "#4C1D95",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  heroBannerImage: {
-    width: "100%",
-    height: "100%",
-    position: "absolute",
-  },
-  heroOverlayCard: {
-    position: "absolute",
-    top: 4,
-    left: 4,
-    bottom: 4,
-    width: (width - 32) * 0.52,
-    backgroundColor: "rgba(255, 255, 255, 0.96)",
-    borderRadius: 11,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    justifyContent: "space-between",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  heroLogoRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  heroLogoIconCircle: {
-    width: 20,
-    height: 20,
-    borderRadius: 5,
-    backgroundColor: "#F3E8FF",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  heroLogoCart: {
-    fontSize: 11,
-  },
-  heroLogoTitle: {
-    fontSize: 8.5,
-    fontWeight: "900",
-    color: "#2E0854",
-    letterSpacing: 0.5,
-  },
-  heroLogoSub: {
-    fontSize: 6,
-    fontWeight: "800",
-    color: "#7E22CE",
-    letterSpacing: 0.2,
-  },
-  heroStoreName: {
-    fontSize: 12,
-    fontWeight: "900",
-    color: "#1E1B4B",
-    marginTop: 1,
-  },
-  heroOpsPill: {
-    backgroundColor: "#4C1D95",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 5,
-    alignSelf: "flex-start",
-  },
-  heroOpsPillText: {
-    color: "#FFFFFF",
-    fontSize: 7.5,
-    fontWeight: "700",
-  },
-  heroStaffStatusRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 1,
-  },
-  heroLiveGreenDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "#22C55E",
-    marginRight: 4,
-  },
-  heroStaffStatusText: {
-    fontSize: 8.5,
-    color: "#374151",
-    fontWeight: "600",
-  },
-
-  // 3. Horizontal Status Pill Tabs
-  statusTabsRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 14,
-    paddingVertical: 2,
-  },
-  statusPillTab: {
+  // Supermarket Selector Card - Overlaps the bottom curve
+  supermarketInfoCard: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#FFFFFF",
-    borderWidth: 1.5,
-    borderColor: "#E9D5FF",
     borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    shadowColor: "#4C1D95",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginTop: -16, // Smoothly overlaps the blue curved wave
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    shadowColor: "#0F2C69",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
+    marginBottom: 16,
   },
-  statusPillTabActive: {
-    backgroundColor: "#4C1D95", // Solid purple active tab matching screenshot
-    borderColor: "#4C1D95",
-  },
-  statusPillIcon: {
-    fontSize: 13,
-    marginRight: 6,
-    color: "#4C1D95",
-  },
-  statusPillIconActive: {
-    color: "#FFFFFF",
-  },
-  statusPillLabel: {
-    fontSize: 12.5,
-    fontWeight: "700",
-    color: "#3B0764",
-  },
-  statusPillLabelActive: {
-    color: "#FFFFFF",
-  },
-
-  loadingBox: {
-    flexDirection: "row",
+  supermarketIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: "#EFF6FF",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 10,
-    gap: 8,
   },
-  syncingText: {
-    fontSize: 12,
-    color: "#6B21A8",
+  supermarketCardName: {
+    fontSize: 14.5,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  supermarketCardCode: {
+    fontSize: 11.5,
+    color: "#64748B",
     fontWeight: "600",
+    marginTop: 2,
   },
-
-  // 4. 2x2 Light Pastel KPI Cards
+  supermarketChevron: {
+    fontSize: 20,
+    color: "#2563EB",
+    fontWeight: "700",
+  },
+  // 4 KPI Cards (2x2 Grid)
   kpiGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
     gap: 12,
-    marginBottom: 14,
+    marginBottom: 18,
   },
   kpiCard: {
     width: (width - 44) / 2,
     borderRadius: 18,
     padding: 14,
+    borderWidth: 1.5,
+  },
+  kpiCardBlue: {
+    backgroundColor: "#F0F7FF",
+    borderColor: "#BFDBFE",
+  },
+  kpiCardGreen: {
+    backgroundColor: "#F0FDF4",
+    borderColor: "#BBF7D0",
+  },
+  kpiCardOrange: {
+    backgroundColor: "#FFF7ED",
+    borderColor: "#FED7AA",
+  },
+  kpiCardPurple: {
+    backgroundColor: "#FAF5FF",
+    borderColor: "#E9D5FF",
+  },
+  kpiIconBoxBlue: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: "#DBEAFE",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
+  },
+  kpiIconBoxGreen: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: "#DCFCE7",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
+  },
+  kpiIconBoxOrange: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: "#FFEDD5",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
+  },
+  kpiIconBoxPurple: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: "#F3E8FF",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
+  },
+  kpiLabel: {
+    fontSize: 12.5,
+    fontWeight: "700",
+    color: "#475569",
+  },
+  kpiValue: {
+    fontSize: 22,
+    fontWeight: "900",
+    marginTop: 4,
+  },
+  // Recent Orders Section
+  recentSectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  recentTitle: {
+    fontSize: 17,
+    fontWeight: "900",
+    color: "#0F172A",
+  },
+  viewAllText: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#2563EB",
+  },
+  // Order Card
+  orderCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    padding: 16,
     borderWidth: 1,
-    shadowColor: "#4C1D95",
-    shadowOffset: { width: 0, height: 3 },
+    borderColor: "#E2E8F0",
+    marginBottom: 14,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 6,
     elevation: 2,
   },
-  kpiCardLavender: {
-    backgroundColor: "#FAF5FF", // Soft lavender
-    borderColor: "#E9D5FF",
-  },
-  kpiCardAmber: {
-    backgroundColor: "#FEFCE8", // Soft yellow/amber
-    borderColor: "#FEF08A",
-  },
-  kpiCardMint: {
-    backgroundColor: "#F0FDF4", // Soft mint green
-    borderColor: "#BBF7D0",
-  },
-  kpiCardCyan: {
-    backgroundColor: "#ECFDF5", // Soft cyan/emerald
-    borderColor: "#A7F3D0",
-  },
-  kpiCardTopRow: {
+  orderCardTopRow: {
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
+    marginBottom: 10,
   },
-  kpiIconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  kpiIconEmoji: {
-    fontSize: 16,
-    color: "#FFFFFF",
-  },
-  kpiCornerGraphic: {
-    fontSize: 20,
-  },
-  kpiLabel: {
-    fontSize: 12.5,
-    fontWeight: "800",
-    color: "#1E1B4B",
-  },
-  kpiValue: {
-    fontSize: 24,
+  orderIdText: {
+    fontSize: 15,
     fontWeight: "900",
-    color: "#1E1B4B",
-    marginTop: 2,
+    color: "#0F172A",
+    letterSpacing: 0.2,
   },
-  kpiSub: {
-    fontSize: 10.5,
-    color: "#6B7280",
-    marginTop: 4,
+  statusPillBadge: {
+    backgroundColor: "#DBEAFE",
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 12,
   },
-
-  // Revenue & Completion Rate Banner Card
-  revenueBannerCard: {
-    backgroundColor: "#F5F3FF",
-    borderWidth: 1,
-    borderColor: "#DDD6FE",
-    borderRadius: 18,
-    padding: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 16,
-    shadowColor: "#4C1D95",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  revenueLeftCol: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-  coinsEmoji: {
-    fontSize: 32,
-  },
-  revenueLabel: {
+  statusPillText: {
     fontSize: 11.5,
-    fontWeight: "700",
-    color: "#4C1D95",
+    fontWeight: "800",
+    color: "#1D4ED8",
   },
-  revenueAmount: {
-    fontSize: 24,
-    fontWeight: "900",
-    color: "#16A34A", // Big bold green amount
-    marginTop: 2,
+  statusPillDelivered: {
+    backgroundColor: "#DCFCE7",
   },
-  revenueDivider: {
-    width: 1,
-    height: 40,
-    backgroundColor: "#DDD6FE",
-    marginHorizontal: 12,
+  statusPillDeliveredText: {
+    color: "#15803D",
   },
-  completionRightCol: {
+  orderCustomerRow: {
     flexDirection: "row",
     alignItems: "center",
+    marginBottom: 4,
   },
-  completionCircleBadge: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 2.5,
-    borderColor: "#4C1D95",
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
+  userGlyph: {
+    fontSize: 14,
+    marginRight: 6,
   },
-  completionCircleText: {
-    fontSize: 11,
-    fontWeight: "900",
-    color: "#3B0764",
+  customerNameBold: {
+    fontSize: 13.5,
+    fontWeight: "800",
+    color: "#1E293B",
   },
-  completionLabel: {
-    fontSize: 10.5,
-    color: "#6B7280",
+  customerPhoneMuted: {
+    fontSize: 12.5,
+    color: "#64748B",
+    marginLeft: 6,
     fontWeight: "600",
   },
-  completionValue: {
-    fontSize: 16,
-    fontWeight: "900",
-    color: "#3B0764",
-    marginTop: 1,
-  },
-
-  // 5. Section Header
-  sectionHeaderRow: {
+  orderAddressRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 12,
   },
-  sectionTitleWrap: {
+  pinGlyph: {
+    fontSize: 14,
+    marginRight: 6,
+  },
+  customerAddressText: {
+    fontSize: 12.5,
+    color: "#64748B",
+    flex: 1,
+    fontWeight: "500",
+  },
+  orderProductRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    backgroundColor: "#F8FAFC",
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#F1F5F9",
   },
-  sectionClockIcon: {
-    fontSize: 16,
+  productThumbBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
   },
-  sectionTitle: {
-    fontSize: 15.5,
-    fontWeight: "800",
-    color: "#1E1B4B",
-    letterSpacing: -0.2,
+  productThumbImg: {
+    width: "100%",
+    height: "100%",
   },
-  syncBtnText: {
+  productDetailsText: {
+    flex: 1,
     fontSize: 13,
     fontWeight: "700",
-    color: "#4C1D95",
+    color: "#334155",
   },
-
-  emptyOrdersCard: {
+  productPriceText: {
+    fontSize: 15,
+    fontWeight: "900",
+    color: "#0F172A",
+  },
+  orderActionsRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  callCustomerOutlineBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "#2563EB",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+  },
+  callCustomerBtnText: {
+    fontSize: 12.5,
+    fontWeight: "800",
+    color: "#2563EB",
+  },
+  trackRouteSolidBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: "#1D4ED8",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#1D4ED8",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  trackRouteBtnText: {
+    fontSize: 12.5,
+    fontWeight: "800",
+    color: "#FFFFFF",
+  },
+  // My Deliveries Page
+  filterPillsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 14,
+    marginBottom: 16,
+    gap: 8,
+  },
+  filterPill: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 14,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  filterPillActive: {
+    backgroundColor: "#1D4ED8",
+    borderColor: "#1D4ED8",
+  },
+  filterPillText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#64748B",
+  },
+  filterPillTextActive: {
+    color: "#FFFFFF",
+    fontWeight: "800",
+  },
+  stepperCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 18,
-    padding: 28,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    marginBottom: 14,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  stepperCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 14,
+  },
+  stepperThumbBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: "#F8FAFC",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  stepperThumbImg: {
+    width: "100%",
+    height: "100%",
+  },
+  stepperCustomerRow: {
+    fontSize: 12,
+    color: "#64748B",
+    marginTop: 2,
+    fontWeight: "600",
+  },
+  stepperPriceText: {
+    fontSize: 14,
+    fontWeight: "900",
+    color: "#0F172A",
+    marginTop: 2,
+  },
+  stepperTimeText: {
+    fontSize: 11,
+    color: "#64748B",
+    marginTop: 4,
+    fontWeight: "600",
+  },
+  stepperTrack: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: 8,
+    paddingHorizontal: 4,
+  },
+  stepperStepCol: {
+    alignItems: "center",
+    width: 50,
+  },
+  stepperDot: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
+  },
+  stepperDotDone: {
+    backgroundColor: "#2563EB",
+  },
+  stepperDotActive: {
+    backgroundColor: "#F59E0B",
+  },
+  stepperDotPending: {
+    backgroundColor: "#E2E8F0",
+  },
+  stepperCheck: {
+    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: "900",
+  },
+  stepperLine: {
+    flex: 1,
+    height: 2,
+    backgroundColor: "#E2E8F0",
+    marginBottom: 16,
+  },
+  stepperLineDone: {
+    backgroundColor: "#2563EB",
+  },
+  stepperLabelDone: {
+    fontSize: 9.5,
+    fontWeight: "800",
+    color: "#1E293B",
+    textAlign: "center",
+  },
+  stepperLabelActive: {
+    fontSize: 9.5,
+    fontWeight: "900",
+    color: "#D97706",
+    textAlign: "center",
+  },
+  stepperLabelPending: {
+    fontSize: 9.5,
+    fontWeight: "600",
+    color: "#94A3B8",
+    textAlign: "center",
+  },
+  // Side Navigation Drawer
+  drawerOverlay: {
+    flex: 1,
+    flexDirection: "row",
+  },
+  drawerBackdrop: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "rgba(15, 23, 42, 0.55)",
+  },
+  drawerCard: {
+    width: "78%",
+    backgroundColor: "#FFFFFF",
+    height: "100%",
+    paddingHorizontal: 18,
+    paddingBottom: 24,
+    shadowColor: "#000",
+    shadowOffset: { width: 4, height: 0 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  drawerTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    paddingVertical: 6,
+  },
+  drawerCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#F1F5F9",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  drawerCloseText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#64748B",
+  },
+  drawerProfileSection: {
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  drawerAvatarWrap: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    borderWidth: 2.5,
+    borderColor: "#2563EB",
+    position: "relative",
+    marginBottom: 8,
+  },
+  drawerAvatarImg: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 32,
+  },
+  drawerOnlineDot: {
+    position: "absolute",
+    bottom: 2,
+    right: 2,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: "#22C55E",
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+  },
+  drawerDriverName: {
+    fontSize: 17,
+    fontWeight: "900",
+    color: "#0F172A",
+  },
+  drawerDriverCode: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#64748B",
+    marginTop: 2,
+  },
+  drawerStoreCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F8FAFC",
+    borderRadius: 14,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    marginBottom: 14,
+  },
+  drawerStoreIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: "#EFF6FF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  drawerStoreName: {
+    fontSize: 12.5,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  drawerStoreSub: {
+    fontSize: 10.5,
+    color: "#64748B",
+    fontWeight: "600",
+  },
+  drawerChevron: {
+    fontSize: 18,
+    color: "#2563EB",
+    fontWeight: "700",
+  },
+  drawerNavList: {
+    flex: 1,
+  },
+  drawerNavItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 11,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    marginBottom: 4,
+  },
+  drawerNavItemActive: {
+    backgroundColor: "#EFF6FF",
+  },
+  drawerNavIcon: {
+    fontSize: 16,
+    marginRight: 12,
+  },
+  drawerNavLabel: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#475569",
+  },
+  drawerNavLabelActive: {
+    color: "#1D4ED8",
+    fontWeight: "800",
+  },
+  drawerDivider: {
+    height: 1,
+    backgroundColor: "#F1F5F9",
+    marginVertical: 8,
+  },
+  drawerBottomWrap: {
+    paddingTop: 10,
+  },
+  drawerLogoutBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: "#FEF2F2",
+    borderWidth: 1,
+    borderColor: "#FECACA",
+  },
+  drawerLogoutIcon: {
+    fontSize: 14,
+    color: "#DC2626",
+    fontWeight: "900",
+    marginRight: 8,
+  },
+  drawerLogoutText: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#DC2626",
+  },
+  // Order Details Modal (Image 2)
+  modalContainer: {
+    flex: 1,
+    backgroundColor: "#F8FAFC",
+  },
+  modalHeaderSafe: {
+    backgroundColor: "#1D4ED8",
+  },
+  modalHeaderBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#1D4ED8",
+  },
+  modalBackBtn: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalBackArrow: {
+    color: "#FFFFFF",
+    fontSize: 24,
+    fontWeight: "700",
+  },
+  modalHeaderTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#FFFFFF",
+  },
+  modalIdCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    marginBottom: 12,
+  },
+  modalOrderIdText: {
+    fontSize: 18,
+    fontWeight: "900",
+    color: "#0F172A",
+  },
+  modalOrderDateText: {
+    fontSize: 12,
+    color: "#64748B",
+    marginTop: 2,
+    fontWeight: "600",
+  },
+  modalCustomerCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    marginBottom: 12,
+  },
+  modalCustomerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  modalCustomerName: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#1E293B",
+    marginLeft: 8,
+    flex: 1,
+  },
+  customerPhoneCallPill: {
+    backgroundColor: "#EFF6FF",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  customerPhoneCallText: {
+    fontSize: 12,
+    color: "#2563EB",
+    fontWeight: "700",
+  },
+  modalAddressRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginTop: 4,
+  },
+  modalCustomerAddress: {
+    fontSize: 12.5,
+    color: "#64748B",
+    marginLeft: 8,
+    flex: 1,
+    lineHeight: 17,
+  },
+  modalProductCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    marginBottom: 14,
+  },
+  modalProductThumbBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 10,
+    backgroundColor: "#F8FAFC",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  modalProductThumbImg: {
+    width: "100%",
+    height: "100%",
+  },
+  modalProductName: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  modalProductQty: {
+    fontSize: 12,
+    color: "#64748B",
+    marginTop: 2,
+    fontWeight: "600",
+  },
+  modalProductPrice: {
+    fontSize: 18,
+    fontWeight: "900",
+    color: "#0F172A",
+  },
+  timelineBoxCard: {
+    backgroundColor: "#EFF6FF", // Exact Light Blue Box matching Image 2
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+    marginBottom: 16,
+  },
+  timelineBoxTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#0F172A",
+    marginBottom: 14,
+  },
+  timelineList: {
+    paddingLeft: 4,
+  },
+  timelineRow: {
+    flexDirection: "row",
+    minHeight: 48,
+    paddingHorizontal: 4,
+    borderRadius: 10,
+  },
+  timelineRowActivePill: {
+    backgroundColor: "#DBEAFE", // Highlighted active stage row
+    paddingVertical: 4,
+  },
+  timelineIconCol: {
+    alignItems: "center",
+    width: 24,
+  },
+  timelineDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 2,
+  },
+  timelineDotDone: {
+    backgroundColor: "#2563EB",
+  },
+  timelineDotActive: {
+    backgroundColor: "#1D4ED8",
+  },
+  timelineDotPending: {
+    backgroundColor: "#E2E8F0",
+  },
+  timelineCheck: {
+    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: "900",
+  },
+  timelineLine: {
+    flex: 1,
+    width: 2,
+    backgroundColor: "#BFDBFE",
+    marginTop: -2,
+    marginBottom: -2,
+  },
+  timelineTextCol: {
+    flex: 1,
+    marginLeft: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  timelineStageTitleDone: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#1E293B",
+  },
+  timelineStageTitleActive: {
+    fontSize: 13.5,
+    fontWeight: "900",
+    color: "#1D4ED8",
+  },
+  timelineStageTitlePending: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#94A3B8",
+  },
+  timelineStageTime: {
+    fontSize: 11.5,
+    color: "#64748B",
+    fontWeight: "600",
+  },
+  timelineStageTimeActive: {
+    fontSize: 11.5,
+    color: "#1D4ED8",
+    fontWeight: "800",
+  },
+  modalPrimaryActionBtn: {
+    backgroundColor: "#16A34A",
+    borderRadius: 16,
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#16A34A",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+    marginBottom: 10,
+  },
+  modalPrimaryActionBtnText: {
+    color: "#FFFFFF",
+    fontSize: 14.5,
+    fontWeight: "800",
+  },
+  trackLiveLocationBtn: {
+    backgroundColor: "#1D4ED8",
+    borderRadius: 16,
+    paddingVertical: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#1D4ED8",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  trackLiveLocationBtnText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "800",
+    letterSpacing: 0.2,
+  },
+  // Screen 5: My Profile Page (Image 3)
+  profileContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 20,
+  },
+  profileAvatarCenterWrap: {
+    alignItems: "center",
+    marginTop: -44, // Overlaps the bottom of the blue wave curve
+    marginBottom: 18,
+  },
+  profileAvatarLargeContainer: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    borderWidth: 3,
+    borderColor: "#38BDF8",
+    position: "relative",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  profileAvatarLarge: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 42,
+  },
+  profileCameraBadge: {
+    position: "absolute",
+    bottom: 2,
+    right: 2,
+    backgroundColor: "#1D4ED8",
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  profileDriverName: {
+    fontSize: 20,
+    fontWeight: "900",
+    color: "#0F172A",
+    marginTop: 10,
+    letterSpacing: 0.2,
+  },
+  profileDriverRole: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#2563EB",
+    marginTop: 2,
+  },
+  profileInfoCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    marginBottom: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  profileRowItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 13,
+  },
+  profileRowLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  profileRowIcon: {
+    fontSize: 16,
+    marginRight: 10,
+  },
+  profileRowLabel: {
+    fontSize: 13.5,
+    fontWeight: "700",
+    color: "#475569",
+  },
+  profileRowValue: {
+    fontSize: 13.5,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  profileDivider: {
+    height: 1,
+    backgroundColor: "#F1F5F9",
+  },
+  profileGreenDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#22C55E",
+    marginRight: 10,
+  },
+  profileActiveStatusBadge: {
+    backgroundColor: "#DCFCE7",
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  profileActiveStatusText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#15803D",
+  },
+  profileLogoutBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FEF2F2",
+    borderRadius: 16,
+    paddingVertical: 14,
+    borderWidth: 1.5,
+    borderColor: "#FECACA",
+    shadowColor: "#EF4444",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  profileLogoutIcon: {
+    fontSize: 16,
+    marginRight: 8,
+  },
+  profileLogoutText: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#DC2626",
+  },
+  // Support Page
+  supportCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 22,
+    padding: 24,
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#E9D5FF",
+    borderColor: "#E2E8F0",
+    marginTop: 14,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  supportTitle: {
+    fontSize: 18,
+    fontWeight: "900",
+    color: "#0F172A",
+    marginBottom: 6,
+  },
+  supportSubtitle: {
+    fontSize: 13,
+    color: "#64748B",
+    textAlign: "center",
+    lineHeight: 18,
+    marginBottom: 20,
+  },
+  supportContactBtn: {
+    backgroundColor: "#2563EB",
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    width: "100%",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  supportContactBtnText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  supportStoreInfoBox: {
+    width: "100%",
+    backgroundColor: "#F8FAFC",
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  supportStoreTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#64748B",
+  },
+  supportStoreName: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#0F172A",
+    marginTop: 2,
+  },
+  supportStoreCode: {
+    fontSize: 12,
+    color: "#2563EB",
+    fontWeight: "600",
+    marginTop: 2,
+  },
+  // Empty State Card
+  emptyCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
     marginTop: 8,
   },
   emptyTitle: {
     fontSize: 16,
     fontWeight: "800",
-    color: "#1E1B4B",
+    color: "#0F172A",
   },
   emptySubtitle: {
-    fontSize: 12,
-    color: "#6B7280",
+    fontSize: 12.5,
+    color: "#64748B",
     textAlign: "center",
     marginTop: 4,
     lineHeight: 18,
-  },
-
-  // 6. Order Card (Matching Reference Image)
-  orderCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    padding: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "#E9D5FF",
-    shadowColor: "#4C1D95",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  orderCardTopRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 10,
-  },
-  orderCardLeftHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  boxIconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#FFEDD5", // Soft peach
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  boxEmoji: {
-    fontSize: 22,
-  },
-  orderNumberText: {
-    fontSize: 14.5,
-    fontWeight: "800",
-    color: "#1E1B4B",
-  },
-  orderDateText: {
-    fontSize: 11.5,
-    color: "#6B7280",
-    marginTop: 2,
-    fontWeight: "500",
-  },
-
-  // Status Badge
-  cardStatusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  cardStatusDelivered: {
-    backgroundColor: "#DCFCE7", // Light green
-  },
-  cardStatusDeliveredText: {
-    color: "#15803D",
-    fontWeight: "800",
-    fontSize: 11.5,
-  },
-  cardStatusOut: {
-    backgroundColor: "#DBEAFE",
-  },
-  cardStatusOutText: {
-    color: "#1D4ED8",
-    fontWeight: "800",
-    fontSize: 11.5,
-  },
-  cardStatusAccepted: {
-    backgroundColor: "#F3E8FF",
-  },
-  cardStatusAcceptedText: {
-    color: "#6B21A8",
-    fontWeight: "800",
-    fontSize: 11.5,
-  },
-  cardStatusPending: {
-    backgroundColor: "#FEF3C7",
-  },
-  cardStatusPendingText: {
-    color: "#B45309",
-    fontWeight: "800",
-    fontSize: 11.5,
-  },
-  cardStatusBadgeText: {
-    fontSize: 11.5,
-    fontWeight: "700",
-  },
-
-  // Customer Row
-  customerRowWrap: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: "#F1F5F9",
-    borderBottomWidth: 1,
-    borderBottomColor: "#F1F5F9",
-  },
-  customerTextCol: {
-    flex: 1,
-  },
-  customerNameRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  userGlyph: {
-    fontSize: 13,
-  },
-  customerNameText: {
-    fontSize: 13.5,
-    fontWeight: "800",
-    color: "#1E1B4B",
-  },
-  customerAddressRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginTop: 2,
-  },
-  pinGlyph: {
-    fontSize: 12,
-  },
-  customerAddressText: {
-    fontSize: 12,
-    color: "#6B7280",
-    flex: 1,
-  },
-  callPillBtn: {
-    backgroundColor: "#F3E8FF",
-    borderWidth: 1,
-    borderColor: "#E9D5FF",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 14,
-    marginLeft: 8,
-  },
-  callPillText: {
-    fontSize: 11.5,
-    color: "#6B21A8",
-    fontWeight: "700",
-  },
-
-  // Items & Payment Row
-  itemsPaymentRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 8,
-  },
-  itemsSubtotalRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  yellowCoin: {
-    fontSize: 12,
-  },
-  itemsSubtotalText: {
-    fontSize: 12.5,
-    fontWeight: "700",
-    color: "#1E1B4B",
-  },
-  paymentMethodPill: {
-    backgroundColor: "#FEF9C3",
-    borderWidth: 1,
-    borderColor: "#FEF08A",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  paymentMethodText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#854D0E",
-  },
-
-  // Bottom Action / Status Banner
-  orderBottomActionWrap: {
-    marginTop: 6,
-  },
-  deliveredSuccessBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#DCFCE7",
-    borderWidth: 1,
-    borderColor: "#86EFAC",
-    paddingVertical: 8,
-    borderRadius: 12,
-    gap: 6,
-  },
-  deliveredCheckmark: {
-    color: "#15803D",
-    fontSize: 14,
-    fontWeight: "900",
-  },
-  deliveredSuccessText: {
-    color: "#15803D",
-    fontSize: 12.5,
-    fontWeight: "800",
-  },
-  actionBtn: {
-    paddingVertical: 10,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  actionBtnText: {
-    color: "#FFFFFF",
-    fontSize: 13.5,
-    fontWeight: "800",
-  },
-  acceptActionBtn: {
-    backgroundColor: "#4C1D95",
-  },
-  pickupActionBtn: {
-    backgroundColor: "#7C3AED",
-  },
-  outActionBtn: {
-    backgroundColor: "#2563EB",
-  },
-  deliveredActionBtn: {
-    backgroundColor: "#16A34A",
-  },
-
-  // 7. Bottom Navigation Bar (Exact Match)
-  bottomNavContainer: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    flexDirection: "row",
-    justifyContent: "space-around",
-    alignItems: "center",
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderTopWidth: 1.5,
-    borderTopColor: "#EDE9FE",
-    shadowColor: "#4C1D95",
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 8,
-  },
-  navDivider: {
-    width: 1,
-    height: 20,
-    backgroundColor: "#DDD6FE",
-  },
-  bottomNavTab: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-  },
-  bottomNavTabActive: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#4C1D95", // Solid purple rounded pill matching screenshot
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    gap: 6,
-  },
-  bottomNavIcon: {
-    fontSize: 18,
-    marginBottom: 2,
-    color: "#6B7280",
-  },
-  bottomNavActiveIcon: {
-    fontSize: 16,
-    color: "#FFFFFF",
-  },
-  bottomNavText: {
-    fontSize: 11,
-    color: "#4C1D95",
-    fontWeight: "700",
-  },
-  bottomNavActiveText: {
-    fontSize: 12,
-    color: "#FFFFFF",
-    fontWeight: "800",
-  },
-
-  // Menu Modal
-  menuModalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
-    justifyContent: "center",
-    padding: 24,
-  },
-  menuModalCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    padding: 20,
-    borderWidth: 1.5,
-    borderColor: "#E9D5FF",
-    gap: 12,
-  },
-  menuModalHeader: {
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F1F5F9",
-  },
-  menuStoreName: {
-    fontSize: 16,
-    fontWeight: "900",
-    color: "#2E0854",
-  },
-  menuStaffBadge: {
-    fontSize: 12,
-    color: "#6B7280",
-    marginTop: 4,
-  },
-  menuItemBtn: {
-    backgroundColor: "#F8F6FF",
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#E9D5FF",
-  },
-  menuItemText: {
-    fontSize: 13.5,
-    fontWeight: "700",
-    color: "#4C1D95",
-  },
-  menuCancelBtn: {
-    alignItems: "center",
-    paddingVertical: 8,
-  },
-  menuCancelText: {
-    fontSize: 13,
-    color: "#94A3B8",
-    fontWeight: "600",
   },
 });

@@ -21,12 +21,25 @@ const SCAN_BOX_SIZE = width * 0.76;
 
 export default function ScanProductScreen() {
   const router = useRouter();
-  const { selectedSupermarket } = useCart();
+  const {
+    selectedSupermarket,
+    setSelectedSupermarket,
+    purchaseMode,
+    addToCart,
+    cart,
+    totalCount,
+    totalAmount,
+  } = useCart();
   const [permission, requestPermission] = useCameraPermissions();
   const [torch, setTorch] = useState(false);
   const [scanned, setScanned] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [lastAddedInfo, setLastAddedInfo] = useState<{
+    name: string;
+    price: number;
+    quantity: number;
+  } | null>(null);
 
   const laserAnim = useRef(new Animated.Value(0)).current;
 
@@ -99,22 +112,56 @@ export default function ScanProductScreen() {
       const json = await res.json();
 
       if (res.ok && json.success && json.product) {
-        // Exact matching product found
-        router.push({
-          pathname: "/product-details",
-          params: {
-            productId: json.product._id,
-            barcode: json.product.barcode || cleanCode,
-          },
-        });
+        const prod = json.product;
+        // If store was not set, adopt scanned product's store
+        if (!selectedSupermarket && prod.supermarket && typeof prod.supermarket === "object") {
+          setSelectedSupermarket(prod.supermarket);
+        }
+
+        if (purchaseMode === "offline") {
+          // OFFLINE: Automatically add scanned product to cart & allow scanning one by one
+          addToCart(prod, 1);
+          const effectivePrice = Number(prod.effectivePrice ?? (prod.price - (prod.discount || 0)));
+          setLastAddedInfo({
+            name: prod.name,
+            price: effectivePrice,
+            quantity: 1,
+          });
+
+          // Reset scan lock after 1.5s so customer can scan products one by one
+          setTimeout(() => {
+            setScanned(false);
+          }, 1500);
+
+          setTimeout(() => {
+            setLastAddedInfo(null);
+          }, 4000);
+        } else {
+          // ONLINE: Open Product Details
+          router.push({
+            pathname: "/product-details",
+            params: {
+              productId: prod._id,
+              barcode: prod.barcode || cleanCode,
+            },
+          });
+        }
       } else {
-        // Product not registered: open Product Details with barcode to show "Product Not Found" screen
-        router.push({
-          pathname: "/product-details",
-          params: {
-            barcode: cleanCode,
-          },
-        });
+        if (purchaseMode === "offline") {
+          setErrorMsg("Product not found in this supermarket inventory");
+          setTimeout(() => {
+            setScanned(false);
+            setErrorMsg("");
+          }, 2500);
+        } else {
+          // Product not registered: open Product Details with barcode to show "Product Not Found" screen
+          router.push({
+            pathname: "/product-details",
+            params: {
+              barcode: cleanCode,
+            },
+          });
+        }
       }
     } catch (err: any) {
       const isTimeout = err.name === "AbortError";
@@ -221,6 +268,15 @@ export default function ScanProductScreen() {
             )}
           </View>
 
+          {lastAddedInfo ? (
+            <View style={styles.successPill}>
+              <Text style={styles.successIcon}>✓</Text>
+              <Text style={styles.successText}>
+                Added "{lastAddedInfo.name}" • ₹{lastAddedInfo.price.toFixed(2)} to cart
+              </Text>
+            </View>
+          ) : null}
+
           {errorMsg ? (
             <View style={styles.errorPill}>
               <Text style={styles.errorText}>{errorMsg}</Text>
@@ -228,8 +284,26 @@ export default function ScanProductScreen() {
           ) : null}
         </View>
 
-        {/* Bottom Translucent Pill matching Screen 2 */}
+        {/* Bottom Bar: View Cart Button & Instruction Pill */}
         <View style={styles.bottomSection}>
+          {cart.length > 0 && (
+            <TouchableOpacity
+              style={styles.viewCartBtn}
+              onPress={() => router.push("/cart")}
+              activeOpacity={0.88}
+            >
+              <View style={styles.viewCartBtnInner}>
+                <View style={styles.viewCartBadge}>
+                  <Text style={styles.viewCartBadgeText}>{totalCount}</Text>
+                </View>
+                <Text style={styles.viewCartBtnText}>
+                  View Cart • ₹{Number(totalAmount || 0).toFixed(2)}
+                </Text>
+                <Text style={styles.viewCartArrow}>→</Text>
+              </View>
+            </TouchableOpacity>
+          )}
+
           <View style={styles.instructionPill}>
             <View style={styles.scanIconBox}>
               <Text style={styles.scanIconSymbol}>⚲</Text>
@@ -410,9 +484,74 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
   },
+  successPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(22, 163, 74, 0.95)",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 24,
+    marginTop: 16,
+    gap: 8,
+    shadowColor: "#16A34A",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  successIcon: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  successText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700",
+  },
   bottomSection: {
     alignItems: "center",
     paddingBottom: 24,
+    width: "100%",
+  },
+  viewCartBtn: {
+    backgroundColor: "#16A34A",
+    borderRadius: 26,
+    paddingVertical: 13,
+    paddingHorizontal: 22,
+    marginBottom: 12,
+    width: "88%",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  viewCartBtnInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  viewCartBadge: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  viewCartBadgeText: {
+    color: "#16A34A",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  viewCartBtnText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  viewCartArrow: {
+    color: "#FFFFFF",
+    fontSize: 17,
+    fontWeight: "800",
   },
   instructionPill: {
     flexDirection: "row",

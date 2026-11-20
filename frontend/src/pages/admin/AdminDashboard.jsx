@@ -360,6 +360,7 @@ export default function AdminDashboard() {
           amount: Number(ord.totalAmount || ord.totalPrice || 0),
           payment: ord.paymentMethod === "Cash" ? "Cash" : (ord.paymentMethod || "UPI"),
           status: ord.paymentStatus || ord.orderStatus || ord.status || "Completed",
+          purchaseMode: ord.purchaseMode || (ord.fulfillmentChoice === "IN_STORE" || ord.orderType === "IN_STORE" ? "OFFLINE" : "ONLINE"),
           date: dateStr,
           items: items,
           rawOrder: ord,
@@ -404,48 +405,40 @@ export default function AdminDashboard() {
   return (
     <div className="db-dashboard-container">
       {/* ========================================================================= */}
-      {/* 1. HERO BANNER - Exact Recreation with 3D Blue Bag, Date Pill & Produce Cart */}
+      {/* 1. HERO BANNER - Exact Recreation with Produce Thumbnail, Welcome Card, Center Script & Cart */}
       {/* ========================================================================= */}
       <section className="db-hero-banner">
-        {/* 1. Panoramic Background Produce Cart on the Right */}
-        <div className="db-hero-panoramic-bg" style={{ backgroundImage: "url('/dashboard-hero-fresh-cart.jpg')" }} />
-
-        {/* 2. Left Group: Store Dynamic Logo + Store Info + Welcome Card */}
+        {/* Left Group: Sibling Cards (Matching 88px Parallel Heights) */}
         <div className="db-hero-left">
-          <div className="db-storefront-3d-wrap" style={{ background: "#ffffff", borderRadius: "14px", padding: storeLogo ? "4px" : "0", border: "1.5px solid #bfdbfe", boxShadow: "0 3px 10px rgba(37,99,235,0.12)" }}>
-            {storeLogo ? (
-              <img
-                src={storeLogo}
-                alt={storeName}
-                className="db-storefront-3d-img"
-                style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "10px" }}
-                onError={(e) => { e.currentTarget.src = "/storefront-3d.jpg"; }}
-              />
-            ) : (
-              <img
-                src="/storefront-3d.jpg"
-                alt={storeName}
-                className="db-storefront-3d-img"
-                onError={(e) => { e.currentTarget.src = "/storefront-3d.png"; }}
-              />
-            )}
+          <div className="db-storefront-3d-wrap">
+            <img
+              src={storeLogo || "/dashboard-hero-fresh-cart.jpg"}
+              alt={storeName}
+              className="db-storefront-3d-img"
+              onError={(e) => { e.currentTarget.src = "/dashboard-hero-fresh-cart.jpg"; }}
+            />
           </div>
-          <div className="db-hero-text-block">
-            <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "3px" }}>
-              <span style={{ fontSize: "11px", fontWeight: 800, color: "#16a34a", background: "#f0fdf4", padding: "1px 7px", borderRadius: "4px", border: "1px solid #bbf7d0", fontFamily: "monospace" }}>
+
+          <div className="db-hero-welcome-card">
+            <div className="db-hero-badge-row">
+              <span className="db-hero-store-code-badge">
                 {storeCode}
               </span>
-              <span style={{ fontSize: "11px", color: "#64748b", fontWeight: 600 }}>
+              <span className="db-hero-city-text">
                 &bull; {storeCity}
               </span>
             </div>
-            <h1 className="db-hero-title">
-              Welcome Back, <span className="db-hero-title-blue">{adminDisplayName}!</span>{" "}
-              <span role="img" aria-label="wave">👋</span>
-            </h1>
-            <p className="db-hero-subtitle" style={{ maxWidth: "360px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {storeName} &bull; {storeTagline}
-            </p>
+
+            <div className="db-hero-titles-wrap">
+              <h1 className="db-hero-title">
+                Welcome Back, <span className="db-hero-title-blue">{adminDisplayName}!</span>{" "}
+                <span role="img" aria-label="wave">👋</span>
+              </h1>
+              <p className="db-hero-subtitle">
+                {storeName} &bull; {storeTagline || "Autonomous Smart Retail & High-Speed Checkout"}
+              </p>
+            </div>
+
             <div className="db-hero-meta-row">
               <div className="db-date-pill">
                 <Calendar size={12} color="#2563EB" />
@@ -458,49 +451,6 @@ export default function AdminDashboard() {
                   })}
                 </span>
               </div>
-              <div
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  padding: "4px 10px",
-                  borderRadius: "20px",
-                  fontSize: "11px",
-                  fontWeight: 700,
-                  background: "#ffffff",
-                  border: "1px solid #cbd5e1",
-                  boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-                }}
-                title="Super Admin live configured purchase channels"
-              >
-                <span style={{ color: "#475569" }}>Channels:</span>
-                <span
-                  style={{
-                    padding: "1px 6px",
-                    borderRadius: "4px",
-                    fontSize: "10.5px",
-                    fontWeight: 700,
-                    background: availability.onlineDeliveryAvailable ? "#dcfce7" : "#fee2e2",
-                    color: availability.onlineDeliveryAvailable ? "#15803d" : "#b91c1c",
-                    border: `1px solid ${availability.onlineDeliveryAvailable ? "#86efac" : "#fca5a5"}`,
-                  }}
-                >
-                  Delivery: {availability.onlineDeliveryAvailable ? "Available" : "Disabled"}
-                </span>
-                <span
-                  style={{
-                    padding: "1px 6px",
-                    borderRadius: "4px",
-                    fontSize: "10.5px",
-                    fontWeight: 700,
-                    background: availability.selfPickupAvailable ? "#dcfce7" : "#fee2e2",
-                    color: availability.selfPickupAvailable ? "#15803d" : "#b91c1c",
-                    border: `1px solid ${availability.selfPickupAvailable ? "#86efac" : "#fca5a5"}`,
-                  }}
-                >
-                  Pickup: {availability.selfPickupAvailable ? "Available" : "Disabled"}
-                </span>
-              </div>
               <button
                 type="button"
                 className="db-hero-insights-btn"
@@ -510,11 +460,21 @@ export default function AdminDashboard() {
                 }}
               >
                 <span>View Insights</span>
-                <ArrowRight size={13} />
+                <ArrowRight size={12} />
               </button>
             </div>
           </div>
         </div>
+
+        {/* Center: Script Branding (Exact match to Reference Image) */}
+        <div className="db-hero-center-branding">
+          <span className="db-hero-script-title">{storeName}</span>
+          <span className="db-hero-slogan">AUTONOMOUS SMART RETAIL &amp; HIGH-SPEED CHECKOUT</span>
+          <div className="db-hero-orange-bar" />
+        </div>
+
+        {/* Right: Full-Bleed Panoramic Background Produce Cart (Confined to right side only, no overlap with center) */}
+        <div className="db-hero-panoramic-bg" style={{ backgroundImage: "url('/dashboard-hero-fresh-cart.jpg')" }} />
       </section>
 
       <section className="db-kpi-grid">
@@ -670,12 +630,28 @@ export default function AdminDashboard() {
                     return (
                       <tr key={ord.orderId || idx}>
                         <td>
-                          <span
-                            className="db-order-id-link"
-                            onClick={() => setSelectedOrder(ord)}
-                          >
-                            #{ord.orderId}
-                          </span>
+                          <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                            <span
+                              className="db-order-id-link"
+                              onClick={() => setSelectedOrder(ord)}
+                            >
+                              #{ord.orderId}
+                            </span>
+                            <span
+                              style={{
+                                fontSize: "10px",
+                                fontWeight: "700",
+                                padding: "2px 6px",
+                                borderRadius: "4px",
+                                width: "fit-content",
+                                background: ord.purchaseMode === "OFFLINE" ? "#FEF3C7" : "#EFF6FF",
+                                color: ord.purchaseMode === "OFFLINE" ? "#B45309" : "#1D4ED8",
+                                border: `1px solid ${ord.purchaseMode === "OFFLINE" ? "#FCD34D" : "#BFDBFE"}`,
+                              }}
+                            >
+                              {ord.purchaseMode === "OFFLINE" ? "⚡ In-Store Scan" : "🌐 Online"}
+                            </span>
+                          </div>
                         </td>
                         <td>
                           <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
@@ -1219,10 +1195,25 @@ export default function AdminDashboard() {
               >
                 <div>
                   <span style={{ fontSize: "10px", fontWeight: "700", color: "#64748B", textTransform: "uppercase" }}>
-                    INVOICE NO
+                    INVOICE NO & CHANNEL
                   </span>
                   <span style={{ fontSize: "12.5px", fontWeight: "800", color: "#0F172A", display: "block", marginTop: "2px" }}>
                     #{selectedOrder.orderId}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "10px",
+                      fontWeight: "700",
+                      padding: "2px 6px",
+                      borderRadius: "4px",
+                      display: "inline-block",
+                      marginTop: "3px",
+                      background: selectedOrder.purchaseMode === "OFFLINE" ? "#FEF3C7" : "#EFF6FF",
+                      color: selectedOrder.purchaseMode === "OFFLINE" ? "#B45309" : "#1D4ED8",
+                      border: `1px solid ${selectedOrder.purchaseMode === "OFFLINE" ? "#FCD34D" : "#BFDBFE"}`,
+                    }}
+                  >
+                    {selectedOrder.purchaseMode === "OFFLINE" ? "⚡ OFFLINE (In-Store Barcode Scan)" : "🌐 ONLINE (App Checkout)"}
                   </span>
                 </div>
                 <div>

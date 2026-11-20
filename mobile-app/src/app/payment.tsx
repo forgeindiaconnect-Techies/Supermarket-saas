@@ -103,6 +103,8 @@ export default function SecurePaymentScreen() {
     purchaseMode,
   } = useCart();
 
+  const isOffline = purchaseMode === "offline";
+
   // Resolved Customer Details (checking route params, authenticated customerUser, and customerInfo)
   const effectiveName = (
     customerName ||
@@ -125,6 +127,9 @@ export default function SecurePaymentScreen() {
   ).trim();
   const effectiveCustomerId = customerId || customerUser?._id;
 
+  const [paymentMethod, setPaymentMethod] = useState<"UPI" | "Card" | "Cash">(
+    method === "Card" ? "Card" : method === "Cash" ? "Cash" : "UPI"
+  );
   const [secondsLeft, setSecondsLeft] = useState(300); // 5 minutes countdown
   const [processing, setProcessing] = useState(false);
 
@@ -134,22 +139,22 @@ export default function SecurePaymentScreen() {
   const [expiry, setExpiry] = useState("08/28");
   const [cvv, setCvv] = useState("•••");
 
-  // Constant Rule: Payment requires customer name and phone; if missing, redirect to checkout
+  // Constant Rule: Customer Name & 10-digit Phone must be validated before displaying payment options
   useEffect(() => {
     if (!effectiveName || effectivePhone.length !== 10) {
       Alert.alert(
         "Customer Details Required",
-        "Please confirm your Customer Name and a valid 10-digit Mobile Number before opening the payment page.",
+        "Please fill in your Customer Name and a valid 10-digit Mobile Number before opening the payment page.",
         [
           {
-            text: "Back to Checkout",
-            onPress: () => router.replace("/checkout"),
+            text: isOffline ? "Fill Customer Details" : "Back to Checkout",
+            onPress: () => router.replace(isOffline ? "/customer-details" : "/checkout"),
           },
         ]
       );
-      router.replace("/checkout");
+      router.replace(isOffline ? "/customer-details" : "/checkout");
     }
-  }, [effectiveName, effectivePhone]);
+  }, [effectiveName, effectivePhone, isOffline]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -197,7 +202,9 @@ export default function SecurePaymentScreen() {
           quantity: it.quantity,
           name: it.name,
         })),
-        paymentMethod: method === "Card" ? "Card" : "UPI",
+        paymentMethod: paymentMethod,
+        isPaid: true,
+        paymentStatus: "Completed",
         purchaseMode: currentMode,
         orderType: fulfillmentType || (currentMode === "ONLINE" ? "DELIVERY" : "IN_STORE"),
         pickupDate: pickupDate || "",
@@ -248,8 +255,8 @@ export default function SecurePaymentScreen() {
     }
   };
 
-  // Guard: if customer details are incomplete, block opening payment page
-  if (!effectiveName || effectivePhone.length !== 10) {
+  // Guard: if customer details are incomplete, block opening payment page (Online orders only)
+  if (!isOffline && (!effectiveName || effectivePhone.length !== 10)) {
     return (
       <View style={[styles.container, { justifyContent: "center", alignItems: "center", padding: 24 }]}>
         <ActivityIndicator size="large" color="#3B0764" />
@@ -277,7 +284,11 @@ export default function SecurePaymentScreen() {
             </TouchableOpacity>
 
             <Text style={styles.headerTitle}>
-              {method === "Card" ? "Card Payment" : "Secure Payment"}
+              {paymentMethod === "Card"
+                ? "Card Payment"
+                : paymentMethod === "Cash"
+                ? "Cash Payment"
+                : "Secure Payment"}
             </Text>
 
             <View style={{ width: 38 }} />
@@ -324,7 +335,70 @@ export default function SecurePaymentScreen() {
           </TouchableOpacity>
         </View>
 
-        {method === "Card" ? (
+        {/* Available Payment Methods Selector */}
+        <View style={styles.methodSelectorWrap}>
+          <Text style={styles.methodSelectorLabel}>SELECT PAYMENT METHOD</Text>
+          <View style={styles.methodPillRow}>
+            <TouchableOpacity
+              style={[
+                styles.methodPillBtn,
+                paymentMethod === "UPI" && styles.methodPillBtnActive,
+              ]}
+              onPress={() => setPaymentMethod("UPI")}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.methodPillIcon}>⚡</Text>
+              <Text
+                style={[
+                  styles.methodPillText,
+                  paymentMethod === "UPI" && styles.methodPillTextActive,
+                ]}
+              >
+                UPI QR
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.methodPillBtn,
+                paymentMethod === "Card" && styles.methodPillBtnActive,
+              ]}
+              onPress={() => setPaymentMethod("Card")}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.methodPillIcon}>💳</Text>
+              <Text
+                style={[
+                  styles.methodPillText,
+                  paymentMethod === "Card" && styles.methodPillTextActive,
+                ]}
+              >
+                Card
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.methodPillBtn,
+                paymentMethod === "Cash" && styles.methodPillBtnActive,
+              ]}
+              onPress={() => setPaymentMethod("Cash")}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.methodPillIcon}>💵</Text>
+              <Text
+                style={[
+                  styles.methodPillText,
+                  paymentMethod === "Cash" && styles.methodPillTextActive,
+                ]}
+              >
+                Cash
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {paymentMethod === "Card" ? (
           /* Card Payment Layout */
           <View style={styles.cardSection}>
             {/* Virtual Credit/Debit Card Mockup */}
@@ -402,6 +476,18 @@ export default function SecurePaymentScreen() {
               </View>
             </View>
           </View>
+        ) : paymentMethod === "Cash" ? (
+          /* Cash Payment Layout */
+          <View style={styles.cashCard}>
+            <Text style={styles.cashCardTitle}>💵 Cash Payment at Exit Counter</Text>
+            <Text style={styles.cashCardSub}>
+              Please present your order pass at the exit cashier counter. Pay ₹{totalAmount} in cash to clear the gate turnstile.
+            </Text>
+            <View style={styles.cashAmountBox}>
+              <Text style={styles.cashAmountLabel}>Payable Total</Text>
+              <Text style={styles.cashAmountValue}>₹{totalAmount}</Text>
+            </View>
+          </View>
         ) : (
           /* Purple UPI Payment Card matching Screen 6 */
           <View style={styles.upiCard}>
@@ -455,9 +541,11 @@ export default function SecurePaymentScreen() {
             <ActivityIndicator color={Theme.white} />
           ) : (
             <Text style={styles.confirmBtnText}>
-              {method === "Card"
+              {paymentMethod === "Card"
                 ? `Pay ₹${totalAmount} via Card ➔`
-                : "Simulate / Confirm Payment ➔"}
+                : paymentMethod === "Cash"
+                ? `Confirm Cash Order • ₹${totalAmount} ➔`
+                : `Confirm & Pay ₹${totalAmount} ➔`}
             </Text>
           )}
         </TouchableOpacity>
@@ -782,5 +870,93 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "800",
     color: "#3B0764",
+  },
+  methodSelectorWrap: {
+    width: "100%",
+    marginBottom: 18,
+  },
+  methodSelectorLabel: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#64748B",
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
+  methodPillRow: {
+    flexDirection: "row",
+    gap: 8,
+    width: "100%",
+  },
+  methodPillBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+    backgroundColor: "#F8FAFC",
+  },
+  methodPillBtnActive: {
+    borderColor: Theme.primary,
+    backgroundColor: "#FAF5FF",
+  },
+  methodPillIcon: {
+    fontSize: 15,
+  },
+  methodPillText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#64748B",
+  },
+  methodPillTextActive: {
+    color: Theme.primary,
+    fontWeight: "800",
+  },
+  cashCard: {
+    width: "100%",
+    backgroundColor: "#FFFBEB",
+    borderWidth: 1.5,
+    borderColor: "#FDE68A",
+    borderRadius: 20,
+    padding: 20,
+    alignItems: "center",
+  },
+  cashCardTitle: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: "#92400E",
+    marginBottom: 6,
+  },
+  cashCardSub: {
+    fontSize: 12.5,
+    color: "#78350F",
+    textAlign: "center",
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+  cashAmountBox: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 28,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+  },
+  cashAmountLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#92400E",
+    textTransform: "uppercase",
+  },
+  cashAmountValue: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: "#B45309",
+    marginTop: 2,
   },
 });

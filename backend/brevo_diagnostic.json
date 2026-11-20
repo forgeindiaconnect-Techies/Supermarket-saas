@@ -1,9 +1,9 @@
 {
-  "timestamp": "2026-11-19T12:41:51.836Z",
-  "sendersStatus": 200,
-  "sendersError": null,
-  "accountStatus": 200,
-  "accountError": null,
+  "timestamp": "2026-11-20T10:16:45.394Z",
+  "sendersStatus": 401,
+  "sendersError": "We have detected you are using an unrecognised IP address 2401:4900:1c28:7cb6:74dc:2f9d:de45:e9dd. If you performed this action make sure to add the new IP address in this link: https://app.brevo.com/security/authorised_ips",
+  "accountStatus": 401,
+  "accountError": "We have detected you are using an unrecognised IP address 2401:4900:1c28:7cb6:74dc:2f9d:de45:e9dd. If you performed this action make sure to add the new IP address in this link: https://app.brevo.com/security/authorised_ips",
   "smtpRelayStatus": "FAILED",
   "smtpLoginsTest": [
     {
@@ -22,40 +22,9 @@
       "error": "Invalid login: 535 5.7.8 Authentication failed"
     }
   ],
-  "sendersCount": 6,
-  "senders": [
-    {
-      "email": "forgeindiaconnectfic@gmail.com",
-      "name": "CS",
-      "active": true
-    },
-    {
-      "email": "forgeindiaconnectfic@gmail.com",
-      "name": "ForgeIndiaConnect",
-      "active": true
-    },
-    {
-      "email": "forgeindiaconnectfic@gmail.com",
-      "name": "Restaurant Hub",
-      "active": true
-    },
-    {
-      "email": "forgeindiaconnectfic@gmail.com",
-      "name": "RestaurantHub",
-      "active": true
-    },
-    {
-      "email": "forgeindiaconnectfic@gmail.com",
-      "name": "Smartsociety",
-      "active": true
-    },
-    {
-      "email": "forgeindiaconnectfic@gmail.com",
-      "name": "BuildingApproval",
-      "active": true
-    }
-  ],
-  "accountEmail": "forgeindiaconnectfic@gmail.com",
-  "accountName": "FIC CONNECT",
-  "resolvedSender": "forgeindiaconnectfic@gmail.com"
+  "sendersCount": 0,
+  "senders": [],
+  "accountEmail": null,
+  "accountName": "",
+  "resolvedSender": null
 }

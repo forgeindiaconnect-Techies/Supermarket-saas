@@ -4,6 +4,7 @@ import {
   Text,
   Image,
   TouchableOpacity,
+  ScrollView,
   StyleSheet,
   Dimensions,
   ActivityIndicator,
@@ -20,15 +21,12 @@ const { width, height } = Dimensions.get("window");
 export default function WelcomeHomeScreen() {
   const router = useRouter();
   const {
-    selectedSupermarket,
+    customerUser,
     setSelectedSupermarket,
     setPurchaseMode,
-    verifySupermarketMode,
-    customerUser,
-    deliveryUser,
   } = useCart();
 
-  const [verifying, setVerifying] = useState(false);
+  const [verifying] = useState(false);
   const [unavailableModal, setUnavailableModal] = useState<{
     visible: boolean;
     mode: "Online" | "Offline" | string;
@@ -42,76 +40,47 @@ export default function WelcomeHomeScreen() {
   const [searchModalVisible, setSearchModalVisible] = useState(false);
   const [pendingMode, setPendingMode] = useState<"online" | "offline">("online");
 
-  // Handle Online Purchase selection
-  const handleSelectOnline = async () => {
+  // Handle Online Purchase selection:
+  const handleSelectOnline = () => {
     setPurchaseMode("online");
+    setPendingMode("online");
+    setSearchModalVisible(true);
+  };
 
-    if (selectedSupermarket) {
-      setVerifying(true);
-      const check = await verifySupermarketMode(selectedSupermarket, "online");
-      setVerifying(false);
+  // Handle Offline Purchase selection (Direct to Scanner)
+  const handleSelectOffline = () => {
+    setPurchaseMode("offline");
+    router.push("/scanner");
+  };
 
-      if (!check.allowed) {
-        setUnavailableModal({
-          visible: true,
-          mode: "Online",
-          storeName: selectedSupermarket.name,
-        });
-        return;
-      }
-
-      // If customer account already exists and is verified
-      if (customerUser) {
-        router.push("/catalog");
-      } else {
-        router.push("/auth");
-      }
+  // Handle Delivery / Track Orders selection:
+  const handleSelectDelivery = () => {
+    if (customerUser) {
+      router.push("/order-tracking");
     } else {
-      // If no store selected yet, open Auth page where location is searched & selected
+      // Guide customer to sign in to track their active deliveries
       router.push("/auth");
     }
   };
 
-  // Handle Offline Purchase selection (Direct to Scanner, never show login page)
-  const handleSelectOffline = async () => {
-    setPurchaseMode("offline");
-
-    if (selectedSupermarket) {
-      setVerifying(true);
-      const check = await verifySupermarketMode(selectedSupermarket, "offline");
-      setVerifying(false);
-
-      if (!check.allowed) {
-        setUnavailableModal({
-          visible: true,
-          mode: "Offline",
-          storeName: selectedSupermarket.name,
-        });
-        return;
-      }
-    }
-
-    // Direct to Scanner without login/registration page
-    router.push("/scanner");
-  };
-
   const handleSelectOtherStore = () => {
     setUnavailableModal({ visible: false, mode: "Online", storeName: "" });
-    setPendingMode(unavailableModal.mode.toLowerCase() as any);
+    setPendingMode("online");
     setSearchModalVisible(true);
   };
 
   const handleStoreChosenFromModal = (store: SupermarketInfo) => {
     setSelectedSupermarket(store);
     setSearchModalVisible(false);
-    if (pendingMode === "online") {
-      if (customerUser) {
-        router.push("/catalog");
-      } else {
-        router.push("/auth");
-      }
+    // Sequence: Select Supermarket -> Customer Registration Page (/auth)
+    router.push("/auth");
+  };
+
+  const handleProfilePress = () => {
+    if (customerUser) {
+      router.push("/profile");
     } else {
-      router.push("/scanner");
+      router.push("/auth");
     }
   };
 
@@ -119,116 +88,232 @@ export default function WelcomeHomeScreen() {
     <View style={styles.container}>
       <StatusBar style="light" />
 
-      {/* Atmospheric Background Glows matching Design */}
-      <View style={styles.radialAuraTop} />
-      <View style={styles.radialAuraRight} />
-      <View style={styles.ambientBottomShade} />
+      {/* 1. Royal Purple Top Header Background */}
+      <View style={styles.royalHeaderWrap}>
+        <SafeAreaView edges={["top"]} style={styles.headerSafe}>
+          <View style={styles.headerRow}>
+            {/* Left Brand Area */}
+            <View style={styles.brandRow}>
+              <View style={styles.logoBadgeCircle}>
+                <Text style={{ fontSize: 20 }}>🛒</Text>
+              </View>
+              <View style={{ marginLeft: 10 }}>
+                <View style={{ flexDirection: "row", alignItems: "baseline" }}>
+                  <Text style={styles.brandNameSuper}>Super</Text>
+                  <Text style={styles.brandNameMart}>Mart</Text>
+                </View>
+                <Text style={styles.brandTagline}>Smart Shopping. Smarter Life.</Text>
+              </View>
+            </View>
 
-      <SafeAreaView style={styles.content}>
-        {/* Top Header Row with Delivery Portal Access */}
-        <View style={styles.topUtilityRow}>
-          <TouchableOpacity
-            style={styles.deliveryPortalBtn}
-            onPress={() => router.push(deliveryUser ? "/delivery-dashboard" : "/delivery-login")}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.deliveryPortalBtnText}>
-              {deliveryUser ? `🚚 ${deliveryUser.supermarketName} Delivery` : "🚚 Delivery Portal"}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Top Branding Section */}
-        <View style={styles.brandSection}>
-          <View style={styles.cartIconWrapper}>
-            <Image
-              source={require("@/assets/images/gold-cart-logo.png")}
-              style={styles.cartLogoImage}
-              resizeMode="contain"
-            />
-          </View>
-
-          <Text style={styles.titlePrimary}>Smart</Text>
-          <Text style={styles.titleSecondary}>Supermarket</Text>
-          <Text style={styles.tagline}>Scan • Shop • Pay</Text>
-
-          {/* Current Connected Supermarket Pill if selected */}
-          {selectedSupermarket ? (
+            {/* Right Customer Avatar with Active 🟢 Badge */}
             <TouchableOpacity
-              style={styles.currentStorePill}
-              onPress={() => setSearchModalVisible(true)}
+              style={styles.avatarTouchBox}
+              onPress={handleProfilePress}
               activeOpacity={0.8}
             >
-              <Text style={styles.currentStorePillText}>
-                📍 {selectedSupermarket.name} ({selectedSupermarket.city || "Bangalore"}) ▼
-              </Text>
+              <View style={styles.avatarFrame}>
+                <Image
+                  source={require("../../assets/images/customer-avatar-shopper.jpg")}
+                  style={styles.avatarImg}
+                  resizeMode="cover"
+                />
+                <View style={styles.onlineDot} />
+              </View>
             </TouchableOpacity>
-          ) : null}
-        </View>
+          </View>
+        </SafeAreaView>
+      </View>
 
-        {/* Centerpiece Hero Grocery Bag */}
-        <View style={styles.heroSection}>
-          <View style={styles.heroImageContainer}>
-            <Image
-              source={require("@/assets/images/grocery-hero.png")}
-              style={styles.heroImage}
-              resizeMode="contain"
-            />
+      {/* 2. Main Scroll Content */}
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+      >
+        {/* Hero Banner Card with Shopper & Modern Typography */}
+        <View style={styles.heroCardContainer}>
+          <Image
+            source={require("../../assets/images/purple-hero-card.jpg")}
+            style={styles.heroCardImage}
+            resizeMode="cover"
+          />
+          {/* Left Text Overlay */}
+          <View style={styles.heroTextOverlay}>
+            <Text style={styles.heroWelcomeSub}>WELCOME TO</Text>
+            <View style={{ flexDirection: "row", alignItems: "baseline" }}>
+              <Text style={styles.heroTitleSuper}>Super</Text>
+              <Text style={styles.heroTitleMart}>Mart</Text>
+            </View>
+            <View style={styles.heroUnderlineBar} />
+            <Text style={styles.heroTagline}>Shop Smart, Live Better</Text>
           </View>
         </View>
 
-        {/* Bottom Options: Online Shopping vs In-Store Scan & Go */}
-        <View style={styles.bottomSection}>
+        {/* Action Cards Section (ONLINE, OFFLINE, DELIVERY) */}
+        <View style={styles.cardsSection}>
           {verifying ? (
             <View style={styles.verifyingBox}>
-              <ActivityIndicator color="#F6BC45" size="small" />
+              <ActivityIndicator color="#7C3AED" size="small" />
               <Text style={styles.verifyingText}>Verifying supermarket availability...</Text>
             </View>
           ) : (
             <>
-              {/* Option 1: ONLINE */}
+              {/* Card 1: ONLINE */}
               <TouchableOpacity
-                style={styles.onlineButton}
+                style={[styles.actionCard, styles.onlineCardBorder]}
                 onPress={handleSelectOnline}
                 activeOpacity={0.88}
               >
-                <View style={styles.buttonInner}>
-                  <Text style={styles.btnIcon}>🛍️</Text>
-                  <View style={styles.btnTextCol}>
-                    <Text style={styles.onlineButtonText}>ONLINE</Text>
-                    <Text style={styles.onlineSubText}>
-                      Home Delivery &amp; Self Pickup
-                    </Text>
+                <View style={styles.cardIconBoxPurple}>
+                  <Image
+                    source={require("../../assets/images/icon-online-exact.jpg")}
+                    style={styles.card3DIcon}
+                    resizeMode="contain"
+                  />
+                </View>
+
+                <View style={styles.cardTextCol}>
+                  <View style={styles.pillBadgeRow}>
+                    <View style={styles.onlinePill}>
+                      <Text style={styles.onlinePillText}>ONLINE</Text>
+                    </View>
                   </View>
-                  <Text style={styles.btnArrow}>→</Text>
+                  <Text style={styles.cardSubText}>
+                    Browse products, add to cart and order.
+                  </Text>
+                </View>
+
+                <View style={styles.purpleCircleBtn}>
+                  <Text style={styles.arrowText}>→</Text>
                 </View>
               </TouchableOpacity>
 
-              {/* Option 2: OFFLINE */}
+              {/* Card 2: OFFLINE */}
               <TouchableOpacity
-                style={styles.offlineButton}
+                style={[styles.actionCard, styles.offlineCardBorder]}
                 onPress={handleSelectOffline}
                 activeOpacity={0.88}
               >
-                <View style={styles.buttonInner}>
-                  <Text style={styles.btnIcon}>⚡</Text>
-                  <View style={styles.btnTextCol}>
-                    <Text style={styles.offlineButtonText}>OFFLINE</Text>
-                    <Text style={styles.offlineSubText}>
-                      In-Store Barcode Scan &amp; Go
-                    </Text>
+                <View style={styles.cardIconBoxGreen}>
+                  <Image
+                    source={require("../../assets/images/icon-offline-exact.jpg")}
+                    style={styles.card3DIcon}
+                    resizeMode="contain"
+                  />
+                </View>
+
+                <View style={styles.cardTextCol}>
+                  <View style={styles.pillBadgeRow}>
+                    <View style={styles.offlinePill}>
+                      <Text style={styles.offlinePillText}>OFFLINE</Text>
+                    </View>
                   </View>
-                  <Text style={styles.btnArrow}>→</Text>
+                  <Text style={styles.cardSubText}>
+                    Scan products, add to cart and pay.
+                  </Text>
+                </View>
+
+                <View style={styles.greenCircleBtn}>
+                  <Text style={styles.arrowText}>→</Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* Card 3: DELIVERY */}
+              <TouchableOpacity
+                style={[styles.actionCard, styles.deliveryCardBorder]}
+                onPress={handleSelectDelivery}
+                activeOpacity={0.88}
+              >
+                <View style={styles.cardIconBoxOrange}>
+                  <Image
+                    source={require("../../assets/images/icon-delivery-exact.jpg")}
+                    style={styles.card3DIcon}
+                    resizeMode="contain"
+                  />
+                </View>
+
+                <View style={styles.cardTextCol}>
+                  <View style={styles.pillBadgeRow}>
+                    <View style={styles.deliveryPill}>
+                      <Text style={styles.deliveryPillText}>DELIVERY</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.cardSubText}>
+                    Track your orders & get home delivery.
+                  </Text>
+                </View>
+
+                <View style={styles.orangeCircleBtn}>
+                  <Text style={styles.arrowText}>→</Text>
                 </View>
               </TouchableOpacity>
             </>
           )}
 
-          <Text style={styles.welcomeFooter}>
-            Choose your preferred shopping mode
-          </Text>
+          {/* 4 Trust & Value Badges Row */}
+          <View style={styles.trustBarCard}>
+            <View style={styles.trustItem}>
+              <Text style={styles.trustIcon}>🛡️</Text>
+              <Text style={styles.trustLabel}>Secure & Trusted</Text>
+            </View>
+
+            <View style={styles.trustDivider} />
+
+            <View style={styles.trustItem}>
+              <Text style={styles.trustIcon}>🛒</Text>
+              <Text style={styles.trustLabel}>Best Prices</Text>
+            </View>
+
+            <View style={styles.trustDivider} />
+
+            <View style={styles.trustItem}>
+              <Text style={styles.trustIcon}>🏷️</Text>
+              <Text style={styles.trustLabel}>Great Offers</Text>
+            </View>
+
+            <View style={styles.trustDivider} />
+
+            <View style={styles.trustItem}>
+              <Text style={styles.trustIcon}>🎧</Text>
+              <Text style={styles.trustLabel}>24/7 Support</Text>
+            </View>
+          </View>
+
+          {/* 5. Promotional Offer Banner: Fresh Products, Better Life */}
+          <TouchableOpacity
+            style={styles.promoBannerContainer}
+            onPress={handleSelectOnline}
+            activeOpacity={0.92}
+          >
+            <Image
+              source={require("../../assets/images/purple-promo-banner.jpg")}
+              style={styles.promoBannerImg}
+              resizeMode="cover"
+            />
+            {/* Promo Left Content */}
+            <View style={styles.promoOverlayCol}>
+              <Text style={styles.promoSmallTitle}>Fresh Products</Text>
+              <Text style={styles.promoBigTitle}>Better Life</Text>
+              <View style={styles.shopNowBtn}>
+                <Text style={styles.shopNowBtnText}>Shop Now →</Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+
+          {/* 6. Footer Link for Delivery Fleet Portal */}
+          <TouchableOpacity
+            style={styles.fleetLinkRow}
+            onPress={() => router.push("/delivery-login")}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.fleetLinkText}>
+              Are you a Delivery Partner?{" "}
+              <Text style={styles.fleetLinkBold}>Login to Fleet Portal →</Text>
+            </Text>
+          </TouchableOpacity>
         </View>
-      </SafeAreaView>
+      </ScrollView>
 
       {/* Mode Unavailable Modal */}
       <ModeUnavailableModal
@@ -263,213 +348,454 @@ export default function WelcomeHomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#2E0854", // Deep rich purple
-    position: "relative",
+    backgroundColor: "#F8F7FF", // Premium light lavender canvas matching Reference Image
   },
-  radialAuraTop: {
-    position: "absolute",
-    top: -100,
-    left: -60,
-    right: -60,
-    height: 380,
-    borderRadius: 220,
-    backgroundColor: "#5B16A6",
-    opacity: 0.55,
-  },
-  radialAuraRight: {
-    position: "absolute",
-    top: height * 0.28,
-    right: -80,
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    backgroundColor: "#7C22DE",
-    opacity: 0.25,
-  },
-  ambientBottomShade: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 160,
-    backgroundColor: "#1F0438",
-  },
-  content: {
-    flex: 1,
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 24,
-    paddingTop: 10,
-    paddingBottom: 20,
-  },
-  topUtilityRow: {
-    width: "100%",
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    marginBottom: 4,
-  },
-  deliveryPortalBtn: {
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.25)",
-  },
-  deliveryPortalBtnText: {
-    color: "#FDE68A",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  brandSection: {
-    alignItems: "center",
-    marginTop: 4,
-  },
-  cartIconWrapper: {
-    width: 76,
-    height: 76,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 4,
-  },
-  cartLogoImage: {
-    width: 74,
-    height: 74,
-  },
-  titlePrimary: {
-    fontSize: 30,
-    fontWeight: "900",
-    color: "#FFFFFF",
-    letterSpacing: -0.5,
-    lineHeight: 34,
-    textAlign: "center",
-  },
-  titleSecondary: {
-    fontSize: 30,
-    fontWeight: "900",
-    color: "#F6BC45", // Metallic golden champagne
-    letterSpacing: -0.5,
-    lineHeight: 34,
-    textAlign: "center",
-  },
-  tagline: {
-    fontSize: 13,
-    color: "#FDE68A",
-    fontWeight: "700",
-    marginTop: 4,
-    letterSpacing: 0.8,
-  },
-  currentStorePill: {
-    marginTop: 8,
-    backgroundColor: "rgba(255, 255, 255, 0.16)",
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "rgba(253, 230, 138, 0.4)",
-  },
-  currentStorePillText: {
-    fontSize: 11.5,
-    color: "#FDE68A",
-    fontWeight: "700",
-  },
-  heroSection: {
-    flex: 1,
-    width: "100%",
-    justifyContent: "center",
-    alignItems: "center",
-    marginVertical: 4,
-  },
-  heroImageContainer: {
-    width: width * 0.88,
-    height: height * 0.38,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  heroImage: {
-    width: "100%",
-    height: "100%",
-  },
-  bottomSection: {
-    width: "100%",
-    alignItems: "center",
-    gap: 10,
-  },
-  onlineButton: {
-    width: "100%",
-    backgroundColor: "#F6BC45", // Metallic Gold
-    paddingVertical: 14,
-    paddingHorizontal: 18,
-    borderRadius: 22,
-    shadowColor: "#F6BC45",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
+  // Top Royal Purple Curved Header
+  royalHeaderWrap: {
+    backgroundColor: "#4C1D95", // Deep Royal Purple (#4C1D95 to #5B21B6)
+    borderBottomLeftRadius: 26,
+    borderBottomRightRadius: 26,
+    paddingBottom: 18,
+    shadowColor: "#3B0764",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.28,
     shadowRadius: 10,
     elevation: 8,
   },
-  offlineButton: {
-    width: "100%",
-    backgroundColor: "rgba(255, 255, 255, 0.14)", // Glassy Violet
-    borderWidth: 1.5,
-    borderColor: "#CBB2FE",
-    paddingVertical: 14,
+  headerSafe: {
     paddingHorizontal: 18,
-    borderRadius: 22,
+    paddingTop: 6,
   },
-  buttonInner: {
+  headerRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    justifyContent: "space-between",
   },
-  btnIcon: {
+  brandRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  logoBadgeCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#7C3AED",
+    borderWidth: 1.5,
+    borderColor: "rgba(255, 255, 255, 0.4)",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  brandNameSuper: {
     fontSize: 22,
-  },
-  btnTextCol: {
-    flex: 1,
-  },
-  onlineButtonText: {
-    color: "#2E0854",
-    fontSize: 16,
     fontWeight: "900",
-  },
-  onlineSubText: {
-    color: "#581C87",
-    fontSize: 11,
-    fontWeight: "700",
-    marginTop: 1,
-  },
-  offlineButtonText: {
     color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "900",
+    letterSpacing: 0.3,
   },
-  offlineSubText: {
-    color: "#DDD6FE",
-    fontSize: 11,
+  brandNameMart: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: "#F59E0B",
+    letterSpacing: 0.3,
+  },
+  brandTagline: {
+    fontSize: 11.5,
     fontWeight: "600",
+    color: "#E9D5FF",
     marginTop: 1,
   },
-  btnArrow: {
-    fontSize: 18,
-    fontWeight: "900",
-    color: "#FFFFFF",
+  avatarTouchBox: {
+    padding: 2,
   },
-  welcomeFooter: {
-    color: "#CBB2FE",
+  avatarFrame: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+    position: "relative",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  avatarImg: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 20,
+  },
+  onlineDot: {
+    position: "absolute",
+    bottom: -1,
+    right: -1,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: "#10B981", // Active online status dot
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+  },
+  // Main Scroll Content
+  scrollContent: {
+    flexGrow: 1,
+    paddingTop: 16,
+    paddingBottom: 32,
+  },
+  // Hero Card Container
+  heroCardContainer: {
+    marginHorizontal: 16,
+    height: Math.min(Math.round(height * 0.22), 175),
+    borderRadius: 22,
+    overflow: "hidden",
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#4C1D95",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.14,
+    shadowRadius: 10,
+    elevation: 5,
+    borderWidth: 1,
+    borderColor: "#EDE9FE",
+    position: "relative",
+  },
+  heroCardImage: {
+    width: "100%",
+    height: "100%",
+  },
+  heroTextOverlay: {
+    position: "absolute",
+    left: 18,
+    top: 0,
+    bottom: 0,
+    justifyContent: "center",
+    width: "56%",
+  },
+  heroWelcomeSub: {
+    fontSize: 11.5,
+    fontWeight: "800",
+    color: "#7C3AED",
+    letterSpacing: 0.8,
+  },
+  heroTitleSuper: {
+    fontSize: 25,
+    fontWeight: "900",
+    color: "#2E1065",
+    letterSpacing: 0.2,
+    marginTop: 1,
+  },
+  heroTitleMart: {
+    fontSize: 25,
+    fontWeight: "900",
+    color: "#F59E0B",
+    letterSpacing: 0.2,
+    marginTop: 1,
+  },
+  heroUnderlineBar: {
+    width: 44,
+    height: 3,
+    backgroundColor: "#F59E0B",
+    borderRadius: 2,
+    marginTop: 4,
+    marginBottom: 5,
+  },
+  heroTagline: {
     fontSize: 12,
     fontWeight: "600",
-    textAlign: "center",
-    marginTop: 2,
+    color: "#64748B",
+    fontStyle: "italic",
   },
-  verifyingBox: {
+  // Action Cards Section
+  cardsSection: {
+    paddingHorizontal: 16,
+    marginTop: 14,
+    gap: 12,
+  },
+  actionCard: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    paddingVertical: 18,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 22,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderWidth: 1.5,
+    shadowColor: "#4C1D95",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  verifyingText: {
-    color: "#FDE68A",
+  onlineCardBorder: {
+    borderColor: "#DDD6FE",
+  },
+  offlineCardBorder: {
+    borderColor: "#A7F3D0",
+  },
+  deliveryCardBorder: {
+    borderColor: "#FED7AA",
+  },
+  cardIconBoxPurple: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: "#F5F3FF",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#DDD6FE",
+  },
+  cardIconBoxGreen: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: "#F0FDF4",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#BBF7D0",
+  },
+  cardIconBoxOrange: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: "#FFF7ED",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#FED7AA",
+  },
+  card3DIcon: {
+    width: 42,
+    height: 42,
+  },
+  cardTextCol: {
+    flex: 1,
+    marginLeft: 14,
+    marginRight: 8,
+  },
+  pillBadgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 3,
+  },
+  onlinePill: {
+    backgroundColor: "#EDE9FE",
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 12,
+    alignSelf: "flex-start",
+  },
+  onlinePillText: {
+    color: "#6D28D9",
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  offlinePill: {
+    backgroundColor: "#D1FAE5",
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 12,
+    alignSelf: "flex-start",
+  },
+  offlinePillText: {
+    color: "#047857",
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  deliveryPill: {
+    backgroundColor: "#FFEDD5",
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 12,
+    alignSelf: "flex-start",
+  },
+  deliveryPillText: {
+    color: "#C2410C",
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  cardSubText: {
+    fontSize: 12.5,
+    color: "#475569",
+    fontWeight: "500",
+    lineHeight: 16,
+  },
+  purpleCircleBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#7C3AED",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#7C3AED",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  greenCircleBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#059669",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#059669",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  orangeCircleBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#EA580C",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#EA580C",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  arrowText: {
+    fontSize: 17,
+    color: "#FFFFFF",
+    fontWeight: "800",
+  },
+  // Trust Bar Card
+  trustBarCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: "#EDE9FE",
+    shadowColor: "#4C1D95",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  trustItem: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  trustIcon: {
+    fontSize: 18,
+    marginBottom: 3,
+  },
+  trustLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#6D28D9",
+    textAlign: "center",
+  },
+  trustDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: "#F1F5F9",
+  },
+  // Promotional Offer Banner
+  promoBannerContainer: {
+    height: 120,
+    borderRadius: 20,
+    overflow: "hidden",
+    position: "relative",
+    marginTop: 4,
+    backgroundColor: "#4C1D95",
+    shadowColor: "#3B0764",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  promoBannerImg: {
+    width: "100%",
+    height: "100%",
+  },
+  promoOverlayCol: {
+    position: "absolute",
+    left: 18,
+    top: 0,
+    bottom: 0,
+    justifyContent: "center",
+    width: "60%",
+  },
+  promoSmallTitle: {
     fontSize: 13,
     fontWeight: "700",
+    color: "#E9D5FF",
+    letterSpacing: 0.3,
+  },
+  promoBigTitle: {
+    fontSize: 21,
+    fontWeight: "900",
+    color: "#FDE047", // Vibrant Yellow
+    marginTop: 1,
+    marginBottom: 8,
+    letterSpacing: 0.3,
+  },
+  shopNowBtn: {
+    backgroundColor: "#FBBF24",
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 14,
+    alignSelf: "flex-start",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  shopNowBtnText: {
+    color: "#1E1B4B",
+    fontSize: 11.5,
+    fontWeight: "800",
+    letterSpacing: 0.3,
+  },
+  // Fleet Portal Footer Link
+  fleetLinkRow: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    marginTop: 2,
+  },
+  fleetLinkText: {
+    fontSize: 12.5,
+    color: "#64748B",
+    fontWeight: "600",
+  },
+  fleetLinkBold: {
+    color: "#7C3AED",
+    fontWeight: "800",
+  },
+  verifyingBox: {
+    padding: 16,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 10,
+    borderWidth: 1,
+    borderColor: "#DDD6FE",
+  },
+  verifyingText: {
+    color: "#6D28D9",
+    fontSize: 13,
+    fontWeight: "600",
   },
 });

@@ -4,7 +4,7 @@ const orderItemSchema = new mongoose.Schema({
   product: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Product",
-    required: true,
+    required: false,
   },
   name: { type: String, required: true },
   brand: { type: String, default: "" },
@@ -153,8 +153,8 @@ const orderSchema = new mongoose.Schema(
     },
     pickupStatus: {
       type: String,
-      enum: ["New", "Pending", "Preparing", "ReadyForPickup", "Completed", "Cancelled"],
-      default: "New",
+      enum: ["New", "Pending", "Preparing", "ReadyForPickup", "Completed", "Cancelled", ""],
+      default: "",
       index: true,
     },
     deliveryStatus: {
@@ -162,15 +162,20 @@ const orderSchema = new mongoose.Schema(
       enum: [
         "New",
         "Pending",
+        "Order Confirmed",
         "Preparing",
-        "Accepted",
         "Assigned",
+        "Accepted",
         "OrderPickedUp",
+        "Products Collected",
         "OutForDelivery",
+        "Out for Delivery",
         "Delivered",
+        "Failed Delivery",
         "Cancelled",
+        "",
       ],
-      default: "New",
+      default: "",
       index: true,
     },
     orderConfirmedAt: {
@@ -186,6 +191,16 @@ const orderSchema = new mongoose.Schema(
     pickedUpAt: {
       type: Date,
     },
+    productsCollectedAt: {
+      type: Date,
+    },
+    failedDeliveryAt: {
+      type: Date,
+    },
+    failedReason: {
+      type: String,
+      default: "",
+    },
     estimatedDeliveryTime: {
       type: String,
       default: "",
@@ -199,10 +214,12 @@ const orderSchema = new mongoose.Schema(
     trackingTimeline: [
       {
         status: { type: String, default: "" },
+        stage: { type: String, default: "" },
         title: { type: String, default: "" },
         description: { type: String, default: "" },
         timestamp: { type: Date, default: Date.now },
         updatedBy: { type: String, default: "" },
+        updatedById: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
         role: { type: String, default: "" },
       },
     ],

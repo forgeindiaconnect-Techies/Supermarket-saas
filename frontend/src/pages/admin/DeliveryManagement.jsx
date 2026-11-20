@@ -56,6 +56,10 @@ export default function DeliveryManagement() {
   const [selectedStaffId, setSelectedStaffId] = useState("");
   const [isAssigning, setIsAssigning] = useState(false);
 
+  // Timeline Progress Modal
+  const [timelineModalOpen, setTimelineModalOpen] = useState(false);
+  const [selectedOrderForTimeline, setSelectedOrderForTimeline] = useState(null);
+
   const [staffModalOpen, setStaffModalOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState(null);
   const [staffForm, setStaffForm] = useState({
@@ -150,6 +154,12 @@ export default function DeliveryManagement() {
         ""
     );
     setAssignModalOpen(true);
+  };
+
+  // Handle View Delivery Progress Timeline Modal
+  const handleOpenTimelineModal = (order) => {
+    setSelectedOrderForTimeline(order);
+    setTimelineModalOpen(true);
   };
 
   const handleExecuteAssign = async () => {
@@ -633,14 +643,28 @@ export default function DeliveryManagement() {
                         </strong>
                       </div>
 
-                      {/* Assigned Delivery Personnel */}
+                      {/* Assigned Delivery Personnel & Timestamp */}
                       <div className="del-assigned-box">
-                        <span className="del-assigned-label">Assigned Staff:</span>
+                        <span className="del-assigned-label">Delivery Partner:</span>
                         {staffAssigned ? (
-                          <div className="del-assigned-chip">
-                            <UserCheck size={14} color="#059669" />
-                            <strong>{staffAssigned.name || "Assigned Driver"}</strong>
-                            {staffAssigned.phone && <small>({staffAssigned.phone})</small>}
+                          <div className="del-assigned-chip" style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 3 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <UserCheck size={14} color="#059669" />
+                              <strong>{staffAssigned.name || ord.assignedStaffName || "Assigned Driver"}</strong>
+                              {(staffAssigned.phone || ord.assignedStaffPhone) && (
+                                <span style={{ color: "#475569", fontSize: "12px" }}>
+                                  ({staffAssigned.phone || ord.assignedStaffPhone})
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ fontSize: "11px", color: "#64748B", display: "flex", gap: 8, flexWrap: "wrap" }}>
+                              <span>Order: <strong>{ord.orderNumber}</strong></span>
+                              {ord.assignedAt && (
+                                <span>
+                                  • Assigned at: <strong>{new Date(ord.assignedAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}</strong>
+                                </span>
+                              )}
+                            </div>
                           </div>
                         ) : (
                           <span className="del-unassigned-pill">Unassigned</span>
@@ -648,18 +672,31 @@ export default function DeliveryManagement() {
                       </div>
                     </div>
 
-                    {/* Actions */}
-                    <div className="del-order-actions">
+                    {/* Actions & Stage Progression */}
+                    <div className="del-order-actions" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      {/* Timeline View Button */}
+                      <button
+                        type="button"
+                        className="del-secondary-btn"
+                        style={{ padding: "6px 12px", fontSize: "12px" }}
+                        onClick={() => handleOpenTimelineModal(ord)}
+                      >
+                        <Clock size={13} />
+                        <span>Delivery Timeline</span>
+                      </button>
+
+                      {/* Assign / Reassign Button */}
                       <button
                         type="button"
                         className="del-assign-btn"
                         onClick={() => handleOpenAssignModal(ord)}
                       >
                         <UserCheck size={14} />
-                        <span>{staffAssigned ? "Reassign Staff" : "Assign Staff"}</span>
+                        <span>{staffAssigned ? "Reassign" : "Assign Staff"}</span>
                       </button>
 
-                      {s === "New" || s === "Pending" ? (
+                      {/* Stage Progression Buttons matching 6 stages */}
+                      {s === "New" || s === "Pending" || s === "Order Confirmed" ? (
                         <button
                           type="button"
                           className="del-advance-btn"
@@ -669,24 +706,48 @@ export default function DeliveryManagement() {
                           <Package size={14} />
                           <span>Mark Preparing</span>
                         </button>
-                      ) : s === "Preparing" || s === "Assigned" || s === "Accepted" || s === "OrderPickedUp" ? (
+                      ) : s === "Preparing" || s === "Assigned" || s === "Accepted" ? (
                         <button
                           type="button"
                           className="del-advance-btn"
-                          onClick={() => handleUpdateOrderStatus(ord._id, "OutForDelivery")}
+                          style={{ background: "#2563EB", color: "#fff" }}
+                          onClick={() => handleUpdateOrderStatus(ord._id, "Products Collected")}
+                        >
+                          <Package size={14} />
+                          <span>Mark Products Collected</span>
+                        </button>
+                      ) : s === "Products Collected" || s === "OrderPickedUp" ? (
+                        <button
+                          type="button"
+                          className="del-advance-btn"
+                          style={{ background: "#D97706", color: "#fff" }}
+                          onClick={() => handleUpdateOrderStatus(ord._id, "Out for Delivery")}
                         >
                           <Navigation size={14} />
                           <span>Mark Out for Delivery</span>
                         </button>
-                      ) : s === "OutForDelivery" ? (
-                        <button
-                          type="button"
-                          className="del-delivered-btn"
-                          onClick={() => handleUpdateOrderStatus(ord._id, "Delivered")}
-                        >
-                          <CheckCircle2 size={14} />
-                          <span>Mark Delivered</span>
-                        </button>
+                      ) : s === "Out for Delivery" || s === "OutForDelivery" ? (
+                        <>
+                          <button
+                            type="button"
+                            className="del-delivered-btn"
+                            onClick={() => handleUpdateOrderStatus(ord._id, "Delivered")}
+                          >
+                            <CheckCircle2 size={14} />
+                            <span>Mark Delivered</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="del-secondary-btn"
+                            style={{ color: "#DC2626", borderColor: "#FCA5A5" }}
+                            onClick={() => {
+                              const reason = window.prompt("Reason for Failed Delivery:", "Customer unreachable or address incorrect");
+                              if (reason) handleUpdateOrderStatus(ord._id, "Failed Delivery");
+                            }}
+                          >
+                            <span>Report Failed</span>
+                          </button>
+                        </>
                       ) : null}
                     </div>
                   </div>
@@ -1180,6 +1241,304 @@ export default function DeliveryManagement() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 3: VIEW COMPLETE 6-STAGE DELIVERY TIMELINE PROGRESS                 */}
+      {/* ========================================================================= */}
+      {timelineModalOpen && selectedOrderForTimeline && (
+        <div className="del-modal-backdrop" onClick={() => setTimelineModalOpen(false)}>
+          <div
+            className="del-modal-card"
+            style={{ maxWidth: 650, maxHeight: "90vh", overflowY: "auto" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="del-modal-header" style={{ borderBottom: "1px solid #E2E8F0", paddingBottom: 16 }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <h3 style={{ margin: 0, fontSize: "18px", fontWeight: 800, color: "#0F172A" }}>
+                    Order Delivery Progress
+                  </h3>
+                  <span className={`del-badge-status status-${(selectedOrderForTimeline.deliveryStatus || "new").toLowerCase()}`}>
+                    {selectedOrderForTimeline.deliveryStatus || "New"}
+                  </span>
+                </div>
+                <p style={{ margin: "4px 0 0", color: "#64748B", fontSize: "13px" }}>
+                  Order #{selectedOrderForTimeline.orderNumber} • Placed {new Date(selectedOrderForTimeline.createdAt).toLocaleString("en-IN")}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="del-modal-close"
+                onClick={() => setTimelineModalOpen(false)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ padding: "16px 20px" }}>
+              {/* Delivery Partner Details Card */}
+              <div
+                style={{
+                  background: "#F8FAFC",
+                  border: "1px solid #E2E8F0",
+                  borderRadius: 12,
+                  padding: "14px 16px",
+                  marginBottom: 20,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: 12,
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: "11px", fontWeight: 800, color: "#64748B", textTransform: "uppercase" }}>
+                    Assigned Delivery Partner
+                  </div>
+                  {selectedOrderForTimeline.assignedStaff || selectedOrderForTimeline.assignedStaffName ? (
+                    <div style={{ marginTop: 4 }}>
+                      <strong style={{ fontSize: "15px", color: "#0F172A" }}>
+                        {selectedOrderForTimeline.assignedStaff?.name || selectedOrderForTimeline.assignedStaffName}
+                      </strong>
+                      <div style={{ fontSize: "13px", color: "#059669", display: "flex", alignItems: "center", gap: 4, marginTop: 2 }}>
+                        <Phone size={13} />
+                        <span>{selectedOrderForTimeline.assignedStaff?.phone || selectedOrderForTimeline.assignedStaffPhone || "Phone not provided"}</span>
+                      </div>
+                      {selectedOrderForTimeline.assignedAt && (
+                        <div style={{ fontSize: "12px", color: "#64748B", marginTop: 4 }}>
+                          Assigned: {new Date(selectedOrderForTimeline.assignedAt).toLocaleString("en-IN")}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ color: "#D97706", fontWeight: 600, fontSize: "13px", marginTop: 4 }}>
+                      ⚠️ No delivery partner assigned yet
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: "11px", fontWeight: 800, color: "#64748B", textTransform: "uppercase" }}>
+                    Delivery Address
+                  </div>
+                  <div style={{ fontSize: "13px", color: "#334155", maxWidth: 260, marginTop: 2 }}>
+                    {selectedOrderForTimeline.deliveryAddress || selectedOrderForTimeline.customer?.address || "Address not provided"}
+                  </div>
+                </div>
+              </div>
+
+              {/* 6-Stage Timeline */}
+              <h4 style={{ fontSize: "14px", fontWeight: 800, color: "#1E293B", marginBottom: 16 }}>
+                Delivery Stages Timeline
+              </h4>
+
+              {(() => {
+                const s = (selectedOrderForTimeline.deliveryStatus || "New").toLowerCase();
+                const tl = selectedOrderForTimeline.trackingTimeline || [];
+
+                const getTimelineEntry = (stageName) => {
+                  return tl.find((item) =>
+                    (item.stage || item.status || item.title || "").toLowerCase().includes(stageName.toLowerCase())
+                  );
+                };
+
+                const stages = [
+                  {
+                    step: 1,
+                    name: "Order Confirmed",
+                    desc: "Customer placed order and payment was successfully verified.",
+                    isDone: true,
+                    isActive: s === "new" || s === "pending" || s === "order confirmed",
+                    time: selectedOrderForTimeline.orderConfirmedAt || selectedOrderForTimeline.createdAt,
+                    entry: getTimelineEntry("Confirmed"),
+                  },
+                  {
+                    step: 2,
+                    name: "Preparing",
+                    desc: "Supermarket staff is picking and packing grocery items.",
+                    isDone: ["preparing", "assigned", "accepted", "products collected", "orderpickedup", "out for delivery", "outfordelivery", "delivered"].includes(s) && s !== "preparing",
+                    isActive: s === "preparing",
+                    time: selectedOrderForTimeline.preparingAt || (getTimelineEntry("Preparing")?.timestamp),
+                    entry: getTimelineEntry("Preparing"),
+                  },
+                  {
+                    step: 3,
+                    name: "Delivery Partner Assigned",
+                    desc: selectedOrderForTimeline.assignedStaffName
+                      ? `${selectedOrderForTimeline.assignedStaffName} assigned for doorstep dispatch.`
+                      : "Delivery partner assigned to pickup items.",
+                    isDone: ["products collected", "orderpickedup", "out for delivery", "outfordelivery", "delivered"].includes(s),
+                    isActive: s === "assigned" || s === "accepted",
+                    time: selectedOrderForTimeline.assignedAt || (getTimelineEntry("Assigned")?.timestamp),
+                    entry: getTimelineEntry("Assigned"),
+                  },
+                  {
+                    step: 4,
+                    name: "Products Collected",
+                    desc: "Delivery partner has verified and collected packed products from supermarket.",
+                    isDone: ["out for delivery", "outfordelivery", "delivered"].includes(s),
+                    isActive: s === "products collected" || s === "orderpickedup",
+                    time: selectedOrderForTimeline.productsCollectedAt || selectedOrderForTimeline.pickedUpAt || (getTimelineEntry("Collected")?.timestamp),
+                    entry: getTimelineEntry("Collected"),
+                  },
+                  {
+                    step: 5,
+                    name: "Out for Delivery",
+                    desc: "Delivery partner is on the way to customer address.",
+                    isDone: s === "delivered",
+                    isActive: s === "out for delivery" || s === "outfordelivery",
+                    time: selectedOrderForTimeline.deliveryOutAt || (getTimelineEntry("Out for Delivery")?.timestamp),
+                    entry: getTimelineEntry("Out for Delivery"),
+                  },
+                  {
+                    step: 6,
+                    name: "Delivered",
+                    desc: "Package safely handed over to customer at doorstep.",
+                    isDone: s === "delivered",
+                    isActive: false,
+                    time: selectedOrderForTimeline.deliveryCompletedAt || selectedOrderForTimeline.completedAt || (getTimelineEntry("Delivered")?.timestamp),
+                    entry: getTimelineEntry("Delivered"),
+                  },
+                ];
+
+                return (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 0, paddingLeft: 8 }}>
+                    {stages.map((st, idx) => {
+                      const isLast = idx === stages.length - 1;
+                      return (
+                        <div key={st.step} style={{ display: "flex", gap: 16, position: "relative" }}>
+                          {/* Left Line & Icon */}
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                            <div
+                              style={{
+                                width: 28,
+                                height: 28,
+                                borderRadius: 14,
+                                background: st.isDone ? "#16A34A" : st.isActive ? "#2563EB" : "#E2E8F0",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                color: "#FFFFFF",
+                                fontSize: "12px",
+                                fontWeight: 800,
+                                zIndex: 2,
+                                boxShadow: st.isActive ? "0 0 0 4px rgba(37, 99, 235, 0.2)" : "none",
+                              }}
+                            >
+                              {st.isDone ? "✓" : st.step}
+                            </div>
+                            {!isLast && (
+                              <div
+                                style={{
+                                  width: 2,
+                                  flex: 1,
+                                  minHeight: 44,
+                                  background: st.isDone ? "#16A34A" : "#E2E8F0",
+                                  margin: "4px 0",
+                                }}
+                              />
+                            )}
+                          </div>
+
+                          {/* Right Content */}
+                          <div style={{ paddingBottom: isLast ? 0 : 20, flex: 1 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <strong
+                                style={{
+                                  fontSize: "14px",
+                                  color: st.isDone ? "#16A34A" : st.isActive ? "#2563EB" : "#475569",
+                                }}
+                              >
+                                {st.name} {st.isActive && "(In Progress)"}
+                              </strong>
+                              {st.time && (
+                                <span style={{ fontSize: "12px", color: "#64748B", fontWeight: 600 }}>
+                                  {new Date(st.time).toLocaleTimeString("en-IN", {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                    day: "numeric",
+                                    month: "short",
+                                  })}
+                                </span>
+                              )}
+                            </div>
+                            <p style={{ margin: "4px 0 0", fontSize: "12.5px", color: "#64748B" }}>
+                              {st.entry?.description || st.desc}
+                            </p>
+                            {st.entry?.updatedBy && (
+                              <div style={{ fontSize: "11px", color: "#94A3B8", marginTop: 2 }}>
+                                Updated by: {st.entry.updatedBy} ({st.entry.role || "Staff"})
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* Failed Delivery Stage if applicable */}
+                    {s === "failed delivery" || selectedOrderForTimeline.failedDeliveryAt ? (
+                      <div style={{ marginTop: 12, padding: 12, background: "#FEF2F2", border: "1px solid #FCA5A5", borderRadius: 8 }}>
+                        <strong style={{ color: "#DC2626", fontSize: "13px" }}>⚠️ Delivery Failed</strong>
+                        <p style={{ margin: "4px 0 0", color: "#991B1B", fontSize: "12px" }}>
+                          Reason: {selectedOrderForTimeline.failedReason || "Customer unreachable or address issue"}
+                        </p>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })()}
+
+              {/* Order Products Snapshot */}
+              <div style={{ marginTop: 20, borderTop: "1px solid #E2E8F0", paddingTop: 16 }}>
+                <h4 style={{ fontSize: "14px", fontWeight: 800, color: "#1E293B", marginBottom: 10 }}>
+                  Purchased Products Snapshot ({selectedOrderForTimeline.items?.length || 0} items)
+                </h4>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 180, overflowY: "auto" }}>
+                  {(selectedOrderForTimeline.items || []).map((itm, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        background: "#F8FAFC",
+                        padding: "8px 12px",
+                        borderRadius: 8,
+                      }}
+                    >
+                      <div>
+                        <strong style={{ fontSize: "13px", color: "#1E293B" }}>{itm.name}</strong>
+                        <div style={{ fontSize: "11px", color: "#64748B" }}>
+                          Qty: {itm.quantity} × ₹{Number(itm.price || 0).toFixed(2)}
+                        </div>
+                      </div>
+                      <strong style={{ fontSize: "13px", color: "#0F172A" }}>
+                        ₹{Number((itm.quantity || 1) * (itm.price || 0)).toFixed(2)}
+                      </strong>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, padding: "8px 12px", background: "#EFF6FF", borderRadius: 8 }}>
+                  <strong style={{ color: "#1E40AF" }}>Total Amount</strong>
+                  <strong style={{ color: "#1E40AF", fontSize: "15px" }}>
+                    ₹{Number(selectedOrderForTimeline.totalAmount || 0).toFixed(2)}
+                  </strong>
+                </div>
+              </div>
+            </div>
+
+            <div className="del-modal-footer" style={{ borderTop: "1px solid #E2E8F0", padding: "12px 20px" }}>
+              <button
+                type="button"
+                className="del-btn-secondary"
+                onClick={() => setTimelineModalOpen(false)}
+              >
+                Close Progress View
+              </button>
+            </div>
           </div>
         </div>
       )}

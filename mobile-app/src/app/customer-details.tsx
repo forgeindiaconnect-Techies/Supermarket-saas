@@ -27,16 +27,20 @@ export default function CustomerDetailsScreen() {
     customerInfo,
     setCustomerInfo,
     customerUser,
+    setCustomerUser,
+    selectedSupermarket,
     updateCustomerDetails,
   } = useCart();
 
   // Retrieve saved customer details if already registered/logged in
   const initialName = customerUser?.name || customerInfo?.name || "";
   const initialPhone = customerUser?.phone || customerInfo?.phone || "";
+  const initialEmail = customerUser?.email || "";
   const initialAddress = customerUser?.address || customerInfo?.address || "";
 
   const [name, setName] = useState(initialName);
   const [phone, setPhone] = useState(initialPhone);
+  const [email, setEmail] = useState(initialEmail);
   const [address, setAddress] = useState(initialAddress);
 
   useEffect(() => {
@@ -45,6 +49,9 @@ export default function CustomerDetailsScreen() {
     }
     if (!phone && (customerUser?.phone || customerInfo?.phone)) {
       setPhone(customerUser?.phone || customerInfo?.phone || "");
+    }
+    if (!email && customerUser?.email) {
+      setEmail(customerUser.email || "");
     }
     if (!address && (customerUser?.address || customerInfo?.address)) {
       setAddress(customerUser?.address || customerInfo?.address || "");
@@ -160,9 +167,34 @@ export default function CustomerDetailsScreen() {
 
     const trimmedName = name.trim();
     const cleanPhone = phone.replace(/\D/g, "");
+    const trimmedEmail = email.trim().toLowerCase();
     const trimmedAddress = address.trim();
 
-    // Save details to CartContext and persist to backend
+    // Register customer in MongoDB under current supermarket as OFFLINE
+    if (API_URL) {
+      safeFetch(`${API_URL}/auth/customer/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: trimmedName,
+          phone: cleanPhone,
+          email: trimmedEmail,
+          address: trimmedAddress,
+          supermarketId: selectedSupermarket?._id,
+          supermarketCode: selectedSupermarket?.code,
+          registrationType: "OFFLINE",
+        }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.customer) {
+            setCustomerUser(data.customer);
+          }
+        })
+        .catch(() => {});
+    }
+
+    // Save details to CartContext
     updateCustomerDetails({
       name: trimmedName,
       phone: cleanPhone,
@@ -183,6 +215,8 @@ export default function CustomerDetailsScreen() {
           action: "updated",
           totalCartItems: totalCount,
           totalCartAmount: Number(totalAmount || 0),
+          supermarketId: selectedSupermarket?._id,
+          supermarketCode: selectedSupermarket?.code,
         }),
       }).catch(() => {});
     }
@@ -194,6 +228,7 @@ export default function CustomerDetailsScreen() {
         method,
         customerName: trimmedName,
         customerPhone: cleanPhone,
+        customerEmail: trimmedEmail,
         customerAddress: trimmedAddress,
         customerId: customerUser?._id,
       },
@@ -349,7 +384,35 @@ export default function CustomerDetailsScreen() {
                 )}
               </View>
 
-              {/* Field 3: Address (OPTIONAL) */}
+              {/* Field 3: Email Address (OPTIONAL) */}
+              <View style={styles.fieldGroup}>
+                <View style={styles.fieldHeader}>
+                  <Text style={styles.fieldLabel}>Email Address</Text>
+                  <View style={styles.optionalBadge}>
+                    <Text style={styles.optionalBadgeText}>OPTIONAL</Text>
+                  </View>
+                </View>
+
+                <View style={styles.inputContainer}>
+                  <Text style={styles.inputPrefixIcon}>✉️</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="name@example.com (Optional)"
+                    placeholderTextColor="#94A3B8"
+                    value={email}
+                    onChangeText={setEmail}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                  {email.includes("@") && email.includes(".") && (
+                    <Text style={styles.checkIcon}>✓</Text>
+                  )}
+                </View>
+                <Text style={styles.helperText}>Used for sending digital receipt & invoice</Text>
+              </View>
+
+              {/* Field 4: Address (OPTIONAL) */}
               <View style={styles.fieldGroup}>
                 <View style={styles.fieldHeader}>
                   <Text style={styles.fieldLabel}>Address</Text>

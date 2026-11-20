@@ -25,6 +25,7 @@ export default function MyCartScreen() {
     totalSavings,
     totalAmount,
     totalCount,
+    purchaseMode,
   } = useCart();
 
   const handleClearCart = () => {
@@ -177,14 +178,20 @@ export default function MyCartScreen() {
                 </View>
               </View>
 
-              {/* Proceed to Checkout Button matching Screen 4 */}
+              {/* Proceed to Customer Details / Checkout Button */}
               <TouchableOpacity
                 style={styles.checkoutBtn}
-                onPress={() => router.push("/checkout")}
+                onPress={() => {
+                  if (purchaseMode === "offline") {
+                    router.push("/customer-details");
+                  } else {
+                    router.push("/checkout");
+                  }
+                }}
                 activeOpacity={0.88}
               >
                 <Text style={styles.checkoutBtnText}>
-                  Proceed to Checkout →
+                  {purchaseMode === "offline" ? "Proceed to Customer Details →" : "Proceed to Checkout →"}
                 </Text>
               </TouchableOpacity>
             </>

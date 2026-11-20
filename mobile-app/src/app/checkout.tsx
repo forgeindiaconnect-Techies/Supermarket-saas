@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useCart } from "../context/CartContext";
 import { Theme } from "../constants/colors";
+import { API_URL, safeFetch } from "../constants/api";
 
 export default function CheckoutScreen() {
   const router = useRouter();
@@ -28,6 +29,7 @@ export default function CheckoutScreen() {
     customerUser,
     updateCustomerDetails,
     selectedSupermarket,
+    setSelectedSupermarket,
     purchaseMode,
     fulfillmentType,
     setFulfillmentType,
@@ -37,6 +39,33 @@ export default function CheckoutScreen() {
   const initialName = (customerUser?.name || customerInfo?.name || "").trim();
   const initialPhone = (customerUser?.phone || customerInfo?.phone || "").replace(/\D/g, "").slice(-10);
   const initialAddress = (customerUser?.address || customerInfo?.address || "").trim();
+
+  // Live real-time sync of supermarket channel settings from database
+  useEffect(() => {
+    const smId = selectedSupermarket?._id || customerUser?.supermarketId;
+    if (!smId || !API_URL) return;
+
+    safeFetch(`${API_URL}/supermarkets/${smId}/availability`, {}, 4000)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.success && data.supermarket) {
+          const s = data.supermarket;
+          setSelectedSupermarket({
+            ...selectedSupermarket,
+            _id: String(s._id || smId),
+            name: s.name || selectedSupermarket?.name || "Supermarket",
+            code: s.code || selectedSupermarket?.code || "",
+            onlineDeliveryAvailable: s.onlineDeliveryAvailable === true,
+            selfPickupAvailable: s.selfPickupAvailable === true,
+            onlineAvailable: s.onlineAvailable === true,
+            offlineAvailable: s.offlineAvailable === true,
+            city: s.city || selectedSupermarket?.city,
+            address: s.address || selectedSupermarket?.address,
+          });
+        }
+      })
+      .catch((_) => {});
+  }, [selectedSupermarket?._id, customerUser?.supermarketId]);
 
   const [selectedMethod, setSelectedMethod] = useState<"UPI" | "Card">("UPI");
 
@@ -51,22 +80,16 @@ export default function CheckoutScreen() {
   const [pickupDate, setPickupDate] = useState("Today");
   const [pickupTimeSlot, setPickupTimeSlot] = useState("10:00 AM - 12:00 PM");
 
-  // Check store availability for delivery vs pickup
+  // Check store availability saved by Super Admin
   const isDeliverySupported =
     selectedSupermarket?.onlineDeliveryAvailable === true;
   const isPickupSupported =
-    selectedSupermarket?.selfPickupAvailable === true ||
-    (selectedSupermarket?.onlineDeliveryAvailable === false && selectedSupermarket?.onlineAvailable === true) ||
-    selectedSupermarket?.offlineAvailable === true;
+    selectedSupermarket?.selfPickupAvailable === true;
   const isOnlineOrderAvailable = isDeliverySupported || isPickupSupported;
 
   // Selected fulfillment method
   const effectiveFulfillment =
-    (fulfillmentType === "DELIVERY" && isDeliverySupported)
-      ? "DELIVERY"
-      : (fulfillmentType === "SELF_PICKUP" && isPickupSupported)
-      ? "SELF_PICKUP"
-      : (isDeliverySupported ? "DELIVERY" : (isPickupSupported ? "SELF_PICKUP" : "DELIVERY"));
+    fulfillmentType === "SELF_PICKUP" ? "SELF_PICKUP" : "DELIVERY";
 
   const handleSaveDetails = async () => {
     const cleanP = editPhone.replace(/\D/g, "").slice(-10);
@@ -196,92 +219,78 @@ export default function CheckoutScreen() {
           </View>
         ) : null}
 
-        {/* Fulfillment Method Selection */}
-        {isOnlineOrderAvailable ? (
-          <View style={styles.sectionCard}>
-            <Text style={styles.sectionTitle}>Fulfillment Method</Text>
-            <Text style={styles.sectionSubtitle}>
-              How would you like to receive your groceries?
-            </Text>
+        {/* Fulfillment Method Selection - Both Collect from Store and Home Delivery always available */}
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionTitle}>Fulfillment Method</Text>
+          <Text style={styles.sectionSubtitle}>
+            Please select your preferred fulfillment option:
+          </Text>
 
-            <View style={styles.fulfillmentRow}>
-              {isDeliverySupported ? (
-                <TouchableOpacity
-                  style={[
-                    styles.fulfillmentOption,
-                    effectiveFulfillment === "DELIVERY" && styles.fulfillmentOptionActive,
-                  ]}
-                  onPress={() => setFulfillmentType("DELIVERY")}
-                  activeOpacity={0.8}
-                >
-                  <View style={styles.fulfillmentIconCircle}>
-                    <Text style={styles.fulfillmentEmoji}>🚚</Text>
-                  </View>
-                  <Text
-                    style={[
-                      styles.fulfillmentLabel,
-                      effectiveFulfillment === "DELIVERY" && styles.fulfillmentLabelActive,
-                    ]}
-                  >
-                    Online Delivery
-                  </Text>
-                  <Text style={styles.fulfillmentHint}>Direct to your door</Text>
-                  {effectiveFulfillment === "DELIVERY" && (
-                    <View style={styles.activeCheckmark}>
-                      <Text style={styles.activeCheckmarkText}>✓</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              ) : null}
-
-              {isPickupSupported ? (
-                <TouchableOpacity
-                  style={[
-                    styles.fulfillmentOption,
-                    effectiveFulfillment === "SELF_PICKUP" && styles.fulfillmentOptionActive,
-                  ]}
-                  onPress={() => setFulfillmentType("SELF_PICKUP")}
-                  activeOpacity={0.8}
-                >
-                  <View style={styles.fulfillmentIconCircle}>
-                    <Text style={styles.fulfillmentEmoji}>🏬</Text>
-                  </View>
-                  <Text
-                    style={[
-                      styles.fulfillmentLabel,
-                      effectiveFulfillment === "SELF_PICKUP" && styles.fulfillmentLabelActive,
-                    ]}
-                  >
-                    Self Pickup
-                  </Text>
-                  <Text style={styles.fulfillmentHint}>Collect at store counter</Text>
-                  {effectiveFulfillment === "SELF_PICKUP" && (
-                    <View style={styles.activeCheckmark}>
-                      <Text style={styles.activeCheckmarkText}>✓</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              ) : null}
-            </View>
-          </View>
-        ) : (
-          <View style={styles.disabledOrderBanner}>
-            <Text style={styles.disabledOrderIcon}>🚫</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.disabledOrderTitle}>Online Orders Unavailable</Text>
-              <Text style={styles.disabledOrderDesc}>
-                This supermarket is currently not accepting online orders. Both Delivery and Self Pickup are disabled by Super Admin.
+          <View style={styles.fulfillmentRow}>
+            {/* Option 1 – Collect from Store */}
+            <TouchableOpacity
+              style={[
+                styles.fulfillmentOption,
+                effectiveFulfillment === "SELF_PICKUP" && styles.fulfillmentOptionActive,
+              ]}
+              onPress={() => setFulfillmentType("SELF_PICKUP")}
+              activeOpacity={0.8}
+            >
+              <View style={styles.fulfillmentIconCircle}>
+                <Text style={styles.fulfillmentEmoji}>🏬</Text>
+              </View>
+              <Text
+                style={[
+                  styles.fulfillmentLabel,
+                  effectiveFulfillment === "SELF_PICKUP" && styles.fulfillmentLabelActive,
+                ]}
+              >
+                Option 1 – Collect from Store
               </Text>
-            </View>
+              <Text style={styles.fulfillmentHint}>Collect personally from store</Text>
+              {effectiveFulfillment === "SELF_PICKUP" && (
+                <View style={styles.activeCheckmark}>
+                  <Text style={styles.activeCheckmarkText}>✓</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+
+            {/* Option 2 – Home Delivery (Delivery Button) */}
+            <TouchableOpacity
+              style={[
+                styles.fulfillmentOption,
+                effectiveFulfillment === "DELIVERY" && styles.fulfillmentOptionActive,
+              ]}
+              onPress={() => setFulfillmentType("DELIVERY")}
+              activeOpacity={0.8}
+            >
+              <View style={styles.fulfillmentIconCircle}>
+                <Text style={styles.fulfillmentEmoji}>🚚</Text>
+              </View>
+              <Text
+                style={[
+                  styles.fulfillmentLabel,
+                  effectiveFulfillment === "DELIVERY" && styles.fulfillmentLabelActive,
+                ]}
+              >
+                Option 2 – Home Delivery
+              </Text>
+              <Text style={styles.fulfillmentHint}>Receive at delivery address</Text>
+              {effectiveFulfillment === "DELIVERY" && (
+                <View style={styles.activeCheckmark}>
+                  <Text style={styles.activeCheckmarkText}>✓</Text>
+                </View>
+              )}
+            </TouchableOpacity>
           </View>
-        )}
+        </View>
 
         {/* Self Pickup: Date & Time Slot Picker */}
-        {effectiveFulfillment === "SELF_PICKUP" && isPickupSupported && isOnlineOrderAvailable && (
+        {effectiveFulfillment === "SELF_PICKUP" && (
           <View style={styles.sectionCard}>
             <View style={styles.sectionHeaderRow}>
               <View>
-                <Text style={styles.sectionTitle}>📅 Pickup Date &amp; Time Slot</Text>
+                <Text style={styles.sectionTitle}>📅 Pickup Date & Time Slot</Text>
                 <Text style={styles.sectionSubtitle}>Choose when you will collect your order</Text>
               </View>
             </View>

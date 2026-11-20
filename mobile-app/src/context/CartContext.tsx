@@ -23,6 +23,7 @@ export type DeliveryUser = {
   _id: string;
   name: string;
   username: string;
+  email?: string;
   phone?: string;
   role: string;
   supermarketId: string;
@@ -95,9 +96,12 @@ export type OrderRecord = {
   preparingAt?: string;
   assignedAt?: string;
   pickedUpAt?: string;
+  productsCollectedAt?: string;
   deliveryAcceptedAt?: string;
   deliveryOutAt?: string;
   deliveryCompletedAt?: string;
+  failedDeliveryAt?: string;
+  failedReason?: string;
   estimatedDeliveryTime?: string;
   estimatedDeliveryDate?: string;
   trackingTimeline?: Array<{
@@ -226,17 +230,19 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         address: user.address,
       });
       if (user.supermarketId) {
-        const smId: string = user.supermarketId;
+        const smId: string = String(user.supermarketId);
         // Automatically sync customer's connected supermarket with live attributes
-        setSelectedSupermarketState((prev: SupermarketInfo | null): SupermarketInfo => ({
-          _id: smId,
-          name: user.supermarketName || prev?.name || "Selected Supermarket",
-          code: user.supermarketCode || prev?.code || "",
-          onlineDeliveryAvailable: prev?.onlineDeliveryAvailable ?? null,
-          selfPickupAvailable: prev?.selfPickupAvailable ?? null,
-          onlineAvailable: true,
-          offlineAvailable: true,
-        }));
+        setSelectedSupermarketState((prev: SupermarketInfo | null): SupermarketInfo => {
+          return {
+            _id: smId,
+            name: user.supermarketName || prev?.name || "Selected Supermarket",
+            code: user.supermarketCode || prev?.code || "",
+            onlineDeliveryAvailable: prev?.onlineDeliveryAvailable ?? null,
+            selfPickupAvailable: prev?.selfPickupAvailable ?? null,
+            onlineAvailable: true,
+            offlineAvailable: true,
+          };
+        });
 
         if (API_URL) {
           safeFetch(`${API_URL}/supermarkets/${user.supermarketId}/availability`, {}, 5000)
@@ -245,9 +251,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
               if (data?.success && data.supermarket) {
                 const sm = data.supermarket;
                 setSelectedSupermarketState({
-                  _id: sm._id,
-                  name: sm.name,
-                  code: sm.code,
+                  _id: String(sm._id || smId),
+                  name: String(sm.name || user.supermarketName || "Selected Supermarket"),
+                  code: String(sm.code || user.supermarketCode || ""),
                   city: sm.city,
                   address: sm.address,
                   onlineDeliveryAvailable: sm.onlineDeliveryAvailable === true,

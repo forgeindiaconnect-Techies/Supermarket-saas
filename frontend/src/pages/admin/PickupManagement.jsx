@@ -56,15 +56,24 @@ export default function PickupManagement() {
       setLoadingOrders(true);
       const res = await API.get("/orders");
       if (res.data?.success && Array.isArray(res.data.orders)) {
-        // Filter orders relevant to store pickup (SELF_PICKUP or STORE_COLLECTION)
+        // Filter orders strictly for store pickup (SELF_PICKUP or STORE_COLLECTION)
+        // Strictly exclude all Home Delivery orders so they never appear in Pickup
         const pickupList = res.data.orders.filter((o) => {
           const type = (o.orderType || "").toUpperCase();
           const choice = (o.fulfillmentChoice || "").toUpperCase();
+          const isHomeDelivery =
+            type === "DELIVERY" ||
+            type === "ONLINE_DELIVERY" ||
+            type === "SELF_PICKUP_DOORSTEP" ||
+            choice === "DOORSTEP_DELIVERY" ||
+            Boolean(o.deliveryStatus && o.deliveryStatus !== "");
+          if (isHomeDelivery) return false;
+
           return (
             type === "SELF_PICKUP" ||
             type === "SELF_PICKUP_STORE_COLLECTION" ||
             choice === "STORE_COLLECTION" ||
-            Boolean(o.pickupStatus)
+            (Boolean(o.pickupStatus) && o.pickupStatus !== "")
           );
         });
         setOrders(pickupList);

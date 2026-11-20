@@ -33,16 +33,16 @@
 }
 
 /* ===================================================================
-   1. HERO BANNER (~125px tall)
+   1. HERO BANNER (~125px tall, Pixel-Perfect Recreation of Reference Mockup)
    =================================================================== */
 .db-hero-banner {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   background: linear-gradient(135deg, #f0f7ff 0%, #e2effe 50%, #dbeafe 100%);
   border: 1px solid #bfdbfe;
   border-radius: 16px;
-  padding: 8px 22px;
+  padding: 8px 18px;
   position: relative;
   overflow: hidden;
   box-shadow: 0 3px 14px rgba(37, 99, 235, 0.05);
@@ -52,135 +52,211 @@
   box-sizing: border-box;
 }
 
+/* Right: Full-Bleed Panoramic Background Produce Cart (Strictly confined to far right 32%) */
 .db-hero-panoramic-bg {
   position: absolute;
   top: 0;
   right: 0;
-  width: 58%;
+  width: 32%;
+  max-width: 380px;
   height: 100%;
   background-size: cover;
   background-position: right center;
   background-repeat: no-repeat;
   pointer-events: none;
   z-index: 1;
-  mask-image: linear-gradient(to right, transparent 0%, rgba(0, 0, 0, 0.35) 20%, black 100%);
-  -webkit-mask-image: linear-gradient(to right, transparent 0%, rgba(0, 0, 0, 0.35) 20%, black 100%);
+  mask-image: linear-gradient(to right, transparent 0%, rgba(0, 0, 0, 0.4) 15%, black 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, rgba(0, 0, 0, 0.4) 15%, black 100%);
 }
 
-/* Script Overlay: "Freshness in Every Cart" */
-.db-hero-script-badge {
-  position: absolute;
-  top: 36%;
-  right: 28%;
-  z-index: 2;
-  pointer-events: none;
-  transform: translateY(-50%) rotate(-4deg);
-}
-
-.db-hero-script-badge span {
-  font-family: "Brush Script MT", "Segoe Script", cursive, sans-serif;
-  font-size: 21px;
-  font-weight: 700;
-  color: #1e40af;
-  text-shadow: 0 1px 3px rgba(255, 255, 255, 0.8), 0 2px 8px rgba(30, 64, 175, 0.15);
-  letter-spacing: 0.5px;
-}
-
+/* Left Group: Sibling cards (Store logo thumbnail + Welcome card) */
 .db-hero-left {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   position: relative;
-  z-index: 10;
-  max-width: 520px;
+  z-index: 5;
+  flex-shrink: 0;
 }
 
-/* 3D Shopping Bag Icon with Green Leaves */
+/* Storefront / Produce thumbnail card */
 .db-storefront-3d-wrap {
-  width: 76px;
-  height: 76px;
-  flex-shrink: 0;
+  width: 78px;
+  height: 78px;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 1px solid #dbeafe;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.08);
   display: flex;
   align-items: center;
   justify-content: center;
-  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.12));
+  padding: 4px;
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .db-storefront-3d-img {
   width: 100%;
   height: 100%;
-  object-fit: contain;
-  border-radius: 12px;
+  object-fit: cover;
+  border-radius: 10px;
 }
 
-.db-hero-text-block {
+/* Welcome Card (Clean white card with subtle blue shadow) */
+.db-hero-welcome-card {
+  background: #ffffff;
+  border: 1px solid #dbeafe;
+  border-radius: 14px;
+  padding: 8px 14px;
   display: flex;
   flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  box-shadow: 0 2px 10px rgba(37, 99, 235, 0.06);
+  box-sizing: border-box;
+}
+
+.db-hero-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1;
+}
+
+.db-hero-store-code-badge {
+  display: inline-block;
+  background: #f0fdf4;
+  color: #16a34a;
+  border: 1px solid #bbf7d0;
+  padding: 1.5px 7px;
+  border-radius: 5px;
+  font-size: 10.5px;
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  letter-spacing: 0.3px;
+}
+
+.db-hero-city-text {
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.db-hero-titles-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
 }
 
 .db-hero-title {
-  font-size: 19px;
+  font-size: 16px;
   font-weight: 800;
-  color: #14213d;
-  margin: 0 0 2px 0;
-  letter-spacing: -0.3px;
-  display: block;
+  color: #0f172a;
+  margin: 0;
+  letter-spacing: -0.2px;
   line-height: 1.25;
 }
 
 .db-hero-title-blue {
-  color: #1455d9;
+  color: #1d4ed8;
 }
 
 .db-hero-subtitle {
-  font-size: 11.5px;
+  font-size: 11px;
   color: #64748b;
-  margin: 0 0 7px 0;
+  margin: 0;
   font-weight: 500;
-  line-height: 1.3;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
 }
 
 .db-hero-meta-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  margin-top: 1px;
 }
 
 .db-date-pill {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  background: #ffffff;
-  border: 1px solid #dbeafe;
-  padding: 4px 10px;
+  gap: 4px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  padding: 3px 8px;
   border-radius: 9999px;
   font-size: 10.5px;
   font-weight: 600;
   color: #2563eb;
-  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.08);
 }
 
 .db-hero-insights-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  background: #1455d9;
+  gap: 5px;
+  background: #1d4ed8;
   color: #ffffff;
   border: none;
   border-radius: 9999px;
-  padding: 4.5px 13px;
-  font-size: 11px;
+  padding: 3.5px 11px;
+  font-size: 10.5px;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 3px 8px rgba(20, 85, 217, 0.35);
+  box-shadow: 0 2px 6px rgba(29, 78, 216, 0.35);
   transition: all 0.15s ease;
-  width: fit-content;
 }
 
 .db-hero-insights-btn:hover {
-  background: #0f46b3;
+  background: #1e40af;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(20, 85, 217, 0.45);
+}
+
+/* Center: Elegant Branding Typography (Bright, Crisp, Centered in clear open sky) */
+.db-hero-center-branding {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0 16px;
+  position: relative;
+  z-index: 4;
+  margin-right: 28%;
+}
+
+.db-hero-script-title {
+  font-family: "Brush Script MT", "Dancing Script", "Segoe Script", cursive, sans-serif;
+  font-size: 26px;
+  font-weight: 700;
+  font-style: italic;
+  color: #1d4ed8;
+  line-height: 1.15;
+  letter-spacing: 0.5px;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
+  white-space: nowrap;
+}
+
+.db-hero-slogan {
+  font-size: 9.5px;
+  font-weight: 800;
+  color: #1e3a8a;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  line-height: 1.2;
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
+.db-hero-orange-bar {
+  width: 44px;
+  height: 2.5px;
+  background: #f59e0b;
+  border-radius: 2px;
+  margin: 3px auto 0 auto;
 }
 
 /* ===================================================================
@@ -910,15 +986,15 @@
   border-bottom-right-radius: 16px;
 }
 
-@media (max-width: 1100px) {
-  .db-hero-thought-center {
+@media (max-width: 992px) {
+  .db-hero-center-branding {
+    display: none !important;
+  }
+  .db-hero-cart-spacer {
     display: none !important;
   }
   .db-hero-left {
-    max-width: 60% !important;
-  }
-  .db-hero-panoramic-bg {
-    width: 38% !important;
+    max-width: 100% !important;
   }
 }
 
@@ -1907,120 +1983,264 @@
 }
 
 /* ===================================================================
-   FIX HERO PANORAMIC IMAGE CLIPPING (FIT FULL CART & TEXT)
-   =================================================================== */
-.db-hero-banner {
-  height: 142px !important;
-  min-height: 142px !important;
-  max-height: 142px !important;
-  padding: 8px 24px !important;
-  overflow: hidden !important;
-  position: relative !important;
-}
-
-.db-hero-panoramic-bg {
-  position: absolute !important;
-  top: 0 !important;
-  right: 14px !important;
-  width: 65% !important;
-  height: 100% !important;
-  background-size: contain !important;
-  background-position: right center !important;
-  background-repeat: no-repeat !important;
-  pointer-events: none !important;
-  z-index: 1 !important;
-  mask-image: linear-gradient(to right, transparent 0%, rgba(0, 0, 0, 0.4) 12%, black 35%) !important;
-  -webkit-mask-image: linear-gradient(to right, transparent 0%, rgba(0, 0, 0, 0.4) 12%, black 35%) !important;
-}
-
-/* ===================================================================
-   HERO BANNER POSITIONING FIX (PINS 3D BAG & WELCOME CARD TO LEFT)
+   HERO BANNER - EXACT REFERENCE ALIGNMENT & DESIGN (MATCHING SPEC)
    =================================================================== */
 .db-hero-banner {
   display: flex !important;
   align-items: center !important;
-  justify-content: flex-start !important;
-  position: relative !important;
-  overflow: hidden !important;
-  width: 100% !important;
+  justify-content: space-between !important;
+  background: linear-gradient(135deg, #eef5ff 0%, #e0edfe 50%, #dbeafe 100%) !important;
+  border: 1px solid #bfdbfe !important;
+  border-radius: 16px !important;
   height: 130px !important;
   min-height: 130px !important;
   max-height: 130px !important;
-  padding: 10px 24px !important;
+  padding: 0 22px !important;
+  position: relative !important;
+  overflow: hidden !important;
   box-sizing: border-box !important;
+  box-shadow: 0 3px 14px rgba(37, 99, 235, 0.06) !important;
 }
 
 .db-hero-left {
   display: flex !important;
   align-items: center !important;
-  gap: 14px !important;
+  gap: 12px !important;
   position: relative !important;
-  z-index: 25 !important;
-  max-width: 46% !important;
+  z-index: 20 !important;
+  flex-shrink: 0 !important;
 }
 
+/* 1. Storefront 3D / Fresh Produce Square Card - Exact 88px match */
 .db-storefront-3d-wrap {
-  width: 76px !important;
-  height: 76px !important;
+  width: 88px !important;
+  height: 88px !important;
+  min-height: 88px !important;
+  max-height: 88px !important;
   flex-shrink: 0 !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  background: #FFFFFF !important;
+  background: #ffffff !important;
   border-radius: 14px !important;
   padding: 4px !important;
-  border: 1.5px solid #BFDBFE !important;
-  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.1) !important;
+  border: 1px solid #dbeafe !important;
+  box-shadow: 0 2px 10px rgba(37, 99, 235, 0.06) !important;
+  box-sizing: border-box !important;
 }
 
 .db-storefront-3d-img {
   width: 100% !important;
   height: 100% !important;
-  object-fit: contain !important;
+  object-fit: cover !important;
   border-radius: 10px !important;
-  mix-blend-mode: normal !important;
 }
 
-.db-hero-thought-center {
-  display: none !important;
+/* 2. White Welcome Card - Clean Parallel Box (Exact match to Reference Image) */
+.db-hero-welcome-card {
+  width: auto !important;
+  min-width: 330px !important;
+  max-width: 370px !important;
+  height: 88px !important;
+  min-height: 88px !important;
+  max-height: 88px !important;
+  background: #ffffff !important;
+  border: 1px solid #dbeafe !important;
+  border-radius: 14px !important;
+  padding: 8px 15px !important;
+  box-shadow: 0 2px 10px rgba(37, 99, 235, 0.06) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+  box-sizing: border-box !important;
+  flex-shrink: 0 !important;
+}
+
+.db-hero-badge-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  line-height: 1 !important;
+}
+
+.db-hero-store-code-badge {
+  font-size: 10px !important;
+  font-weight: 800 !important;
+  color: #16a34a !important;
+  background: #f0fdf4 !important;
+  padding: 1px 6px !important;
+  border-radius: 4px !important;
+  border: 1px dashed #86efac !important;
+  font-family: monospace !important;
+  letter-spacing: 0.3px !important;
+  line-height: 1.2 !important;
+}
+
+.db-hero-city-text {
+  font-size: 10.5px !important;
+  color: #64748b !important;
+  font-weight: 600 !important;
+  line-height: 1.2 !important;
+}
+
+.db-hero-titles-wrap {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 1px !important;
+}
+
+.db-hero-title {
+  font-size: 15px !important;
+  font-weight: 800 !important;
+  color: #0f172a !important;
+  margin: 0 !important;
+  letter-spacing: -0.2px !important;
+  line-height: 1.25 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.db-hero-title-blue {
+  color: #1455d9 !important;
+  font-weight: 800 !important;
+}
+
+.db-hero-subtitle {
+  font-size: 10.5px !important;
+  color: #64748b !important;
+  margin: 0 !important;
+  font-weight: 500 !important;
+  line-height: 1.2 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  max-width: 320px !important;
+}
+
+.db-hero-meta-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  line-height: 1 !important;
+}
+
+.db-date-pill {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  background: #ffffff !important;
+  border: 1px solid #dbeafe !important;
+  padding: 3px 10px !important;
+  border-radius: 9999px !important;
+  font-size: 10.5px !important;
+  font-weight: 600 !important;
+  color: #2563eb !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.05) !important;
+}
+
+.db-hero-insights-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  background: #1455d9 !important;
+  color: #ffffff !important;
+  border: none !important;
+  border-radius: 9999px !important;
+  padding: 3.5px 12px !important;
+  font-size: 10.5px !important;
+  font-weight: 700 !important;
+  cursor: pointer !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  box-shadow: 0 2px 7px rgba(20, 85, 217, 0.3) !important;
+  transition: all 0.15s ease !important;
+}
+
+.db-hero-insights-btn:hover {
+  background: #0f46b3 !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 10px rgba(20, 85, 217, 0.4) !important;
+}
+
+/* 3. Center Script Branding - Crisp, Solid, High-Contrast Typography (Exact Match to Reference Image) */
+.db-hero-center-branding {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  z-index: 10 !important;
+  pointer-events: none !important;
+  margin: 0 auto !important;
+  flex-shrink: 0 !important;
+  background: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+.db-hero-script-title {
+  font-family: "Brush Script MT", "Segoe Script", cursive, sans-serif !important;
+  font-size: 24px !important;
+  font-weight: 700 !important;
+  color: #1455d9 !important;
+  font-style: italic !important;
+  letter-spacing: 0.5px !important;
+  white-space: nowrap !important;
+  line-height: 1.2 !important;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.95), 0 2px 4px rgba(20, 85, 217, 0.15) !important;
+  -webkit-text-stroke: 0 !important;
+  filter: none !important;
+}
+
+.db-hero-slogan {
+  font-size: 8.5px !important;
+  font-weight: 800 !important;
+  color: #1455d9 !important;
+  letter-spacing: 1.3px !important;
+  text-transform: uppercase !important;
+  white-space: nowrap !important;
+  margin-top: 2px !important;
+  text-align: center !important;
+  max-width: 220px !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.9) !important;
+}
+
+.db-hero-orange-bar {
+  width: 48px !important;
+  height: 2.5px !important;
+  background: #f59e0b !important;
+  border-radius: 2px !important;
+  margin-top: 4px !important;
+  box-shadow: none !important;
+}
+
+/* 4. Cart Spacer & Softly-Masked Right Panoramic Produce Cart (Pushed to Right Edge) */
+.db-hero-cart-spacer {
+  width: 280px !important;
+  height: 100% !important;
+  flex-shrink: 0 !important;
+  pointer-events: none !important;
 }
 
 .db-hero-panoramic-bg {
   position: absolute !important;
   top: 0 !important;
   right: 0 !important;
-  width: 36% !important;
+  width: 46% !important;
   height: 100% !important;
   background-size: cover !important;
   background-position: right center !important;
   background-repeat: no-repeat !important;
   pointer-events: none !important;
   z-index: 1 !important;
-}
-
-/* ===================================================================
-   3D STOREFRONT "BEFORE IMAGE" RESTORATION
-   =================================================================== */
-.db-storefront-3d-wrap {
-  width: 76px !important;
-  height: 76px !important;
-  flex-shrink: 0 !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  background: #FFFFFF !important;
-  border-radius: 14px !important;
-  padding: 4px !important;
-  border: 1.5px solid #BFDBFE !important;
-  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.1) !important;
-}
-
-.db-storefront-3d-img {
-  width: 100% !important;
-  height: 100% !important;
-  object-fit: contain !important;
-  border-radius: 10px !important;
-  mix-blend-mode: normal !important;
+  mask-image: linear-gradient(to right, transparent 0%, rgba(0, 0, 0, 0.25) 15%, black 45%) !important;
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, rgba(0, 0, 0, 0.25) 15%, black 45%) !important;
 }
 
 /* ===================================================================
@@ -2030,15 +2250,15 @@
    - Ultra-compact phones (<= 360px, iPhone SE)
    =================================================================== */
 
-@media (max-width: 1100px) {
-  .db-hero-thought-center {
+@media (max-width: 992px) {
+  .db-hero-center-branding {
+    display: none !important;
+  }
+  .db-hero-cart-spacer {
     display: none !important;
   }
   .db-hero-left {
-    max-width: 60% !important;
-  }
-  .db-hero-panoramic-bg {
-    width: 38% !important;
+    max-width: 100% !important;
   }
 }
 
@@ -2098,9 +2318,20 @@
     font-size: 11px !important;
   }
 
+  .db-hero-welcome-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    padding: 8px 12px !important;
+  }
+
   .db-hero-panoramic-bg,
   .db-hero-script-badge,
-  .db-hero-thought-center {
+  .db-hero-thought-center,
+  .db-hero-cart-spacer,
+  .db-hero-center-branding {
     display: none !important;
   }
 

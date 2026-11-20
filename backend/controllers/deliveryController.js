@@ -88,32 +88,37 @@ exports.getDeliveryOrders = async (req, res) => {
       $or: [
         { orderType: { $in: ["DELIVERY", "ONLINE_DELIVERY", "SELF_PICKUP_DOORSTEP"] } },
         { fulfillmentChoice: "DOORSTEP_DELIVERY" },
+        { deliveryStatus: { $exists: true, $ne: "" } },
       ],
     };
 
-    // If logged in as delivery staff, only see orders assigned to themselves or unassigned new orders
+    // If logged in as delivery staff, only see orders assigned to themselves or unassigned new/pending orders
     if (req.user.role === "DELIVERY_STAFF") {
       query.$and = [
         {
           $or: [
             { assignedStaff: req.user._id },
-            { deliveryStatus: { $in: ["New", "Pending"] } },
+            { deliveryStatus: { $in: ["New", "Pending", "Order Confirmed", "Preparing", "Assigned"] } },
           ],
         },
       ];
     }
 
     const statusNorm = String(status).toLowerCase().trim();
-    if (statusNorm === "pending" || statusNorm === "new") {
-      query.deliveryStatus = { $in: ["Pending", "New"] };
+    if (statusNorm === "pending" || statusNorm === "new" || statusNorm === "confirmed") {
+      query.deliveryStatus = { $in: ["Pending", "New", "Order Confirmed"] };
+    } else if (statusNorm === "preparing") {
+      query.deliveryStatus = "Preparing";
     } else if (statusNorm === "assigned") {
-      query.deliveryStatus = "Assigned";
-    } else if (statusNorm === "accepted") {
-      query.deliveryStatus = { $in: ["Accepted", "Assigned"] };
+      query.deliveryStatus = { $in: ["Assigned", "Accepted", "Delivery Partner Assigned"] };
+    } else if (statusNorm === "collected" || statusNorm === "productscollected" || statusNorm === "pickedup") {
+      query.deliveryStatus = { $in: ["Products Collected", "OrderPickedUp"] };
     } else if (statusNorm === "out_for_delivery" || statusNorm === "outfordelivery") {
-      query.deliveryStatus = "OutForDelivery";
+      query.deliveryStatus = { $in: ["Out for Delivery", "OutForDelivery"] };
     } else if (statusNorm === "completed" || statusNorm === "delivered") {
       query.deliveryStatus = "Delivered";
+    } else if (statusNorm === "failed" || statusNorm === "failed_delivery") {
+      query.deliveryStatus = { $in: ["Failed Delivery", "Failed"] };
     }
 
     const orders = await Order.find(query)
@@ -173,24 +178,38 @@ exports.updateDeliveryOrderStatus = async (req, res) => {
       }
     }
 
-    order.deliveryStatus = status;
-    if (notes) order.deliveryNotes = notes;
+    // Normalize status into canonical stages
+    let canonicalStatus = status;
+    const sLower = String(status).toLowerCase().trim();
 
     const now = new Date();
     let timelineTitle = status;
     let timelineDesc = notes || "";
+    let timelineStage = "Order Confirmed";
 
-    if (status === "Preparing") {
+    if (sLower === "order confirmed" || sLower === "confirmed" || sLower === "new") {
+      canonicalStatus = "Order Confirmed";
+      timelineStage = "Order Confirmed";
+      if (!order.orderConfirmedAt) order.orderConfirmedAt = now;
+      timelineTitle = "Order Confirmed";
+      timelineDesc = notes || "Your order has been confirmed and received by the supermarket.";
+    } else if (sLower === "preparing") {
+      canonicalStatus = "Preparing";
+      timelineStage = "Preparing";
       order.preparingAt = now;
       timelineTitle = "Preparing Your Order";
-      timelineDesc = notes || "The supermarket team is packing and inspecting your items.";
-    } else if (status === "Assigned") {
+      timelineDesc = notes || "The supermarket team is picking, packing, and quality-checking your items.";
+    } else if (sLower === "assigned" || sLower === "delivery partner assigned") {
+      canonicalStatus = "Assigned";
+      timelineStage = "Delivery Partner Assigned";
       order.assignedAt = now;
       if (assignedStaffId) order.assignedStaff = assignedStaffId;
       if (assignedStaffName) order.assignedStaffName = assignedStaffName;
       timelineTitle = "Delivery Partner Assigned";
       timelineDesc = notes || `${order.assignedStaffName || "Delivery partner"} has been assigned to your order.`;
-    } else if (status === "Accepted") {
+    } else if (sLower === "accepted") {
+      canonicalStatus = "Assigned";
+      timelineStage = "Delivery Partner Assigned";
       order.deliveryAcceptedAt = now;
       if (!order.assignedStaff) {
         order.assignedStaff = req.user._id;
@@ -198,33 +217,52 @@ exports.updateDeliveryOrderStatus = async (req, res) => {
         order.assignedStaffPhone = req.user.phone || "";
       }
       timelineTitle = "Delivery Partner Confirmed";
-      timelineDesc = notes || `${order.assignedStaffName || "Delivery partner"} is ready to pick up your package.`;
-    } else if (status === "OrderPickedUp") {
+      timelineDesc = notes || `${order.assignedStaffName || "Delivery partner"} accepted the delivery request.`;
+    } else if (sLower === "products collected" || sLower === "orderpickedup" || sLower === "collected") {
+      canonicalStatus = "Products Collected";
+      timelineStage = "Products Collected";
+      order.productsCollectedAt = now;
       order.pickedUpAt = now;
-      timelineTitle = "Order Picked Up";
-      timelineDesc = notes || `${order.assignedStaffName || "Delivery partner"} has picked up your package from the supermarket.`;
-    } else if (status === "OutForDelivery") {
+      timelineTitle = "Products Collected";
+      timelineDesc = notes || `${order.assignedStaffName || "Delivery partner"} has verified and collected your packed grocery items from the supermarket.`;
+    } else if (sLower === "out for delivery" || sLower === "outfordelivery" || sLower === "out_for_delivery") {
+      canonicalStatus = "Out for Delivery";
+      timelineStage = "Out for Delivery";
       order.deliveryOutAt = now;
       timelineTitle = "Out for Delivery";
       timelineDesc = notes || `${order.assignedStaffName || "Delivery partner"} is on the way to your delivery address.`;
-    } else if (status === "Delivered") {
+    } else if (sLower === "delivered" || sLower === "completed") {
+      canonicalStatus = "Delivered";
+      timelineStage = "Delivered";
       order.deliveryCompletedAt = now;
       order.paymentStatus = "Completed";
       order.completedAt = now;
       timelineTitle = "Order Delivered";
-      timelineDesc = notes || "Your package was successfully delivered to your doorstep. Thank you for shopping with GrocerEase!";
+      timelineDesc = notes || "Your groceries have been successfully delivered to your doorstep. Thank you for shopping with SuperMart!";
+    } else if (sLower === "failed delivery" || sLower === "failed" || sLower === "cancelled") {
+      canonicalStatus = "Failed Delivery";
+      timelineStage = "Failed Delivery";
+      order.failedDeliveryAt = now;
+      order.failedReason = notes || req.body.reason || "Delivery could not be completed";
+      timelineTitle = "Delivery Failed";
+      timelineDesc = order.failedReason;
     }
 
-    // Add entry to tracking timeline
+    order.deliveryStatus = canonicalStatus;
+    if (notes) order.deliveryNotes = notes;
+
+    // Add entry to tracking timeline with full audit details
     if (!Array.isArray(order.trackingTimeline)) {
       order.trackingTimeline = [];
     }
     order.trackingTimeline.push({
-      status,
+      stage: timelineStage,
+      status: canonicalStatus,
       title: timelineTitle,
       description: timelineDesc,
       timestamp: now,
-      updatedBy: req.user.name || "System",
+      updatedBy: req.user.name || "Store Admin",
+      updatedById: req.user._id,
       role: req.user.role || "STORE_ADMIN",
     });
 
@@ -326,12 +364,14 @@ exports.assignOrderToStaff = async (req, res) => {
       order.trackingTimeline = [];
     }
     order.trackingTimeline.push({
+      stage: "Delivery Partner Assigned",
       status: "Assigned",
       title: "Delivery Partner Assigned",
       description: `${staff.name} has been assigned to deliver your order.`,
       timestamp: now,
       updatedBy: req.user.name || "Store Admin",
-      role: "STORE_ADMIN",
+      updatedById: req.user._id,
+      role: req.user.role || "STORE_ADMIN",
     });
 
     await order.save();

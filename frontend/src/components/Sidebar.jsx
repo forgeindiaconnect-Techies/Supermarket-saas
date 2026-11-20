@@ -35,7 +35,7 @@ const navItems = [
   { path: "/admin/inventory", label: "Inventory", icon: Boxes },
   { path: "/admin/barcodes", label: "Barcodes", icon: Barcode },
   { path: "/admin/orders", label: "Orders", icon: ShoppingCart },
-  { path: "/admin/customers", label: "Customers", icon: Users },
+  { path: "/admin/customers", label: "Offline Customers", icon: Users },
   { path: "/admin/reports", label: "Reports", icon: BarChart2 },
   { path: "/admin/chat", label: "Super Admin Chat", icon: MessageSquare },
   { path: "/admin/settings", label: "Settings", icon: Settings },

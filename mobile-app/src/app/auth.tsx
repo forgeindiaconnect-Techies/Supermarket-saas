@@ -36,6 +36,7 @@ export default function CustomerAuthScreen() {
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   // Store Selection State
   const [chosenStore, setChosenStore] = useState<SupermarketInfo | null>(
@@ -67,7 +68,12 @@ export default function CustomerAuthScreen() {
   };
 
   const handleSelectStoreFromModal = (store: SupermarketInfo) => {
-    if (store.onlineAvailable !== true) {
+    const isOnlineSupported =
+      store.onlineDeliveryAvailable === true ||
+      store.selfPickupAvailable === true ||
+      store.onlineAvailable === true;
+
+    if (!isOnlineSupported) {
       setSearchModalVisible(false);
       setUnavailableModal({
         visible: true,
@@ -261,8 +267,8 @@ export default function CustomerAuthScreen() {
       <View style={styles.container}>
         <StatusBar style="light" />
 
-        {/* Deep Rich Purple Top Header */}
-        <View style={styles.purpleHeader}>
+        {/* Royal Electric Blue Top Header */}
+        <View style={styles.blueHeader}>
           <SafeAreaView edges={["top"]} style={styles.headerSafe}>
             <View style={styles.headerRow}>
               <TouchableOpacity
@@ -270,15 +276,20 @@ export default function CustomerAuthScreen() {
                 onPress={() => router.replace("/")}
                 activeOpacity={0.7}
               >
-                <Text style={styles.headerBackArrow}>‹</Text>
+                <View style={styles.backBtnPill}>
+                  <Text style={styles.backArrowText}>←</Text>
+                  <Text style={styles.backLabelText}>Home</Text>
+                </View>
               </TouchableOpacity>
 
               <View style={styles.headerTitleWrap}>
-                <Text style={styles.headerTitle}>Online Purchase</Text>
-                <Text style={styles.headerSub}>Customer Account &amp; Store Setup</Text>
+                <Text style={styles.headerTitle}>Customer Portal</Text>
+                <Text style={styles.headerSub}>
+                  {activeTab === "register" ? "Create Account & Start Shopping" : "Sign In to Your Supermarket"}
+                </Text>
               </View>
 
-              <View style={{ width: 38 }} />
+              <View style={{ width: 60 }} />
             </View>
           </SafeAreaView>
         </View>
@@ -392,56 +403,28 @@ export default function CustomerAuthScreen() {
               </View>
             )}
 
-            {/* 2. Supermarket Location Selection Search Bar (After entering details) */}
-            {activeTab === "register" && (
+            {/* 2. Selected Supermarket Display (Search bar completely removed per exact specification) */}
+            {chosenStore && (
               <View style={styles.sectionWrap}>
-                <Text style={styles.inputLabel}>
-                  Select Supermarket <Text style={styles.star}>*</Text>
-                </Text>
-
-                {chosenStore ? (
-                  <View style={styles.selectedStoreCard}>
-                    <View style={styles.selectedStoreTop}>
-                      <View style={styles.selectedStoreIcon}>
-                        <Text style={{ fontSize: 20 }}>🏪</Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.selectedStoreName}>{chosenStore.name}</Text>
-                        <Text style={styles.selectedStoreLocation}>
-                          📍 {chosenStore.city || "Bangalore"}, {chosenStore.state || "Karnataka"}
-                        </Text>
-                        <View style={styles.storeVerifiedBadge}>
-                          <Text style={styles.storeVerifiedText}>
-                            ✓ Online Purchase Enabled ({chosenStore.code})
-                          </Text>
-                        </View>
-                      </View>
+                <Text style={styles.inputLabel}>Selected Supermarket</Text>
+                <View style={styles.selectedStoreCard}>
+                  <View style={styles.selectedStoreTop}>
+                    <View style={styles.selectedStoreIcon}>
+                      <Text style={{ fontSize: 20 }}>🏪</Text>
                     </View>
-
-                    <TouchableOpacity
-                      style={styles.changeStoreBtn}
-                      onPress={() => setSearchModalVisible(true)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.changeStoreText}>Change Supermarket</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  <TouchableOpacity
-                    style={styles.searchLocationTrigger}
-                    onPress={() => setSearchModalVisible(true)}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={styles.searchLocationIcon}>🔍</Text>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.searchLocationTitle}>Search Supermarket</Text>
-                      <Text style={styles.searchLocationSub}>
-                        Search registered supermarkets by name or location
+                      <Text style={styles.selectedStoreName}>{chosenStore.name}</Text>
+                      <Text style={styles.selectedStoreLocation}>
+                        📍 {chosenStore.city || "Bangalore"}, {chosenStore.state || "Karnataka"}
                       </Text>
+                      <View style={styles.storeVerifiedBadge}>
+                        <Text style={styles.storeVerifiedText}>
+                          ✓ Online Purchase Enabled ({chosenStore.code})
+                        </Text>
+                      </View>
                     </View>
-                    <Text style={styles.searchLocationArrow}>›</Text>
-                  </TouchableOpacity>
-                )}
+                  </View>
+                </View>
               </View>
             )}
 
@@ -464,16 +447,28 @@ export default function CustomerAuthScreen() {
             {/* Password / PIN */}
             <View style={styles.formGroup}>
               <Text style={styles.inputLabel}>
-                {activeTab === "register" ? "Create Password / PIN" : "Account Password / PIN"}
+                {activeTab === "register" ? "Create Password / PIN" : "Account Password / PIN"} <Text style={styles.star}>*</Text>
               </Text>
-              <TextInput
-                style={styles.input}
-                placeholder={activeTab === "register" ? "Set a secure password" : "Enter your password"}
-                placeholderTextColor="#94A3B8"
-                secureTextEntry
-                value={password}
-                onChangeText={setPassword}
-              />
+              <View style={styles.passwordInputContainer}>
+                <TextInput
+                  style={[styles.input, styles.passwordInput]}
+                  placeholder={activeTab === "register" ? "Set a secure password" : "Enter your password"}
+                  placeholderTextColor="#94A3B8"
+                  secureTextEntry={!showPassword}
+                  value={password}
+                  onChangeText={setPassword}
+                />
+                <TouchableOpacity
+                  style={styles.toggleVisibilityBtn}
+                  onPress={() => setShowPassword(!showPassword)}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Text style={styles.toggleVisibilityText}>
+                    {showPassword ? "👁️" : "👁️‍🗨️"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             {/* Information Note */}
@@ -494,11 +489,14 @@ export default function CustomerAuthScreen() {
               activeOpacity={0.88}
             >
               {loading ? (
-                <ActivityIndicator color="#2E0854" size="small" />
+                <ActivityIndicator color="#FFFFFF" size="small" />
               ) : (
-                <Text style={styles.submitButtonText}>
-                  {activeTab === "register" ? "Continue to Online Store →" : "Sign In & Browse →"}
-                </Text>
+                <View style={styles.btnContentRow}>
+                  <Text style={styles.submitButtonText}>
+                    {activeTab === "register" ? "Continue to Online Store" : "Sign In & Browse"}
+                  </Text>
+                  <Text style={styles.btnRightArrow}>→</Text>
+                </View>
               )}
             </TouchableOpacity>
 
@@ -519,12 +517,12 @@ export default function CustomerAuthScreen() {
 
             {/* Dedicated Delivery Fleet Login Link */}
             <TouchableOpacity
-              style={{ marginTop: 24, paddingVertical: 12, alignItems: "center", backgroundColor: "#F0F9FF", borderRadius: 12, borderWidth: 1, borderColor: "#BAE6FD" }}
+              style={styles.deliveryFleetCardLink}
               onPress={() => router.push("/delivery-login")}
               activeOpacity={0.7}
             >
-              <Text style={{ fontSize: 13, color: "#0284C7", fontWeight: "700" }}>
-                🚚 Delivery Personnel? Access Delivery Dashboard →
+              <Text style={styles.deliveryFleetLinkText}>
+                🚚 Delivery Personnel? <Text style={styles.deliveryFleetLinkBold}>Access Delivery Dashboard →</Text>
               </Text>
             </TouchableOpacity>
           </ScrollView>
@@ -562,43 +560,58 @@ export default function CustomerAuthScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#2E0854", // Deep rich purple
+    backgroundColor: "#4C1D95", // Unified Royal Purple Theme matching Reference Design
   },
-  purpleHeader: {
-    backgroundColor: "#2E0854",
-    paddingBottom: 20,
+  blueHeader: {
+    backgroundColor: "#4C1D95",
+    paddingBottom: 22,
   },
   headerSafe: {
-    backgroundColor: "#2E0854",
+    backgroundColor: "#4C1D95",
   },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
+    paddingHorizontal: 18,
     paddingTop: 8,
   },
   headerBtn: {
-    width: 38,
-    height: 38,
     alignItems: "center",
     justifyContent: "center",
   },
-  headerBackArrow: {
+  backBtnPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.3)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 18,
+  },
+  backArrowText: {
     color: "#FFFFFF",
-    fontSize: 28,
-    fontWeight: "300",
+    fontSize: 13,
+    fontWeight: "700",
+    marginRight: 4,
+  },
+  backLabelText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "700",
   },
   headerTitleWrap: {
     alignItems: "center",
   },
   headerTitle: {
     color: "#FFFFFF",
-    fontSize: 18,
-    fontWeight: "800",
+    fontSize: 19,
+    fontWeight: "900",
+    letterSpacing: 0.2,
   },
   headerSub: {
-    color: "#CBB2FE",
+    color: "#BAE6FD",
     fontSize: 12,
     fontWeight: "600",
     marginTop: 2,
@@ -608,7 +621,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#F8FAFC",
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    marginTop: -10,
+    marginTop: -8,
     overflow: "hidden",
   },
   scrollContent: {
@@ -644,7 +657,7 @@ const styles = StyleSheet.create({
     color: "#64748B",
   },
   tabBtnTextActive: {
-    color: "#1E1B4B",
+    color: "#7C3AED",
     fontWeight: "800",
   },
   errorBanner: {
@@ -757,7 +770,7 @@ const styles = StyleSheet.create({
   changeStoreText: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#2563EB",
+    color: "#7C3AED",
     textDecorationLine: "underline",
   },
   formGroup: {
@@ -766,7 +779,7 @@ const styles = StyleSheet.create({
   input: {
     backgroundColor: "#FFFFFF",
     borderWidth: 1.5,
-    borderColor: "#CBD5E1",
+    borderColor: "#E2E8F0",
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 12,
@@ -774,14 +787,36 @@ const styles = StyleSheet.create({
     color: "#0F172A",
     fontWeight: "600",
   },
+  passwordInputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+    borderRadius: 14,
+    paddingRight: 10,
+  },
+  passwordInput: {
+    flex: 1,
+    borderWidth: 0,
+    backgroundColor: "transparent",
+  },
+  toggleVisibilityBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  toggleVisibilityText: {
+    fontSize: 16,
+    color: "#64748B",
+  },
   phoneInputRow: {
     flexDirection: "row",
     gap: 8,
   },
   countryCodeBox: {
-    backgroundColor: "#F1F5F9",
+    backgroundColor: "#F8FAFC",
     borderWidth: 1.5,
-    borderColor: "#CBD5E1",
+    borderColor: "#E2E8F0",
     borderRadius: 14,
     paddingHorizontal: 14,
     alignItems: "center",
@@ -802,9 +837,9 @@ const styles = StyleSheet.create({
   infoBox: {
     flexDirection: "row",
     alignItems: "flex-start",
-    backgroundColor: "#EEF2FF",
+    backgroundColor: "#FAF5FF",
     borderWidth: 1,
-    borderColor: "#C7D2FE",
+    borderColor: "#DDD6FE",
     borderRadius: 14,
     padding: 12,
     marginBottom: 22,
@@ -818,29 +853,40 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 12,
     lineHeight: 17,
-    color: "#3730A3",
+    color: "#5B21B6",
   },
   submitButton: {
-    backgroundColor: "#F6BC45", // Golden champagne button matching app
-    paddingVertical: 16,
-    borderRadius: 24,
+    backgroundColor: "#7C3AED",
+    paddingVertical: 15,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#F6BC45",
+    shadowColor: "#7C3AED",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 6,
+    shadowRadius: 8,
+    elevation: 5,
     marginBottom: 14,
   },
   submitButtonDisabled: {
     opacity: 0.7,
   },
+  btnContentRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
   submitButtonText: {
-    color: "#2E0854",
+    color: "#FFFFFF",
     fontSize: 16,
-    fontWeight: "900",
+    fontWeight: "800",
     letterSpacing: 0.2,
+  },
+  btnRightArrow: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "800",
   },
   switchTabLink: {
     alignItems: "center",
@@ -850,5 +896,24 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     color: "#64748B",
+  },
+  deliveryFleetCardLink: {
+    marginTop: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    backgroundColor: "#FAF5FF",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#DDD6FE",
+  },
+  deliveryFleetLinkText: {
+    fontSize: 13,
+    color: "#5B21B6",
+    fontWeight: "600",
+  },
+  deliveryFleetLinkBold: {
+    color: "#7C3AED",
+    fontWeight: "800",
   },
 });

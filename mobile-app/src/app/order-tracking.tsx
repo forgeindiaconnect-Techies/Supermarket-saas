@@ -44,8 +44,9 @@ interface DeliveryPartner {
 export default function OrderTrackingScreen() {
   const router = useRouter();
   const { orderId } = useLocalSearchParams<{ orderId?: string }>();
-  const { recentOrders, selectedSupermarket } = useCart();
+  const { recentOrders, selectedSupermarket, customerUser } = useCart();
 
+  const [selectedActiveOrderId, setSelectedActiveOrderId] = useState<string>(orderId || "");
   const [order, setOrder] = useState<OrderRecord | null>(null);
   const [stages, setStages] = useState<TrackingStage[]>([]);
   const [deliveryPartner, setDeliveryPartner] = useState<DeliveryPartner | null>(null);
@@ -54,6 +55,7 @@ export default function OrderTrackingScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+  const [customerOrdersList, setCustomerOrdersList] = useState<OrderRecord[]>([]);
 
   // Glowing pulse animation for live tracking badge & active stage
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -75,18 +77,18 @@ export default function OrderTrackingScreen() {
     ).start();
   }, [pulseAnim]);
 
-  // Compute 5 Amazon-Style Tracking Stages locally or from API
+  // Compute 6 Amazon-Style Tracking Stages locally or from API
   const computeStages = useCallback((ord: OrderRecord): {
     stages: TrackingStage[];
     partner: DeliveryPartner | null;
     estimatedTime: string;
     estimatedDate: string;
   } => {
-    const rawStatus = (ord.deliveryStatus || "New").toLowerCase();
+    const rawStatus = (ord.deliveryStatus || "New").toLowerCase().trim();
 
     // Stage 1: Order Confirmed
     const s1Completed = true;
-    const s1Active = rawStatus === "new" || rawStatus === "pending";
+    const s1Active = rawStatus === "new" || rawStatus === "pending" || rawStatus === "order confirmed";
     const s1Time = ord.orderConfirmedAt || ord.createdAt;
 
     // Stage 2: Preparing Your Order
@@ -94,7 +96,10 @@ export default function OrderTrackingScreen() {
       "preparing",
       "assigned",
       "accepted",
+      "products collected",
       "orderpickedup",
+      "collected",
+      "out for delivery",
       "outfordelivery",
       "delivered",
     ].includes(rawStatus);
@@ -106,7 +111,10 @@ export default function OrderTrackingScreen() {
     const isAssignedOrPast = [
       "assigned",
       "accepted",
+      "products collected",
       "orderpickedup",
+      "collected",
+      "out for delivery",
       "outfordelivery",
       "delivered",
     ].includes(rawStatus);
@@ -117,16 +125,29 @@ export default function OrderTrackingScreen() {
     const s3Active = rawStatus === "assigned" || rawStatus === "accepted";
     const s3Time = ord.assignedAt || ord.deliveryAcceptedAt || undefined;
 
-    // Stage 4: Out for Delivery
-    const isOutOrDelivered = ["outfordelivery", "delivered"].includes(rawStatus);
-    const s4Completed = rawStatus === "delivered";
-    const s4Active = rawStatus === "outfordelivery" || rawStatus === "orderpickedup";
-    const s4Time = ord.deliveryOutAt || ord.pickedUpAt || undefined;
+    // Stage 4: Products Collected
+    const isCollectedOrPast = [
+      "products collected",
+      "orderpickedup",
+      "collected",
+      "out for delivery",
+      "outfordelivery",
+      "delivered",
+    ].includes(rawStatus);
+    const s4Completed = isCollectedOrPast && !["products collected", "orderpickedup", "collected"].includes(rawStatus);
+    const s4Active = ["products collected", "orderpickedup", "collected"].includes(rawStatus);
+    const s4Time = (ord as any).productsCollectedAt || ord.pickedUpAt || undefined;
 
-    // Stage 5: Delivered
+    // Stage 5: Out for Delivery
+    const isOutOrDelivered = ["out for delivery", "outfordelivery", "delivered"].includes(rawStatus);
     const s5Completed = rawStatus === "delivered";
-    const s5Active = false;
-    const s5Time = ord.deliveryCompletedAt || (ord as any).completedAt || undefined;
+    const s5Active = rawStatus === "out for delivery" || rawStatus === "outfordelivery";
+    const s5Time = ord.deliveryOutAt || undefined;
+
+    // Stage 6: Delivered
+    const s6Completed = rawStatus === "delivered";
+    const s6Active = false;
+    const s6Time = ord.deliveryCompletedAt || (ord as any).completedAt || undefined;
 
     const timeline: TrackingStage[] = [
       {
@@ -163,27 +184,39 @@ export default function OrderTrackingScreen() {
       },
       {
         step: 4,
-        id: "OUT_FOR_DELIVERY",
-        title: "Out for Delivery",
-        description: "Your delivery partner is on route to your delivery address.",
+        id: "COLLECTED",
+        title: "Products Collected",
+        description: ord.assignedStaffName
+          ? `${ord.assignedStaffName} collected your packaged items from the supermarket.`
+          : "Delivery partner has collected packaged items from the supermarket.",
         isCompleted: s4Completed,
         isActive: s4Active,
-        isPending: !isOutOrDelivered,
+        isPending: !isCollectedOrPast,
         timestamp: s4Time,
       },
       {
         step: 5,
+        id: "OUT_FOR_DELIVERY",
+        title: "Out for Delivery",
+        description: "Your delivery partner is on route to your delivery address.",
+        isCompleted: s5Completed,
+        isActive: s5Active,
+        isPending: !isOutOrDelivered,
+        timestamp: s5Time,
+      },
+      {
+        step: 6,
         id: "DELIVERED",
         title: "Delivered",
         description: "Package safely delivered to your doorstep. Enjoy your items!",
-        isCompleted: s5Completed,
-        isActive: s5Active,
-        isPending: !s5Completed,
-        timestamp: s5Time,
+        isCompleted: s6Completed,
+        isActive: s6Active,
+        isPending: !s6Completed,
+        timestamp: s6Time,
       },
     ];
 
-    // Delivery Partner Details (Requirement 3: strictly hidden until assigned!)
+    // Delivery Partner Details (Strictly displayed when assigned)
     let partner: DeliveryPartner | null = null;
     const hasAssignedStaff = Boolean(ord.assignedStaff || ord.assignedStaffName);
     if (isAssignedOrPast && hasAssignedStaff) {
@@ -196,7 +229,7 @@ export default function OrderTrackingScreen() {
         status:
           rawStatus === "delivered"
             ? "Delivered"
-            : rawStatus === "outfordelivery"
+            : rawStatus === "out for delivery" || rawStatus === "outfordelivery"
             ? "Out for Delivery"
             : "Assigned",
       };
@@ -222,24 +255,72 @@ export default function OrderTrackingScreen() {
 
   // Fetch Order and Tracking Metadata from Backend API
   const fetchOrderTracking = useCallback(async (isSilent = false) => {
-    if (!orderId) {
-      setLoading(false);
-      setRefreshing(false);
-      return;
-    }
+    let targetId = selectedActiveOrderId || orderId;
 
     if (!isSilent) setLoading(true);
 
     try {
+      // If no explicit orderId is specified, attempt to locate the customer's active delivery order
+      if (!targetId) {
+        const isDeliveryOrd = (o: OrderRecord) => {
+          const type = (o.orderType || "").toUpperCase();
+          const choice = (o.fulfillmentChoice || "").toUpperCase();
+          return (
+            type === "DELIVERY" ||
+            type === "ONLINE_DELIVERY" ||
+            type === "SELF_PICKUP_DOORSTEP" ||
+            choice === "DOORSTEP_DELIVERY" ||
+            Boolean(o.deliveryStatus)
+          );
+        };
+
+        const activeInCache =
+          recentOrders.find(
+            (o) =>
+              isDeliveryOrd(o) &&
+              o.deliveryStatus !== "Delivered" &&
+              o.deliveryStatus !== "Failed Delivery"
+          ) || recentOrders.find(isDeliveryOrd);
+
+        if (activeInCache) {
+          targetId = activeInCache._id || activeInCache.orderNumber;
+          if (targetId) setSelectedActiveOrderId(targetId);
+        } else if (API_URL && customerUser?.phone) {
+          // Query backend for this customer's orders
+          const phoneParam = encodeURIComponent(customerUser.phone);
+          const res = await safeFetch(`${API_URL}/orders?phone=${phoneParam}`, {}, 6000);
+          const ordData = await res.json();
+          if (ordData.success && Array.isArray(ordData.orders)) {
+            const customerDeliveries = ordData.orders.filter(isDeliveryOrd);
+            setCustomerOrdersList(customerDeliveries);
+            const activeOrder =
+              customerDeliveries.find(
+                (o: any) =>
+                  o.deliveryStatus !== "Delivered" && o.deliveryStatus !== "Failed Delivery"
+              ) || customerDeliveries[0];
+            if (activeOrder) {
+              targetId = activeOrder._id || activeOrder.orderNumber;
+              if (targetId) setSelectedActiveOrderId(String(targetId));
+            }
+          }
+        }
+      }
+
+      if (!targetId) {
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+
       if (API_URL) {
-        const res = await safeFetch(`${API_URL}/orders/${orderId}/tracking`, {}, 5000);
+        const res = await safeFetch(`${API_URL}/orders/${targetId}/tracking`, {}, 5000);
         const data = await res.json();
 
         if (data.success && data.order) {
           const fetchedOrder: OrderRecord = data.order;
           setOrder(fetchedOrder);
 
-          if (Array.isArray(data.stages) && data.stages.length === 5) {
+          if (Array.isArray(data.stages) && data.stages.length >= 6) {
             setStages(data.stages);
             setDeliveryPartner(data.deliveryPartner || null);
             setEtaTime(data.estimatedDeliveryTime || "");
@@ -258,7 +339,7 @@ export default function OrderTrackingScreen() {
 
       // Fallback: Check local cache in recentOrders
       const matched = recentOrders.find(
-        (o) => o._id === orderId || o.orderNumber === orderId
+        (o) => o._id === targetId || o.orderNumber === targetId
       );
       if (matched) {
         setOrder(matched);
@@ -271,23 +352,24 @@ export default function OrderTrackingScreen() {
       }
     } catch (err: any) {
       console.warn("Tracking fetch notice:", err.message);
-      // If error, attempt to find in recentOrders
-      const matched = recentOrders.find(
-        (o) => o._id === orderId || o.orderNumber === orderId
-      );
-      if (matched) {
-        setOrder(matched);
-        const calculated = computeStages(matched);
-        setStages(calculated.stages);
-        setDeliveryPartner(calculated.partner);
-        setEtaTime(calculated.estimatedTime);
-        setEtaDate(calculated.estimatedDate);
+      if (targetId) {
+        const matched = recentOrders.find(
+          (o) => o._id === targetId || o.orderNumber === targetId
+        );
+        if (matched) {
+          setOrder(matched);
+          const calculated = computeStages(matched);
+          setStages(calculated.stages);
+          setDeliveryPartner(calculated.partner);
+          setEtaTime(calculated.estimatedTime);
+          setEtaDate(calculated.estimatedDate);
+        }
       }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [orderId, recentOrders, computeStages]);
+  }, [orderId, selectedActiveOrderId, recentOrders, customerUser, computeStages]);
 
   // Initial load
   useEffect(() => {
@@ -333,20 +415,22 @@ export default function OrderTrackingScreen() {
 
   // Calculate Progress percentage for progress bar
   const getProgressPercentage = () => {
-    if (!stages || stages.length === 0) return 20;
+    if (!stages || stages.length === 0) return 15;
     const completedCount = stages.filter((s) => s.isCompleted).length;
     const activeCount = stages.filter((s) => s.isActive).length;
-    if (completedCount === 5) return 100;
-    return Math.min(95, Math.max(15, (completedCount * 20) + (activeCount * 10)));
+    if (completedCount >= 6) return 100;
+    return Math.min(95, Math.max(16, Math.round((completedCount / 6) * 100) + (activeCount ? 8 : 0)));
   };
 
   const currentStatusTitle = () => {
     if (!order) return "Processing Order";
     const st = (order.deliveryStatus || "New").toLowerCase();
     if (st === "delivered") return "Delivered to Your Doorstep";
-    if (st === "outfordelivery" || st === "orderpickedup") return "Out for Delivery";
+    if (st === "out for delivery" || st === "outfordelivery") return "Out for Delivery";
+    if (st === "products collected" || st === "orderpickedup" || st === "collected") return "Products Collected";
     if (st === "assigned" || st === "accepted") return "Delivery Partner Assigned";
     if (st === "preparing") return "Preparing Your Order";
+    if (st === "failed delivery" || st === "failed") return "Delivery Failed";
     return "Order Confirmed";
   };
 
@@ -407,17 +491,25 @@ export default function OrderTrackingScreen() {
           </View>
         ) : !order ? (
           <View style={styles.notFoundBox}>
-            <Text style={{ fontSize: 50, marginBottom: 12 }}>📦</Text>
-            <Text style={styles.notFoundTitle}>Order Not Found</Text>
+            <Text style={{ fontSize: 50, marginBottom: 12 }}>🚚</Text>
+            <Text style={styles.notFoundTitle}>No Active Delivery Orders</Text>
             <Text style={styles.notFoundDesc}>
-              We couldn't locate this order in the tracking system. Please check your order history.
+              You do not have any active doorstep delivery orders right now. Order fresh groceries online and track delivery progress live!
             </Text>
-            <TouchableOpacity
-              style={styles.actionOutlineBtn}
-              onPress={() => router.replace("/orders")}
-            >
-              <Text style={styles.actionOutlineBtnText}>View My Orders</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: "row", gap: 12, marginTop: 12 }}>
+              <TouchableOpacity
+                style={[styles.actionOutlineBtn, { backgroundColor: "#3B0764", borderWidth: 0 }]}
+                onPress={() => router.replace("/catalog")}
+              >
+                <Text style={[styles.actionOutlineBtnText, { color: "#FFF" }]}>Order Groceries</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.actionOutlineBtn}
+                onPress={() => router.replace("/orders")}
+              >
+                <Text style={styles.actionOutlineBtnText}>Order History</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         ) : (
           <>
@@ -537,7 +629,7 @@ export default function OrderTrackingScreen() {
                 <View style={styles.partnerSecurityNotice}>
                   <Text style={styles.shieldEmoji}>🛡️</Text>
                   <Text style={styles.securityNoticeText}>
-                    Contact details are private &amp; delivery is protected by GrocerEase security protocols.
+                    Contact details are private & delivery is protected by GrocerEase security protocols.
                   </Text>
                 </View>
               </View>
