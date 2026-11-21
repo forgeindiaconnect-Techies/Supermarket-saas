@@ -769,20 +769,29 @@ export default function DeliveryManagement() {
           <div className="del-staff-filter-bar">
             <div className="del-search-card del-staff-search-card">
               <div className="del-search-box">
-                <Search size={18} color="#2563EB" />
+                <Search size={18} color="#2563EB" style={{ flexShrink: 0 }} />
                 <input
-                  type="text"
+                  type="search"
+                  name="staff_fleet_search_filter"
+                  id="staff_fleet_search_filter"
                   placeholder="Search staff by Name, Mobile, Email, or Username..."
                   value={staffSearch}
                   onChange={(e) => setStaffSearch(e.target.value)}
-                  autoComplete="off"
+                  autoComplete="new-password"
+                  autoCorrect="off"
+                  autoCapitalize="off"
                   spellCheck="false"
+                  data-lpignore="true"
+                  data-form-type="other"
                 />
                 {staffSearch && (
                   <button type="button" onClick={() => setStaffSearch("")} className="del-clear-btn" title="Clear Search">
                     ✕
                   </button>
                 )}
+                <span className="del-search-count-pill">
+                  {filteredStaff.length} staff
+                </span>
               </div>
             </div>
 

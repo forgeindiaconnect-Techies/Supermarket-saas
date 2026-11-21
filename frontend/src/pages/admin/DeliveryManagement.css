@@ -200,53 +200,57 @@
 
 /* Search Bar Card - FULL WIDTH, CRISP ELEVATED CARD */
 .del-search-card {
-  background: #ffffff;
-  border: 1.5px solid #cbd5e1;
-  border-radius: 12px;
-  padding: 10px 16px;
-  margin-bottom: 20px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
-  transition: all 0.2s ease;
+  background: #ffffff !important;
+  border: 1.5px solid #cbd5e1 !important;
+  border-radius: 12px !important;
+  padding: 10px 16px !important;
+  margin-bottom: 20px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05) !important;
+  transition: all 0.2s ease !important;
+  position: relative !important;
+  z-index: 10 !important;
 }
 
 .del-search-card:hover {
-  border-color: #94a3b8;
+  border-color: #94a3b8 !important;
 }
 
 .del-search-card:focus-within {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 3.5px rgba(37, 99, 235, 0.18) !important;
 }
 
 .del-staff-search-card {
-  flex: 1;
-  max-width: 520px;
-  margin-bottom: 0;
+  flex: 1 !important;
+  min-width: 280px !important;
+  max-width: 540px !important;
+  margin-bottom: 0 !important;
 }
 
 .del-search-box {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  width: 100% !important;
 }
 
 .del-search-box input {
-  flex: 1;
-  width: 100%;
-  border: none;
-  outline: none;
-  font-size: 14px;
-  font-weight: 500;
-  color: #0f172a;
-  font-family: inherit;
-  background: transparent;
-  padding: 2px 0;
+  flex: 1 !important;
+  width: 100% !important;
+  border: none !important;
+  outline: none !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: #0f172a !important;
+  font-family: inherit !important;
+  background: transparent !important;
+  padding: 3px 0 !important;
 }
 
 .del-search-box input::placeholder {
-  color: #64748b;
-  font-weight: 400;
+  color: #64748b !important;
+  opacity: 1 !important;
+  font-weight: 500 !important;
 }
 
 .del-clear-btn {
@@ -629,6 +633,8 @@
   gap: 16px;
   margin-bottom: 20px;
   flex-wrap: wrap;
+  position: relative;
+  z-index: 20;
 }
 
 .del-filter-pills {

@@ -5972,3 +5972,756 @@ input[type="password"]::-ms-clear,
     margin-bottom: 1.25rem !important;
   }
 }
+
+
+/* =========================================================================
+   EXACT GROCEREASE REFERENCE DASHBOARD STYLES (MATCHING USER MOCKUP)
+   ========================================================================= */
+
+.sa-ref-dashboard-container {
+  padding: 18px 24px 36px;
+  max-width: 1600px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  box-sizing: border-box;
+}
+
+/* -------------------------------------------------------------------------
+   1. TOP KPI GRID (1 ROW OF 4 CARDS)
+   ------------------------------------------------------------------------- */
+.sa-exact-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+  width: 100%;
+}
+
+.sa-exact-kpi-card {
+  background: #ffffff;
+  border: 1px solid rgba(226, 232, 240, 0.85);
+  border-radius: 16px;
+  padding: 16px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.03);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.sa-exact-kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.06);
+  border-color: rgba(203, 213, 225, 0.9);
+}
+
+.sa-exact-kpi-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.sa-exact-kpi-icon-box {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sa-icon-box-mint {
+  background: #ecfdf5;
+  border: 1px solid #d1fae5;
+  color: #059669;
+}
+
+.sa-icon-box-blue {
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
+  color: #2563eb;
+}
+
+.sa-icon-box-orange {
+  background: #fff7ed;
+  border: 1px solid #ffedd5;
+  color: #ea580c;
+}
+
+.sa-icon-box-purple {
+  background: #faf5ff;
+  border: 1px solid #f3e8ff;
+  color: #9333ea;
+}
+
+.sa-exact-kpi-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sa-exact-kpi-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  line-height: 1.2;
+}
+
+.sa-exact-kpi-val-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.sa-exact-kpi-number {
+  font-size: 24px;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.sa-exact-kpi-pill {
+  font-size: 11.5px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.sa-pill-green {
+  color: #10b981;
+}
+
+.sa-pill-blue {
+  color: #3b82f6;
+}
+
+.sa-pill-orange {
+  color: #f97316;
+}
+
+.sa-pill-purple {
+  color: #a855f7;
+}
+
+.sa-exact-kpi-spark {
+  width: 82px;
+  height: 38px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.sa-sparkline-svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.05));
+}
+
+/* -------------------------------------------------------------------------
+   2. MIDDLE GRID (OVERVIEW LEFT 50%, SALES RIGHT 50%)
+   ------------------------------------------------------------------------- */
+.sa-exact-middle-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  width: 100%;
+}
+
+.sa-exact-overview-card,
+.sa-exact-sales-card {
+  background: #ffffff;
+  border: 1px solid rgba(226, 232, 240, 0.85);
+  border-radius: 18px;
+  padding: 20px 22px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
+  box-sizing: border-box;
+}
+
+.sa-exact-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.sa-exact-header-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sa-exact-icon-circle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sa-icon-mint-header {
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.sa-icon-orange-header {
+  background: #fff7ed;
+  color: #ea580c;
+}
+
+.sa-exact-card-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.sa-exact-view-all-link {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #16a34a;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+
+.sa-exact-view-all-link:hover {
+  color: #15803d;
+  transform: translateX(2px);
+  text-decoration: none;
+}
+
+/* Supermarket Network Overview Card Inner */
+.sa-exact-overview-content-row {
+  display: flex;
+  gap: 18px;
+  align-items: stretch;
+}
+
+.sa-exact-aisle-img-wrap {
+  width: 195px;
+  flex-shrink: 0;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  background: #f8fafc;
+  display: flex;
+}
+
+.sa-exact-aisle-photo {
+  width: 100%;
+  height: 100%;
+  min-height: 185px;
+  object-fit: cover;
+  display: block;
+}
+
+.sa-exact-overview-right-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.sa-exact-stat-tiles-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.sa-exact-stat-tile {
+  background: #f8fafc;
+  border: 1px solid #f1f5f9;
+  border-radius: 12px;
+  padding: 10px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 2px;
+}
+
+.sa-stat-tile-icon-box {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 2px;
+}
+
+.sa-box-mint {
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.sa-box-orange {
+  background: #fff7ed;
+  color: #ea580c;
+}
+
+.sa-box-purple {
+  background: #faf5ff;
+  color: #9333ea;
+}
+
+.sa-box-blue {
+  background: #f0f9ff;
+  color: #0284c7;
+}
+
+.sa-stat-tile-num {
+  font-size: 15px;
+  font-weight: 800;
+  color: #0f172a;
+  line-height: 1.1;
+}
+
+.sa-stat-tile-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.sa-stat-tile-sub-active {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #16a34a;
+}
+
+.sa-stat-tile-sub {
+  font-size: 9.5px;
+  font-weight: 500;
+  color: #94a3b8;
+}
+
+.sa-exact-features-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sa-exact-features-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.sa-feature-check-icon {
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Sales Performance Card Inner */
+.sa-exact-time-filter-wrap {
+  display: flex;
+  align-items: center;
+  background: #f1f5f9;
+  padding: 3px;
+  border-radius: 20px;
+  gap: 2px;
+}
+
+.sa-time-filter-btn {
+  padding: 4px 12px;
+  border-radius: 16px;
+  border: none;
+  background: transparent;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sa-time-filter-btn:hover {
+  color: #0f172a;
+}
+
+.sa-time-filter-btn.active {
+  background: #10b981;
+  color: #ffffff;
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(16, 185, 129, 0.3);
+}
+
+.sa-exact-chart-box {
+  position: relative;
+  width: 100%;
+  height: 210px;
+  margin-top: 10px;
+}
+
+.sa-exact-sales-svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.sa-svg-axis-label {
+  font-size: 10.5px;
+  fill: #94a3b8;
+  font-weight: 500;
+  font-family: inherit;
+}
+
+.sa-svg-date-label {
+  font-size: 10.5px;
+  fill: #64748b;
+  font-weight: 600;
+  font-family: inherit;
+}
+
+.sa-exact-pinned-tooltip {
+  position: absolute;
+  top: 16px;
+  right: 28%;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 6px 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+  z-index: 10;
+  animation: saTooltipPulse 3s infinite ease-in-out;
+}
+
+@keyframes saTooltipPulse {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+.sa-tooltip-exact-val {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: #0f172a;
+  line-height: 1.1;
+}
+
+.sa-tooltip-exact-date {
+  font-size: 10px;
+  font-weight: 700;
+  color: #10b981;
+  margin-top: 1px;
+}
+
+/* -------------------------------------------------------------------------
+   3. BOTTOM GRID (RECENT 38%, QUICK ACTIONS 32%, PROMO 30%)
+   ------------------------------------------------------------------------- */
+.sa-exact-bottom-grid {
+  display: grid;
+  grid-template-columns: 1.25fr 1fr 1fr;
+  gap: 20px;
+  width: 100%;
+}
+
+.sa-exact-recent-card,
+.sa-exact-qa-card,
+.sa-exact-promo-card {
+  background: #ffffff;
+  border: 1px solid rgba(226, 232, 240, 0.85);
+  border-radius: 18px;
+  padding: 20px 22px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
+  box-sizing: border-box;
+}
+
+/* Recent Activity Table */
+.sa-exact-activity-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.sa-exact-activity-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.sa-exact-activity-table th {
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  border-bottom: 1px solid #f1f5f9;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sa-exact-activity-table td {
+  padding: 10px 8px;
+  border-bottom: 1px solid #f8fafc;
+  vertical-align: middle;
+}
+
+.sa-exact-activity-table tr:last-child td {
+  border-bottom: none;
+}
+
+.sa-td-activity-idx {
+  color: #94a3b8;
+  font-weight: 600;
+  text-align: center;
+}
+
+.sa-activity-event-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.sa-activity-emoji-icon {
+  font-size: 14px;
+}
+
+.sa-activity-event-name {
+  font-size: 12px;
+}
+
+.sa-activity-details-text {
+  color: #64748b;
+  font-weight: 500;
+  font-size: 11.5px;
+}
+
+.sa-activity-time-text {
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 500;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Quick Actions 2x2 Grid */
+.sa-exact-qa-grid-2x2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.sa-exact-qa-tile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 12px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.sa-exact-qa-tile:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.sa-qa-mint {
+  background: #f0fdf4;
+  border-color: #dcfce7;
+}
+
+.sa-qa-blue {
+  background: #eff6ff;
+  border-color: #dbeafe;
+}
+
+.sa-qa-orange {
+  background: #fff7ed;
+  border-color: #ffedd5;
+}
+
+.sa-qa-purple {
+  background: #faf5ff;
+  border-color: #f3e8ff;
+}
+
+.sa-qa-tile-icon-box {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sa-qa-tile-icon-box.mint {
+  background: #dcfce7;
+}
+
+.sa-qa-tile-icon-box.blue {
+  background: #dbeafe;
+}
+
+.sa-qa-tile-icon-box.orange {
+  background: #ffedd5;
+}
+
+.sa-qa-tile-icon-box.purple {
+  background: #f3e8ff;
+}
+
+.sa-qa-tile-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.25;
+}
+
+/* Smarter Management Promo Card */
+.sa-exact-promo-card {
+  background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 60%, #e6f9f0 100%);
+  border: 1px solid #bbf7d0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  position: relative;
+  overflow: hidden;
+}
+
+.sa-exact-promo-card::before {
+  content: "";
+  position: absolute;
+  top: -20px;
+  right: -20px;
+  width: 100px;
+  height: 100px;
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.15) 0%, transparent 70%);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.sa-exact-promo-content {
+  position: relative;
+  z-index: 2;
+}
+
+.sa-exact-promo-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: #064e3b;
+  margin: 0 0 6px 0;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+
+.sa-exact-promo-sub {
+  font-size: 12px;
+  color: #047857;
+  margin: 0 0 16px 0;
+  font-weight: 500;
+}
+
+.sa-exact-promo-explore-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #10b981;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 16px;
+  border-radius: 20px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.25);
+}
+
+.sa-exact-promo-explore-btn:hover {
+  background: #059669;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(16, 185, 129, 0.35);
+}
+
+.sa-exact-promo-cart-box {
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-end;
+  margin-top: 10px;
+}
+
+.sa-exact-promo-cart-img {
+  max-height: 120px;
+  object-fit: contain;
+  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.1));
+}
+
+/* -------------------------------------------------------------------------
+   RESPONSIVE BREAKPOINTS
+   ------------------------------------------------------------------------- */
+@media (max-width: 1280px) {
+  .sa-exact-kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .sa-exact-middle-grid {
+    grid-template-columns: 1fr;
+  }
+  .sa-exact-bottom-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .sa-ref-dashboard-container {
+    padding: 12px 14px 28px;
+    gap: 16px;
+  }
+  .sa-exact-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+  .sa-exact-overview-content-row {
+    flex-direction: column;
+  }
+  .sa-exact-aisle-img-wrap {
+    width: 100%;
+    height: 160px;
+  }
+  .sa-exact-stat-tiles-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .sa-exact-qa-grid-2x2 {
+    grid-template-columns: 1fr;
+  }
+  .sa-exact-sales-card {
+    padding: 16px;
+  }
+  .sa-exact-chart-box {
+    height: 180px;
+  }
+}

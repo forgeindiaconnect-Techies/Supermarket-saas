@@ -1735,3 +1735,318 @@
     transform: scale(0.92);
   }
 }
+
+
+/* ================= Clean Modern Top Header Bar Matching Reference Mockup ================= */
+.sa-clean-top-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.15rem 2rem 0.85rem 2rem;
+  background: transparent;
+  position: relative;
+  z-index: 10;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.4);
+}
+
+.sa-header-welcome-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.sa-header-mobile-toggle {
+  display: none;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 8px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.sa-welcome-greeting-wrap {
+  display: flex;
+  flex-direction: column;
+}
+
+.sa-welcome-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.sa-waving-hand {
+  font-size: 1.75rem;
+  display: inline-block;
+  line-height: 1;
+  animation: waveHand 2.2s infinite ease-in-out;
+  transform-origin: 70% 70%;
+}
+
+@keyframes waveHand {
+  0%, 100% { transform: rotate(0deg); }
+  20%, 60% { transform: rotate(14deg); }
+  40%, 80% { transform: rotate(-10deg); }
+}
+
+.sa-welcome-texts {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+
+.sa-welcome-h1 {
+  margin: 0;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: #4b5563;
+  letter-spacing: -0.01em;
+}
+
+.sa-welcome-name {
+  font-size: 1.35rem;
+  font-weight: 850;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+}
+
+.sa-welcome-tagline {
+  margin: 0.2rem 0 0 0;
+  font-size: 0.85rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.sa-header-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 1.15rem;
+}
+
+.sa-notif-circle-btn {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+  transition: all 0.2s ease;
+}
+
+.sa-notif-circle-btn:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  transform: translateY(-1px);
+}
+
+.sa-notif-badge-pill {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 850;
+  min-width: 17px;
+  height: 17px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #ffffff;
+  padding: 0 3px;
+}
+
+.sa-profile-chip-wrap {
+  position: relative;
+}
+
+.sa-profile-chip-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 30px;
+  padding: 4px 14px 4px 5px;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+  transition: all 0.2s ease;
+}
+
+.sa-profile-chip-btn:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+}
+
+.sa-profile-avatar-initials {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #059669;
+  color: #ffffff;
+  font-size: 13.5px;
+  font-weight: 850;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sa-profile-chip-text {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  line-height: 1.15;
+}
+
+.sa-profile-chip-name {
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.sa-profile-chip-role {
+  font-size: 0.72rem;
+  color: #64748b;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.sa-role-chevron {
+  color: #94a3b8;
+}
+
+/* Background waves */
+.sa-dashboard-bg-waves {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.sa-bg-wave-top {
+  position: absolute;
+  top: -160px;
+  right: -100px;
+  width: 650px;
+  height: 550px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.08) 0%, rgba(255, 255, 255, 0) 70%);
+}
+
+.sa-bg-wave-bottom {
+  position: absolute;
+  bottom: -180px;
+  left: -120px;
+  width: 700px;
+  height: 600px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(34, 197, 94, 0.06) 0%, rgba(255, 255, 255, 0) 70%);
+}
+
+/* Sidebar Bottom CTA Promo Card */
+.sa-sidebar-bottom-section {
+  padding: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sa-sidebar-cta-card {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 0.85rem 0.95rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sa-sidebar-cta-icon-box {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #10b981;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sa-sidebar-cta-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.sa-sidebar-cta-title {
+  color: #ffffff;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.sa-sidebar-cta-sub {
+  color: #93c5fd;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.sa-sidebar-cta-btn {
+  background: #10b981;
+  color: #ffffff;
+  border: none;
+  border-radius: 20px;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.75rem;
+  font-weight: 800;
+  cursor: pointer;
+  align-self: flex-start;
+  transition: all 0.15s ease;
+}
+
+.sa-sidebar-cta-btn:hover {
+  background: #059669;
+  transform: translateY(-1px);
+}
+
+.sa-sidebar-clean-logout-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.65rem;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+  font-size: 0.85rem;
+  font-weight: 750;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sa-sidebar-clean-logout-btn:hover {
+  background: rgba(220, 38, 38, 0.25);
+  border-color: #ef4444;
+}
+
+@media (max-width: 900px) {
+  .sa-clean-top-header {
+    padding: 1rem 1rem 0.75rem 1rem;
+  }
+  .sa-header-mobile-toggle {
+    display: flex;
+  }
+}
