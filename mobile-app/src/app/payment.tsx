@@ -234,12 +234,23 @@ export default function SecurePaymentScreen() {
         method: "POST",
         headers,
         body: JSON.stringify(payload),
-      }, 8000);
+      }, 20000);
 
-      const data = await res.json();
+      const contentType = res.headers?.get("content-type") || "";
+      let data: any = null;
+      if (contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        const raw = await res.text();
+        try {
+          data = JSON.parse(raw);
+        } catch (_) {
+          throw new Error("Server is processing. Please check orders or try again.");
+        }
+      }
 
-      if (!res.ok || !data.success) {
-        throw new Error(data.message || "Payment verification failed.");
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.message || "Payment verification failed.");
       }
 
       // Add to recent orders & clear cart

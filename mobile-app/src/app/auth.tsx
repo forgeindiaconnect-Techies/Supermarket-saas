@@ -160,12 +160,23 @@ export default function CustomerAuthScreen() {
             supermarketCode: chosenStore.code,
             registrationType: "ONLINE",
           }),
-        }, 8000);
+        }, 25000);
 
-        const data = await res.json();
+        const contentType = res.headers?.get("content-type") || "";
+        let data: any = null;
+        if (contentType.includes("application/json")) {
+          data = await res.json();
+        } else {
+          const raw = await res.text();
+          try {
+            data = JSON.parse(raw);
+          } catch (_) {
+            throw new Error("Server is waking up. Please tap Create Account again.");
+          }
+        }
 
-        if (!res.ok || !data.success) {
-          if (data.message && data.message.includes("does not currently support Online Purchase")) {
+        if (!res.ok || !data?.success) {
+          if (data?.message && data.message.includes("does not currently support Online Purchase")) {
             setUnavailableModal({
               visible: true,
               mode: "Online",
@@ -173,7 +184,7 @@ export default function CustomerAuthScreen() {
             });
             return;
           }
-          throw new Error(data.message || "Registration failed.");
+          throw new Error(data?.message || "Registration failed.");
         }
 
         // Connect customer permanently to selected supermarket
@@ -195,7 +206,16 @@ export default function CustomerAuthScreen() {
         // Redirect to Online Catalog
         router.replace("/catalog");
       } catch (err: any) {
-        setErrorMsg(err.message || "Failed to complete registration.");
+        const msg = err?.message || "";
+        if (
+          msg.toLowerCase().includes("cancel") ||
+          msg.toLowerCase().includes("abort") ||
+          msg.toLowerCase().includes("timed out")
+        ) {
+          setErrorMsg("Server is waking up from sleep. Please tap Create Account again.");
+        } else {
+          setErrorMsg(msg || "Failed to complete registration.");
+        }
       } finally {
         setLoading(false);
       }
@@ -212,12 +232,23 @@ export default function CustomerAuthScreen() {
             phone: cleanPhone,
             password,
           }),
-        }, 8000);
+        }, 25000);
 
-        const data = await res.json();
+        const contentType = res.headers?.get("content-type") || "";
+        let data: any = null;
+        if (contentType.includes("application/json")) {
+          data = await res.json();
+        } else {
+          const raw = await res.text();
+          try {
+            data = JSON.parse(raw);
+          } catch (_) {
+            throw new Error("Server is waking up. Please tap Sign In again.");
+          }
+        }
 
-        if (!res.ok || !data.success) {
-          if (data.message && data.message.includes("does not currently support Online Purchase")) {
+        if (!res.ok || !data?.success) {
+          if (data?.message && data.message.includes("does not currently support Online Purchase")) {
             setUnavailableModal({
               visible: true,
               mode: "Online",
@@ -225,7 +256,7 @@ export default function CustomerAuthScreen() {
             });
             return;
           }
-          throw new Error(data.message || "Login failed.");
+          throw new Error(data?.message || "Login failed.");
         }
 
         const storeInfo: SupermarketInfo = data.supermarket || {
@@ -252,7 +283,16 @@ export default function CustomerAuthScreen() {
 
         router.replace("/catalog");
       } catch (err: any) {
-        setErrorMsg(err.message || "Login failed. Check your number.");
+        const msg = err?.message || "";
+        if (
+          msg.toLowerCase().includes("cancel") ||
+          msg.toLowerCase().includes("abort") ||
+          msg.toLowerCase().includes("timed out")
+        ) {
+          setErrorMsg("Server is waking up from sleep. Please tap Sign In again.");
+        } else {
+          setErrorMsg(msg || "Login failed. Check your number.");
+        }
       } finally {
         setLoading(false);
       }

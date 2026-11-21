@@ -200,12 +200,15 @@ export default function CustomerDetailsScreen() {
               registrationType: "OFFLINE",
             }),
           },
-          8000
+          18000
         );
-        const regData = await regRes.json();
-        if (regData?.customer) {
-          setCustomerUser(regData.customer);
-          savedCustomerId = regData.customer._id;
+        const regContentType = regRes.headers?.get("content-type") || "";
+        if (regContentType.includes("application/json")) {
+          const regData = await regRes.json();
+          if (regData?.customer) {
+            setCustomerUser(regData.customer);
+            savedCustomerId = regData.customer._id;
+          }
         }
       } catch (_) {
         // Fallback to customer register endpoint
@@ -225,12 +228,15 @@ export default function CustomerDetailsScreen() {
                 registrationType: "OFFLINE",
               }),
             },
-            8000
+            18000
           );
-          const fallbackData = await fallbackRes.json();
-          if (fallbackData?.customer) {
-            setCustomerUser(fallbackData.customer);
-            savedCustomerId = fallbackData.customer._id;
+          const fbContentType = fallbackRes.headers?.get("content-type") || "";
+          if (fbContentType.includes("application/json")) {
+            const fallbackData = await fallbackRes.json();
+            if (fallbackData?.customer) {
+              setCustomerUser(fallbackData.customer);
+              savedCustomerId = fallbackData.customer._id;
+            }
           }
         } catch (_) {}
       }

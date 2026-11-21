@@ -57,13 +57,24 @@ export default function DeliveryLoginScreen() {
             password,
           }),
         },
-        8000
+        20000
       );
 
-      const data = await res.json();
+      const contentType = res.headers?.get("content-type") || "";
+      let data: any = null;
+      if (contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        const raw = await res.text();
+        try {
+          data = JSON.parse(raw);
+        } catch (_) {
+          throw new Error("Server is waking up. Please try logging in again.");
+        }
+      }
 
-      if (!res.ok || !data.success) {
-        throw new Error(data.message || "Delivery authentication failed.");
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.message || "Delivery authentication failed.");
       }
 
       // Populate delivery user in context

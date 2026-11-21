@@ -246,8 +246,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         });
 
         if (API_URL) {
-          safeFetch(`${API_URL}/supermarkets/${user.supermarketId}/availability`, {}, 5000)
-            .then((res) => res.json())
+          safeFetch(`${API_URL}/supermarkets/${user.supermarketId}/availability`, {}, 12000)
+            .then(async (res) => {
+              const ct = res.headers?.get("content-type") || "";
+              if (ct.includes("application/json")) {
+                return res.json();
+              }
+              return null;
+            })
             .then((data) => {
               if (data?.success && data.supermarket) {
                 const sm = data.supermarket;
@@ -348,15 +354,29 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           supermarketCode: store.code,
           mode,
         }),
-      }, 5000);
+      }, 12000);
 
-      const data = await res.json();
-      if (data.allowed === true) {
-        return { allowed: true, message: "" };
+      const ct = res.headers?.get("content-type") || "";
+      if (ct.includes("application/json")) {
+        const data = await res.json();
+        if (data.allowed === true) {
+          return { allowed: true, message: "" };
+        }
+        return {
+          allowed: false,
+          message: data.message || `This supermarket does not currently support ${mode === "online" ? "Online" : "Offline"} Purchase. Please choose an available option.`,
+        };
       }
+
+      // If server returned non-JSON, fall back to local store attributes
+      const isOnline = mode === "online" && (store.onlineDeliveryAvailable === true || store.selfPickupAvailable === true || store.onlineAvailable === true);
+      const isOffline = mode === "offline" && (store.selfPickupAvailable === true || store.offlineAvailable === true);
+      const allowed = isOnline || isOffline;
       return {
-        allowed: false,
-        message: data.message || `This supermarket does not currently support ${mode === "online" ? "Online" : "Offline"} Purchase. Please choose an available option.`,
+        allowed,
+        message: allowed
+          ? ""
+          : `This supermarket does not currently support ${mode === "online" ? "Online Ordering" : "In-Store Shopping"}. Please choose an available option.`,
       };
     } catch (_) {
       // Local check fallback
