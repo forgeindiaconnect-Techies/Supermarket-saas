@@ -82,9 +82,12 @@ exports.getDeliveryOrders = async (req, res) => {
       });
     }
 
-    // Delivery orders include ONLINE_DELIVERY, SELF_PICKUP_DOORSTEP, or DELIVERY
+    // Strict isolation: Delivery orders only (SELF_PICKUP and OFFLINE orders strictly excluded)
     const query = {
       supermarket: supermarketId,
+      purchaseMode: "ONLINE",
+      orderType: { $nin: ["SELF_PICKUP", "SELF_PICKUP_STORE_COLLECTION", "IN_STORE"] },
+      fulfillmentChoice: { $ne: "STORE_COLLECTION" },
       $or: [
         { orderType: { $in: ["DELIVERY", "ONLINE_DELIVERY", "SELF_PICKUP_DOORSTEP"] } },
         { fulfillmentChoice: "DOORSTEP_DELIVERY" },

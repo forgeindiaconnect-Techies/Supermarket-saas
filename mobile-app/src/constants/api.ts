@@ -69,12 +69,13 @@ export const API_URL = computeApiUrl();
 export const SOCKET_URL = API_URL.replace(/\/api\/?$/, "");
 
 /**
- * Resilient fetch with AbortController timeout and automatic fallback
+ * Resilient fetch with AbortController timeout and automatic dual-direction fallback
+ * (Cloud Render Server <-> Local Dev Machine LAN Host).
  */
 export async function safeFetch(
   url: string,
   options: RequestInit = {},
-  timeoutMs = 7000
+  timeoutMs = 15000
 ): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -86,28 +87,54 @@ export async function safeFetch(
     });
     return res;
   } catch (primaryErr: any) {
-    // If running on a physical mobile device and the local LAN endpoint is unreachable
-    // (e.g. phone is on cellular mobile data or different Wi-Fi subnet),
-    // automatically attempt fallback to the deployed cloud server
-    if (
-      Platform.OS !== "web" &&
-      API_URL !== DEFAULT_SERVER_URL &&
-      url.startsWith(API_URL)
-    ) {
-      const fallbackUrl = url.replace(API_URL, DEFAULT_SERVER_URL);
+    clearTimeout(timer);
+
+    // Dynamic dual-direction fallback:
+    // If the request to Render timed out or failed (e.g. Render instance sleeping),
+    // automatically attempt the local computer's LAN IP backend.
+    // If the local backend was unreachable (e.g. phone on cellular data),
+    // automatically fall back to the live Render cloud server.
+    const resolvedHost = getResolvedHost();
+    const localBase = `http://${resolvedHost}:5001/api`;
+
+    let fallbackUrl: string | null = null;
+    if (url.startsWith(DEFAULT_SERVER_URL)) {
+      fallbackUrl = url.replace(DEFAULT_SERVER_URL, localBase);
+    } else if (url.startsWith(localBase)) {
+      fallbackUrl = url.replace(localBase, DEFAULT_SERVER_URL);
+    } else if (url.includes("localhost:5001/api") || url.includes("127.0.0.1:5001/api")) {
+      fallbackUrl = url.replace(/http:\/\/(localhost|127\.0\.0\.1):5001\/api/, DEFAULT_SERVER_URL);
+    }
+
+    if (fallbackUrl && fallbackUrl !== url && Platform.OS !== "web") {
       try {
+        const fallbackCtrl = new AbortController();
+        const fallbackTimer = setTimeout(() => fallbackCtrl.abort(), 12000);
         const fallbackRes = await fetch(fallbackUrl, {
           ...options,
-          signal: controller.signal,
+          signal: fallbackCtrl.signal,
         });
+        clearTimeout(fallbackTimer);
         return fallbackRes;
       } catch (_) {
-        // Fallback also failed; throw original with clear diagnostic info
+        // Fallback also failed
       }
     }
 
-    const host = getResolvedHost();
-    const isLocal = url.includes("localhost") || url.includes("127.0.0.1") || url.includes(host);
+    const isLocal = url.includes("localhost") || url.includes("127.0.0.1") || url.includes(resolvedHost);
+    const msg = primaryErr?.message || "";
+    const isTimeoutOrCancel =
+      primaryErr?.name === "AbortError" ||
+      msg.toLowerCase().includes("cancel") ||
+      msg.toLowerCase().includes("abort") ||
+      msg.toLowerCase().includes("network request failed");
+
+    if (isTimeoutOrCancel) {
+      throw new Error(
+        "Connecting to the server timed out. The server may be waking up from sleep or network is slow. Please tap Retry."
+      );
+    }
+
     if (isLocal && Platform.OS === "android") {
       throw new Error(
         `Cannot reach backend at ${url}.\n\nEnsure your phone and computer are on the same Wi-Fi network, or connect via USB and run 'adb reverse tcp:5001 tcp:5001'.`

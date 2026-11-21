@@ -89,6 +89,7 @@ export default function OrdersManagement() {
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
   const [showTopProductsModal, setShowTopProductsModal] = useState(false);
+  const [selectedReviewOrder, setSelectedReviewOrder] = useState(null);
 
   // Live Supermarket Availability Configuration (Cases 1, 2, 3, 4)
   const [storeAvailability, setStoreAvailability] = useState(() => ({
@@ -451,18 +452,22 @@ export default function OrdersManagement() {
 
   const offlineOrdersList = useMemo(() => {
     return orders.filter(
-      (o) => o.purchaseMode === "OFFLINE" || o.orderType === "IN_STORE"
+      (o) => o.purchaseMode === "OFFLINE" || o.orderType === "IN_STORE" || o.orderType === "OFFLINE"
     );
   }, [orders]);
 
   const pickupOrdersList = useMemo(() => {
-    return orders.filter(
-      (o) => o.orderType === "SELF_PICKUP" || Boolean(o.pickupDate) || Boolean(o.pickupTimeSlot)
-    );
+    return orders.filter((o) => {
+      const isOffline = o.purchaseMode === "OFFLINE" || o.orderType === "IN_STORE" || o.orderType === "OFFLINE";
+      if (isOffline) return false;
+      return o.orderType === "SELF_PICKUP" || Boolean(o.pickupDate) || Boolean(o.pickupTimeSlot);
+    });
   }, [orders]);
 
   const deliveryOrdersList = useMemo(() => {
     return orders.filter((o) => {
+      const isOffline = o.purchaseMode === "OFFLINE" || o.orderType === "IN_STORE" || o.orderType === "OFFLINE";
+      if (isOffline) return false;
       const isPickup = o.orderType === "SELF_PICKUP" || Boolean(o.pickupDate) || Boolean(o.pickupTimeSlot);
       return (o.orderType === "DELIVERY" || Boolean(o.deliveryAddress)) && !isPickup;
     });
@@ -476,11 +481,11 @@ export default function OrdersManagement() {
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
     return orders.filter((o) => {
-      // 1. Fulfillment Tab isolation
-      const isPickup = o.orderType === "SELF_PICKUP" || Boolean(o.pickupDate) || Boolean(o.pickupTimeSlot);
-      const isDelivery = (o.orderType === "DELIVERY" || Boolean(o.deliveryAddress)) && !isPickup;
-      const isOnline = o.purchaseMode === "ONLINE" || isPickup || isDelivery;
-      const isOfflineOrder = o.purchaseMode === "OFFLINE" || o.orderType === "IN_STORE";
+      // 1. Fulfillment Tab isolation (Strict Boundary Enforcement)
+      const isOfflineOrder = o.purchaseMode === "OFFLINE" || o.orderType === "IN_STORE" || o.orderType === "OFFLINE";
+      const isPickup = !isOfflineOrder && (o.orderType === "SELF_PICKUP" || Boolean(o.pickupDate) || Boolean(o.pickupTimeSlot));
+      const isDelivery = !isOfflineOrder && ((o.orderType === "DELIVERY" || Boolean(o.deliveryAddress)) && !isPickup);
+      const isOnline = !isOfflineOrder && (o.purchaseMode === "ONLINE" || isPickup || isDelivery);
 
       if (fulfillmentTab === "OFFLINE") {
         if (!isOfflineOrder) return false;
@@ -1112,29 +1117,33 @@ export default function OrdersManagement() {
               <span>Top Selling</span>
             </button>
 
-            <button
-              type="button"
-              className="pm-action-btn"
-              onClick={handleSimulateCustomerOrder}
-              disabled={loading}
-              title="Place a real-time customer pre-booking to test live notifications and payment approval"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "5px",
-                padding: "6px 12px",
-                borderRadius: "8px",
-                fontSize: "12px",
-                fontWeight: 700,
-                background: "#EFF6FF",
-                color: "#1D4ED8",
-                border: "1px solid #BFDBFE",
-                cursor: "pointer",
-              }}
-            >
-              <Sparkles size={13} color="#2563EB" />
-              <span>⚡ Place Live Customer Order</span>
-            </button>
+            {orders.some((o) => o.review && o.review.rating) && (
+              <button
+                type="button"
+                className="pm-action-btn"
+                onClick={() => {
+                  const firstRev = orders.find((o) => o.review && o.review.rating);
+                  if (firstRev) setSelectedReviewOrder(firstRev);
+                }}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "5px",
+                  padding: "6px 12px",
+                  borderRadius: "8px",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  background: "#FEF3C7",
+                  color: "#92400E",
+                  border: "1px solid #FCD34D",
+                  cursor: "pointer",
+                }}
+                title="View customer ratings and reviews"
+              >
+                <span>⭐</span>
+                <span>Customer Reviews ({orders.filter((o) => o.review && o.review.rating).length})</span>
+              </button>
+            )}
 
             <button
               type="button"
@@ -1211,8 +1220,9 @@ export default function OrdersManagement() {
                     minute: "2-digit",
                   });
 
-                  const isPickup = ord.orderType === "SELF_PICKUP" || Boolean(ord.pickupDate) || Boolean(ord.pickupTimeSlot);
-                  const isDelivery = (ord.orderType === "DELIVERY" || Boolean(ord.deliveryAddress)) && !isPickup;
+                  const isOffline = ord.purchaseMode === "OFFLINE" || ord.orderType === "IN_STORE" || ord.orderType === "OFFLINE";
+                  const isPickup = !isOffline && (ord.orderType === "SELF_PICKUP" || Boolean(ord.pickupDate) || Boolean(ord.pickupTimeSlot));
+                  const isDelivery = !isOffline && ((ord.orderType === "DELIVERY" || Boolean(ord.deliveryAddress)) && !isPickup);
 
                   return (
                     <tr key={ord._id}>
@@ -1288,13 +1298,13 @@ export default function OrdersManagement() {
                                 fontWeight: 800,
                                 padding: "1px 6px",
                                 borderRadius: "4px",
-                                background: "#EFF6FF",
-                                color: "#1D4ED8",
-                                border: "1px solid #BFDBFE",
+                                background: isOffline ? "#F0FDF4" : "#EFF6FF",
+                                color: isOffline ? "#16A34A" : "#1D4ED8",
+                                border: isOffline ? "1px solid #BBF7D0" : "1px solid #BFDBFE",
                                 letterSpacing: "0.3px",
                               }}
                             >
-                              ONLINE
+                              {isOffline ? "OFFLINE" : "ONLINE"}
                             </span>
                           </div>
                           {ord.customer?.phone && (
@@ -1307,6 +1317,36 @@ export default function OrdersManagement() {
                               ✉️ {ord.customer.email}
                             </span>
                           )}
+                          {ord.review?.rating ? (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedReviewOrder(ord)}
+                              title={`Customer Review: ${ord.review.rating}★ "${ord.review.comment || ''}"`}
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px",
+                                marginTop: "3px",
+                                padding: "2px 7px",
+                                borderRadius: "6px",
+                                background: "#FEF3C7",
+                                border: "1px solid #FCD34D",
+                                color: "#92400E",
+                                fontSize: "10.5px",
+                                fontWeight: 700,
+                                cursor: "pointer",
+                                width: "fit-content",
+                              }}
+                            >
+                              <span>⭐ {ord.review.rating}★</span>
+                              <span style={{ maxWidth: "80px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                "{ord.review.comment || "Rated"}"
+                              </span>
+                              <span style={{ fontSize: "9.5px", color: "#B45309", textDecoration: "underline", marginLeft: "2px" }}>
+                                View
+                              </span>
+                            </button>
+                          ) : null}
                         </div>
                       </td>
 
@@ -2074,6 +2114,151 @@ export default function OrdersManagement() {
                 type="button"
                 className="action-pill-btn refresh"
                 onClick={() => setShowTopProductsModal(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Customer Review Details Modal */}
+      {selectedReviewOrder && (
+        <div
+          className="pm-modal-backdrop"
+          onClick={() => setSelectedReviewOrder(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.6)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+            padding: "20px",
+          }}
+        >
+          <div
+            className="pm-modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#FFFFFF",
+              borderRadius: "16px",
+              padding: "24px",
+              width: "100%",
+              maxWidth: "520px",
+              boxShadow: "0 20px 40px -15px rgba(0,0,0,0.25)",
+              border: "1px solid #E2E8F0",
+            }}
+          >
+            {/* Modal Header */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "18px", borderBottom: "1px solid #F1F5F9", paddingBottom: "12px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <div style={{ width: "36px", height: "36px", borderRadius: "10px", background: "#FEF3C7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px" }}>
+                  ⭐
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 800, color: "#0F172A" }}>
+                    Customer Review & Feedback
+                  </h3>
+                  <span style={{ fontSize: "12px", color: "#64748B" }}>
+                    Order #{selectedReviewOrder.orderNumber}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedReviewOrder(null)}
+                style={{ background: "#F1F5F9", border: "none", borderRadius: "8px", width: "30px", height: "30px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748B", fontWeight: 800 }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Customer Details Box */}
+            <div style={{ background: "#F8FAFC", borderRadius: "12px", padding: "12px 16px", marginBottom: "16px", border: "1px solid #E2E8F0" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748B", textTransform: "uppercase" }}>Review Author</span>
+                  <div style={{ fontSize: "15px", fontWeight: 800, color: "#0F172A", marginTop: "2px" }}>
+                    {selectedReviewOrder.review?.customerName || selectedReviewOrder.customer?.name || "Verified Customer"}
+                  </div>
+                  {selectedReviewOrder.customer?.phone && (
+                    <div style={{ fontSize: "12px", color: "#64748B", marginTop: "2px" }}>
+                      📞 {formatPhone(selectedReviewOrder.customer.phone)}
+                    </div>
+                  )}
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <span style={{ display: "inline-block", background: "#DCFCE7", color: "#166534", fontSize: "11px", fontWeight: 800, padding: "3px 8px", borderRadius: "6px", border: "1px solid #BBF7D0" }}>
+                    ✓ Verified Customer
+                  </span>
+                  <div style={{ fontSize: "11px", color: "#94A3B8", marginTop: "4px" }}>
+                    {selectedReviewOrder.review?.submittedAt
+                      ? new Date(selectedReviewOrder.review.submittedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+                      : "Recent"}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Star Rating & Comment Display */}
+            <div style={{ background: "#FFFBEB", borderRadius: "12px", padding: "16px", marginBottom: "18px", border: "1.5px solid #FDE68A" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
+                {[...Array(5)].map((_, i) => (
+                  <span
+                    key={i}
+                    style={{
+                      fontSize: "20px",
+                      color: i < (selectedReviewOrder.review?.rating || 5) ? "#F59E0B" : "#CBD5E1",
+                    }}
+                  >
+                    ★
+                  </span>
+                ))}
+                <span style={{ fontSize: "15px", fontWeight: 800, color: "#92400E", marginLeft: "6px" }}>
+                  {selectedReviewOrder.review?.rating || 5}.0 / 5
+                </span>
+                <span style={{ fontSize: "12px", fontWeight: 700, color: "#B45309", marginLeft: "auto", background: "#FEF3C7", padding: "2px 8px", borderRadius: "6px" }}>
+                  {selectedReviewOrder.review?.rating === 5 ? "Outstanding!" : selectedReviewOrder.review?.rating >= 4 ? "Very Good" : "Feedback"}
+                </span>
+              </div>
+              <div style={{ fontSize: "14px", color: "#78350F", fontStyle: "italic", fontWeight: 600, lineHeight: 1.5 }}>
+                "{selectedReviewOrder.review?.comment || "Customer submitted star rating."}"
+              </div>
+            </div>
+
+            {/* Order Items Purchased */}
+            <div style={{ marginBottom: "18px" }}>
+              <span style={{ fontSize: "12px", fontWeight: 700, color: "#475569", textTransform: "uppercase" }}>
+                Purchased Package ({selectedReviewOrder.items?.length || 1} items)
+              </span>
+              <div style={{ marginTop: "6px", maxHeight: "110px", overflowY: "auto", border: "1px solid #F1F5F9", borderRadius: "8px", padding: "8px 12px", background: "#FAFAFA" }}>
+                {(selectedReviewOrder.items || []).map((it, idx) => (
+                  <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", padding: "3px 0", color: "#334155" }}>
+                    <span>• {it.name} (x{it.quantity})</span>
+                    <strong style={{ color: "#0F172A" }}>₹{Number(it.price * it.quantity).toFixed(2)}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => setSelectedReviewOrder(null)}
+                style={{
+                  padding: "8px 18px",
+                  borderRadius: "8px",
+                  background: "#0F172A",
+                  color: "#FFFFFF",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  border: "none",
+                  cursor: "pointer",
+                }}
               >
                 Close
               </button>

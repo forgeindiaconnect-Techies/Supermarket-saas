@@ -519,8 +519,12 @@ export default function LoginPage() {
                 </div>
               )}
 
-              {/* Form */}
-              <form onSubmit={handleSubmit} className="ref-form" autoComplete="off">
+              {/* Form with anti-autofill and Google Password Manager blocker */}
+              <form onSubmit={handleSubmit} className="ref-form" autoComplete="off" noValidate>
+                {/* Fake dummy hidden inputs to consume browser password autofill */}
+                <input type="text" name="fakeusernameremembered" style={{ display: "none" }} tabIndex={-1} autoComplete="off" />
+                <input type="password" name="fakepasswordremembered" style={{ display: "none" }} tabIndex={-1} autoComplete="off" />
+
                 {/* Field 1: Supermarket Name or ID */}
                 <div className="ref-field">
                   <div className="ref-input-box">
@@ -530,6 +534,8 @@ export default function LoginPage() {
                     <input
                       ref={usernameInputRef}
                       type="text"
+                      name="store_identity"
+                      id="store_identity"
                       required
                       value={username}
                       onChange={(e) => {
@@ -543,14 +549,16 @@ export default function LoginPage() {
                   </div>
                 </div>
 
-                {/* Field 2: Password */}
+                {/* Field 2: Password (Protected against Google Password Manager popup) */}
                 <div className="ref-field">
                   <div className="ref-input-box">
                     <span className="ref-input-icon">
                       <Lock size={18} color="#64748b" />
                     </span>
                     <input
-                      type={showPassword ? "text" : "password"}
+                      type="text"
+                      name="store_access_token"
+                      id="store_access_token"
                       required
                       value={password}
                       onChange={(e) => {
@@ -559,7 +567,13 @@ export default function LoginPage() {
                       }}
                       placeholder="Password"
                       className="ref-input"
-                      autoComplete="new-password"
+                      autoComplete="off"
+                      data-lpignore="true"
+                      data-1p-ignore="true"
+                      data-form-type="other"
+                      style={{
+                        WebkitTextSecurity: showPassword ? "none" : "disc",
+                      }}
                     />
                     <button
                       type="button"

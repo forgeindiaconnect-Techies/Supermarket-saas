@@ -1267,3 +1267,414 @@
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+/* =========================================================================
+   Order Management Modern Table Design strictly matching Royal Blue Header Theme (Image 2)
+   ========================================================================= */
+.orders-table-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.04);
+  margin-top: 16px;
+  margin-bottom: 24px;
+}
+
+.orders-table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.orders-table {
+  width: 100%;
+  min-width: 1020px;
+  border-collapse: collapse;
+  font-family: inherit;
+  font-size: 12.5px;
+  text-align: left;
+}
+
+/* Table Header matching Solid Royal Blue in Image 2 */
+.orders-table thead tr {
+  background: #1455d9 !important;
+}
+
+.orders-table thead th {
+  background: #1455d9 !important;
+  color: #ffffff !important;
+  padding: 11px 8px !important;
+  font-size: 11.5px !important;
+  font-weight: 800 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.35px !important;
+  border: none !important;
+  white-space: nowrap !important;
+  vertical-align: middle !important;
+}
+
+/* Specific Column Header & Cell Alignments */
+.orders-table thead th.th-idx,
+.orders-table tbody td.td-idx {
+  width: 38px;
+  min-width: 38px;
+  text-align: center !important;
+  padding-left: 6px !important;
+  padding-right: 6px !important;
+}
+
+.orders-table thead th.th-idx {
+  color: #ffffff !important;
+  font-weight: 800;
+}
+
+.orders-table tbody td.td-idx {
+  font-weight: 800;
+  color: #64748b;
+}
+
+.orders-table thead th.th-orderid,
+.orders-table tbody td.td-orderid {
+  text-align: left !important;
+  white-space: nowrap !important;
+  min-width: 145px;
+}
+
+.orders-table thead th.th-datetime,
+.orders-table tbody td.td-datetime {
+  text-align: left !important;
+  white-space: nowrap !important;
+  min-width: 115px;
+}
+
+.orders-table thead th.th-customer,
+.orders-table tbody td.td-customer {
+  text-align: left !important;
+  white-space: nowrap !important;
+  min-width: 105px;
+}
+
+.orders-table thead th.th-mobile,
+.orders-table tbody td.td-mobile {
+  text-align: left !important;
+  white-space: nowrap !important;
+  min-width: 128px;
+}
+
+.orders-table thead th.th-address,
+.orders-table tbody td.td-address {
+  text-align: left !important;
+  min-width: 110px;
+  max-width: 135px;
+}
+
+.orders-table thead th.th-partner,
+.orders-table tbody td.td-partner {
+  text-align: center !important;
+  white-space: nowrap !important;
+  min-width: 110px;
+}
+
+.orders-table thead th.th-items,
+.orders-table tbody td.td-items {
+  text-align: left !important;
+  white-space: nowrap !important;
+  min-width: 88px;
+}
+
+.orders-table thead th.th-amount,
+.orders-table tbody td.td-amount {
+  text-align: left !important;
+  white-space: nowrap !important;
+  min-width: 95px;
+}
+
+.orders-table thead th.th-status,
+.orders-table tbody td.td-status {
+  text-align: center !important;
+  white-space: nowrap !important;
+  min-width: 105px;
+}
+
+.orders-table thead th.th-action,
+.orders-table tbody td.td-action {
+  text-align: center !important;
+  width: 115px;
+  min-width: 115px;
+  padding-right: 12px !important;
+}
+
+.orders-table thead th.th-action {
+  color: #ffffff !important;
+}
+
+/* Table Rows */
+.orders-table tbody tr {
+  background: #ffffff;
+  transition: background-color 0.15s ease;
+}
+
+.orders-table tbody tr.row-completed-highlight {
+  background: #f0fdf4 !important;
+}
+
+.orders-table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.orders-table tbody tr.row-completed-highlight:hover {
+  background: #e6fced !important;
+}
+
+.orders-table tbody td {
+  padding: 10px 8px;
+  vertical-align: middle !important;
+  border-bottom: 1px solid #f1f5f9;
+  color: #0f172a;
+  font-size: 12.5px;
+}
+
+.orders-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Column 2: Order ID (Strict Single-Line No-Wrap) */
+.order-id-cell {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  white-space: nowrap !important;
+}
+
+.order-id-link {
+  font-size: 13px !important;
+  font-weight: 850 !important;
+  color: #1455d9 !important;
+  cursor: pointer !important;
+  letter-spacing: -0.01em !important;
+  text-decoration: none !important;
+  white-space: nowrap !important;
+}
+
+.order-id-link:hover {
+  text-decoration: underline;
+  color: #0d42aa;
+}
+
+.order-id-copy-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #2563eb;
+  padding: 3px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.order-id-copy-btn:hover {
+  background: #dbeafe;
+  color: #1455d9;
+}
+
+/* Column 3: Date & Time */
+.order-datetime-text {
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  color: #475569 !important;
+  white-space: nowrap !important;
+}
+
+/* Column 4: Customer */
+.order-customer-name {
+  font-size: 13px !important;
+  font-weight: 750 !important;
+  color: #0f172a !important;
+  white-space: nowrap !important;
+}
+
+/* Column 5: Mobile */
+.order-mobile-text {
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  color: #0f172a !important;
+  white-space: nowrap !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+}
+
+/* Delivery Address Cell */
+.order-address-cell {
+  max-width: 130px;
+  font-size: 12px;
+  color: #334155;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+  line-height: 1.35;
+}
+
+/* Delivery Partner Cell */
+.order-partner-cell {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  font-size: 11.5px !important;
+  font-weight: 750 !important;
+  color: #065f46 !important;
+  background: #ecfdf5 !important;
+  padding: 3px 8px !important;
+  border-radius: 6px !important;
+  border: 1px solid #a7f3d0 !important;
+  white-space: nowrap !important;
+}
+
+.order-partner-unassigned {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  color: #94a3b8 !important;
+  background: #f1f5f9 !important;
+  padding: 3px 8px !important;
+  border-radius: 6px !important;
+  white-space: nowrap !important;
+}
+
+/* Column 6: Items (Count badge on top, Product preview in parenthesis below) */
+.order-items-cell {
+  display: inline-flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  gap: 3px;
+}
+
+.order-items-count-badge {
+  font-size: 12px;
+  font-weight: 800;
+  background: #f1f5f9;
+  color: #0f172a;
+  padding: 2.5px 8px;
+  border-radius: 6px;
+  display: inline-block;
+  width: fit-content;
+  white-space: nowrap;
+}
+
+.order-items-preview {
+  font-size: 11px;
+  font-weight: 550;
+  color: #64748b;
+  white-space: nowrap;
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Column 7: Total Amount (Bold Emerald Green Spend Text matching Image 2) */
+.order-amount-text {
+  font-size: 14px !important;
+  font-weight: 900 !important;
+  color: #059669 !important;
+  white-space: nowrap !important;
+}
+
+/* Column 8: Status Badge matching Image 2 */
+.order-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 800;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+/* Status: Completed / Delivered (Mint green with checkmark matching Active in Image 2) */
+.order-status-pill.status-completed,
+.order-status-pill.status-delivered {
+  background: #dcfce7 !important;
+  color: #15803d !important;
+  border: 1px solid #86efac !important;
+}
+
+/* Status: Pending / New (Warm peach with clock) */
+.order-status-pill.status-pending,
+.order-status-pill.status-new {
+  background: #ffedd5 !important;
+  color: #c2410c !important;
+  border: 1px solid #fed7aa !important;
+}
+
+/* Status: Preparing (Blue with package) */
+.order-status-pill.status-preparing {
+  background: #dbeafe !important;
+  color: #1d4ed8 !important;
+  border: 1px solid #bfdbfe !important;
+}
+
+/* Status: Ready for Pickup (Purple with bell) */
+.order-status-pill.status-ready,
+.order-status-pill.status-readyforpickup {
+  background: #f3e8ff !important;
+  color: #7e22ce !important;
+  border: 1px solid #ddd6fe !important;
+}
+
+/* Status: Out for Delivery (Sky blue with truck) */
+.order-status-pill.status-outfordelivery {
+  background: #e0f2fe !important;
+  color: #0284c7 !important;
+  border: 1px solid #bae6fd !important;
+}
+
+/* Status: Picked Up (Purple with package) */
+.order-status-pill.status-orderpickedup {
+  background: #f3e8ff !important;
+  color: #7e22ce !important;
+  border: 1px solid #ddd6fe !important;
+}
+
+/* Status: Assigned (Lavender with user) */
+.order-status-pill.status-assigned {
+  background: #faf5ff !important;
+  color: #6b21a8 !important;
+  border: 1px solid #e9d5ff !important;
+}
+
+/* Column 9: View Details Action Button strictly matching Image 2 */
+.order-action-view-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 5px !important;
+  padding: 5px 12px !important;
+  border-radius: 9999px !important;
+  font-size: 11.5px !important;
+  font-weight: 750 !important;
+  cursor: pointer !important;
+  white-space: nowrap !important;
+  background: #ffffff !important;
+  color: #1455d9 !important;
+  border: 1.5px solid #bfdbfe !important;
+  box-shadow: 0 2px 8px rgba(20, 85, 217, 0.08) !important;
+  transition: all 0.18s ease !important;
+}
+
+.order-action-view-btn:hover {
+  background: #1455d9 !important;
+  color: #ffffff !important;
+  border-color: #1455d9 !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 12px rgba(20, 85, 217, 0.25) !important;
+}

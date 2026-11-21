@@ -1,20 +1,20 @@
-/* GrocerEase Super Admin Platform Layout Styles - Forest Green SaaS Theme */
+/* GrocerEase Super Admin Platform Layout Styles - Forest Green SaaS Theme Matching Image 2 */
 :root {
-  --sa-green-primary: #16a34a;
-  --sa-green-dark: #15803d;
+  --sa-green-primary: #10b981;
+  --sa-green-dark: #059669;
   --sa-green-light: #ecfdf5;
-  --sa-green-accent: #22c55e;
-  --sa-sidebar-bg: #064e3b;
-  --sa-sidebar-hover: rgba(255, 255, 255, 0.12);
+  --sa-green-accent: #34d399;
+  --sa-sidebar-bg: #004d36;
+  --sa-sidebar-hover: rgba(255, 255, 255, 0.14);
   --sa-sidebar-active: #059669;
   --sa-sidebar-border: rgba(255, 255, 255, 0.12);
-  --sa-sidebar-text: #f1f5f9;
+  --sa-sidebar-text: #ffffff;
   --sa-sidebar-text-bright: #ffffff;
-  --sa-bg: #ffffff;
+  --sa-bg: #f4faf6;
   --sa-card-bg: #ffffff;
-  --sa-heading: #172b24;
-  --sa-text-main: #172b24;
-  --sa-text-muted: #64748b;
+  --sa-heading: #0f172a;
+  --sa-text-main: #0f172a;
+  --sa-text-muted: #1e293b;
   --sa-border: #e2e8f0;
   --sa-radius-sm: 8px;
   --sa-radius-md: 12px;
@@ -41,18 +41,18 @@
 .sa-sidebar-backdrop {
   position: fixed;
   inset: 0;
-  background-color: rgba(4, 38, 23, 0.6);
+  background-color: rgba(0, 77, 54, 0.6);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   z-index: 998;
   touch-action: none;
 }
 
-/* ================= Left Forest Green Sidebar ================= */
+/* ================= Left Rich Deep Emerald Forest Green Sidebar Matching Image 2 ================= */
 .sa-sidebar {
   width: 260px;
   flex-shrink: 0;
-  background: linear-gradient(180deg, #064e3b 0%, #065f46 45%, #033a2d 100%) !important;
+  background: #004d36 !important;
   border-right: 1px solid rgba(255, 255, 255, 0.12);
   display: flex;
   flex-direction: column;
@@ -62,7 +62,7 @@
   max-height: 100vh;
   z-index: 999;
   overflow: hidden;
-  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.2);
+  box-shadow: 4px 0 24px rgba(0, 77, 54, 0.35);
   transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -71,7 +71,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 1.15rem 1.15rem 0.9rem 1.15rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .sa-brand-link {
@@ -85,12 +85,13 @@
   width: 38px;
   height: 38px;
   border-radius: 10px;
-  background: rgba(34, 197, 94, 0.22);
+  background: #10b981 !important;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1.5px solid #22c55e;
-  color: #4ade80;
+  border: none !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35);
 }
 
 .sa-brand-text {
@@ -99,24 +100,24 @@
 }
 
 .sa-brand-name {
-  font-size: 1.25rem;
-  font-weight: 850;
-  color: #ffffff;
+  font-size: 1.32rem;
+  font-weight: 900;
+  color: #ffffff !important;
   letter-spacing: -0.02em;
 }
 
 .sa-brand-tagline {
-  font-size: 0.68rem;
+  font-size: 0.7rem;
   font-weight: 700;
-  color: #4ade80;
-  letter-spacing: 0.3px;
+  color: #a7f3d0 !important;
+  letter-spacing: 0.25px;
 }
 
 .sa-mobile-close {
   display: none;
   background: none;
   border: none;
-  color: #94a3b8;
+  color: #ffffff;
   cursor: pointer;
   padding: 4px;
 }
@@ -136,7 +137,7 @@
 }
 
 .sa-sidebar-nav::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.15);
   border-radius: 4px;
 }
 
@@ -144,12 +145,12 @@
 .sa-nav-pill-main {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
-  padding: 0.65rem 0.9rem;
-  border-radius: 10px;
-  color: #f1f5f9 !important;
-  font-size: 0.88rem;
-  font-weight: 750;
+  gap: 0.7rem;
+  padding: 0.68rem 0.95rem;
+  border-radius: 12px;
+  color: #ffffff !important;
+  font-size: 0.89rem;
+  font-weight: 800;
   text-decoration: none;
   transition: all 0.15s ease;
   margin-bottom: 0.4rem;
@@ -166,9 +167,10 @@
 }
 
 .sa-nav-pill-main.active {
-  background: linear-gradient(90deg, #10b981 0%, #059669 100%) !important;
+  background: #059669 !important;
   color: #ffffff !important;
-  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.45);
+  font-weight: 850 !important;
+  box-shadow: 0 4px 14px rgba(5, 150, 105, 0.45);
 }
 
 .sa-nav-pill-main.active svg {
@@ -185,17 +187,18 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.62rem 0.85rem;
-  border-radius: 8px;
+  padding: 0.65rem 0.9rem;
+  border-radius: 10px;
   background: transparent;
   border: none;
   color: #ffffff !important;
-  font-size: 0.85rem;
-  font-weight: 750;
+  font-size: 0.9rem;
+  font-weight: 800;
   cursor: pointer;
   width: 100%;
   text-align: left;
   transition: all 0.15s ease;
+  letter-spacing: -0.01em;
 }
 
 .sa-group-header:hover {
@@ -206,7 +209,7 @@
 .sa-group-header-left {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.65rem;
 }
 
 .sa-group-header-left svg {
@@ -217,6 +220,7 @@
 .sa-chevron {
   transition: transform 0.2s ease;
   color: #a7f3d0 !important;
+  stroke-width: 2.4;
 }
 
 .sa-chevron.open {
@@ -235,33 +239,33 @@
 .sa-subitem {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.42rem 0.65rem;
-  border-radius: 6px;
-  color: #e2e8f0 !important;
-  font-size: 0.82rem;
-  font-weight: 650;
+  gap: 0.55rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 8px;
+  color: #d1fae5 !important;
+  font-size: 0.85rem;
+  font-weight: 750;
   text-decoration: none;
   transition: all 0.12s ease;
 }
 
 .sa-subitem:hover {
   color: #ffffff !important;
-  background: rgba(255, 255, 255, 0.1) !important;
+  background: rgba(255, 255, 255, 0.14) !important;
 }
 
 .sa-subitem.active-sub {
   color: #ffffff !important;
-  background: rgba(16, 185, 129, 0.28) !important;
-  font-weight: 800;
-  border-left: 3px solid #4ade80;
+  background: rgba(5, 150, 105, 0.45) !important;
+  font-weight: 850;
+  border-left: 3.5px solid #10b981;
 }
 
 .sa-dot {
-  font-size: 1.15rem;
+  font-size: 1.25rem;
   line-height: 1;
   color: #4ade80 !important;
-  font-weight: 800;
+  font-weight: 900;
 }
 
 .sa-nav-single {
@@ -449,7 +453,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background-color: var(--sa-bg, #ffffff);
+  background-color: #f4faf6 !important;
   position: relative;
 }
 
@@ -1800,24 +1804,24 @@
 
 .sa-welcome-h1 {
   margin: 0;
-  font-size: 0.86rem;
-  font-weight: 600;
-  color: #4b5563;
+  font-size: 0.92rem !important;
+  font-weight: 750 !important;
+  color: #334155 !important;
   letter-spacing: -0.01em;
 }
 
 .sa-welcome-name {
-  font-size: 1.35rem;
-  font-weight: 850;
-  color: #0f172a;
+  font-size: 1.45rem !important;
+  font-weight: 900 !important;
+  color: #0f172a !important;
   letter-spacing: -0.02em;
 }
 
 .sa-welcome-tagline {
   margin: 0.2rem 0 0 0;
-  font-size: 0.85rem;
-  color: #64748b;
-  font-weight: 500;
+  font-size: 0.88rem !important;
+  color: #475569 !important;
+  font-weight: 650 !important;
 }
 
 .sa-header-actions-right {
@@ -1935,6 +1939,15 @@
   z-index: 0;
 }
 
+.sa-bg-waves-svg {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+
 .sa-bg-wave-top {
   position: absolute;
   top: -160px;
@@ -1965,58 +1978,63 @@
 }
 
 .sa-sidebar-cta-card {
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
   border-radius: 14px;
   padding: 0.85rem 0.95rem;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.55rem;
+  backdrop-filter: blur(8px);
 }
 
 .sa-sidebar-cta-icon-box {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  background: #10b981;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: #10b981 !important;
+  color: #ffffff !important;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
 }
 
 .sa-sidebar-cta-text {
   display: flex;
   flex-direction: column;
-  line-height: 1.2;
+  line-height: 1.25;
 }
 
 .sa-sidebar-cta-title {
-  color: #ffffff;
-  font-size: 0.82rem;
-  font-weight: 800;
+  color: #ffffff !important;
+  font-size: 0.85rem;
+  font-weight: 850;
+  letter-spacing: -0.01em;
 }
 
 .sa-sidebar-cta-sub {
-  color: #93c5fd;
-  font-size: 0.72rem;
-  font-weight: 600;
+  color: #a7f3d0 !important;
+  font-size: 0.74rem;
+  font-weight: 700;
 }
 
 .sa-sidebar-cta-btn {
-  background: #10b981;
-  color: #ffffff;
+  background: #10b981 !important;
+  color: #ffffff !important;
   border: none;
   border-radius: 20px;
-  padding: 0.4rem 0.85rem;
-  font-size: 0.75rem;
-  font-weight: 800;
+  padding: 0.42rem 0.95rem;
+  font-size: 0.78rem;
+  font-weight: 850;
   cursor: pointer;
   align-self: flex-start;
   transition: all 0.15s ease;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.35);
 }
 
 .sa-sidebar-cta-btn:hover {
-  background: #059669;
+  background: #059669 !important;
   transform: translateY(-1px);
 }
 
@@ -2024,22 +2042,53 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
+  gap: 0.6rem;
   width: 100%;
-  padding: 0.65rem;
+  padding: 0.68rem;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  color: #ffffff;
-  font-size: 0.85rem;
-  font-weight: 750;
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.22) !important;
+  color: #ffffff !important;
+  font-size: 0.88rem;
+  font-weight: 800;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .sa-sidebar-clean-logout-btn:hover {
-  background: rgba(220, 38, 38, 0.25);
-  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.25) !important;
+  border-color: #ef4444 !important;
+}
+
+.sa-copyright-text {
+  font-size: 0.68rem;
+  color: #a7f3d0 !important;
+  text-align: center;
+  font-weight: 650;
+  opacity: 0.85;
+}
+
+.sa-settings-circle-btn {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+  transition: all 0.2s ease;
+  color: #1f2937;
+}
+
+.sa-settings-circle-btn:hover {
+  background: #f8fafc;
+  border-color: #059669;
+  color: #059669;
+  transform: translateY(-1px);
 }
 
 @media (max-width: 900px) {

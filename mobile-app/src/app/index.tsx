@@ -22,8 +22,10 @@ export default function WelcomeHomeScreen() {
   const router = useRouter();
   const {
     customerUser,
+    selectedSupermarket,
     setSelectedSupermarket,
     setPurchaseMode,
+    clearCart,
   } = useCart();
 
   const [verifying] = useState(false);
@@ -47,10 +49,16 @@ export default function WelcomeHomeScreen() {
     setSearchModalVisible(true);
   };
 
-  // Handle Offline Purchase selection (Direct to Scanner)
+  // Handle Offline Purchase selection (Enforce supermarket identification before scanning)
   const handleSelectOffline = () => {
     setPurchaseMode("offline");
-    router.push("/scanner");
+    if (!selectedSupermarket) {
+      setPendingMode("offline");
+      setSearchModalVisible(true);
+    } else {
+      clearCart();
+      router.push({ pathname: "/scanner", params: { fresh: "true" } });
+    }
   };
 
   // Handle Delivery / Track Orders selection:
@@ -72,8 +80,16 @@ export default function WelcomeHomeScreen() {
   const handleStoreChosenFromModal = (store: SupermarketInfo) => {
     setSelectedSupermarket(store);
     setSearchModalVisible(false);
-    // Sequence: Select Supermarket -> Customer Registration Page (/auth)
-    router.push("/auth");
+
+    if (pendingMode === "offline") {
+      // Offline mode sequence: Select Supermarket -> Fresh Scanner Session
+      setPurchaseMode("offline");
+      clearCart();
+      router.push({ pathname: "/scanner", params: { fresh: "true" } });
+    } else {
+      // Online mode sequence: Select Supermarket -> Customer Registration / Login Page (/auth)
+      router.push("/auth");
+    }
   };
 
   const handleProfilePress = () => {

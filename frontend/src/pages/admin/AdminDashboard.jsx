@@ -94,7 +94,7 @@ export default function AdminDashboard() {
   });
 
   // Selected period for Sales Analytics spline chart (7D, 1M, 3M, 6M, 1Y)
-  const [chartPeriod, setChartPeriod] = useState("1M");
+  const [chartPeriod, setChartPeriod] = useState("7D");
 
   // Selected order for itemized view modal
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -303,38 +303,203 @@ export default function AdminDashboard() {
     setTimeout(() => setRestockedApple(false), 2400);
   };
 
-  // Spline chart dataset for Sales Analytics (Dynamic & 100% Real-Time)
+  // Spline chart dataset for Sales Analytics (Dynamic & 100% Real-Time from Database)
   const splineChartData = useMemo(() => {
-    if (!stats.totalSales || stats.totalSales === 0) {
-      return {
-        peakValue: "₹0",
-        labels: ["Day 1", "Day 2", "Day 3", "Day 4", "Today"],
-        points: [
-          { x: 35, y: 155 },
-          { x: 135, y: 155 },
-          { x: 235, y: 155 },
-          { x: 335, y: 155 },
-          { x: 435, y: 155 },
-        ],
-        pathD: "M 35 155 L 435 155",
-        areaD: "M 35 155 L 435 155 L 435 155 L 35 155 Z",
-      };
+    const formatAxisNumber = (n) => {
+      if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, "") + "M";
+      if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, "") + "K";
+      return Math.round(n).toString();
+    };
+
+    const now = new Date();
+    const buckets = [];
+
+    if (chartPeriod === "7D") {
+      // 7 Daily Buckets (past 6 days + today)
+      for (let i = 6; i >= 0; i--) {
+        const dStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i, 0, 0, 0, 0);
+        const dEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i, 23, 59, 59, 999);
+        const label = i === 0
+          ? "Today"
+          : dStart.toLocaleDateString("en-IN", { month: "short", day: "numeric" });
+        buckets.push({
+          startTime: dStart.getTime(),
+          endTime: dEnd.getTime(),
+          label,
+          amount: 0,
+        });
+      }
+    } else if (chartPeriod === "1M") {
+      // 6 Checkpoints across past 30 days (5 days intervals)
+      for (let i = 5; i >= 0; i--) {
+        const dEnd = new Date(now.getTime() - i * 6 * 24 * 60 * 60 * 1000);
+        const dStart = new Date(dEnd.getTime() - 6 * 24 * 60 * 60 * 1000);
+        const label = i === 0
+          ? "Today"
+          : dEnd.toLocaleDateString("en-IN", { month: "short", day: "numeric" });
+        buckets.push({
+          startTime: dStart.getTime(),
+          endTime: dEnd.getTime(),
+          label,
+          amount: 0,
+        });
+      }
+    } else if (chartPeriod === "3M") {
+      // 6 Checkpoints across past 90 days (18 days intervals)
+      for (let i = 5; i >= 0; i--) {
+        const dEnd = new Date(now.getTime() - i * 18 * 24 * 60 * 60 * 1000);
+        const dStart = new Date(dEnd.getTime() - 18 * 24 * 60 * 60 * 1000);
+        const label = i === 0
+          ? "Today"
+          : dEnd.toLocaleDateString("en-IN", { month: "short", day: "numeric" });
+        buckets.push({
+          startTime: dStart.getTime(),
+          endTime: dEnd.getTime(),
+          label,
+          amount: 0,
+        });
+      }
+    } else if (chartPeriod === "6M") {
+      // 6 Monthly Buckets (past 5 months + current month)
+      for (let i = 5; i >= 0; i--) {
+        const dStart = new Date(now.getFullYear(), now.getMonth() - i, 1, 0, 0, 0, 0);
+        const dEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59, 999);
+        const label = dStart.toLocaleDateString("en-IN", { month: "short" });
+        buckets.push({
+          startTime: dStart.getTime(),
+          endTime: i === 0 ? now.getTime() : dEnd.getTime(),
+          label,
+          amount: 0,
+        });
+      }
+    } else if (chartPeriod === "1Y") {
+      // 12 Monthly Buckets (past 11 months + current month)
+      for (let i = 11; i >= 0; i--) {
+        const dStart = new Date(now.getFullYear(), now.getMonth() - i, 1, 0, 0, 0, 0);
+        const dEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59, 999);
+        const label = dStart.toLocaleDateString("en-IN", { month: "short" });
+        buckets.push({
+          startTime: dStart.getTime(),
+          endTime: i === 0 ? now.getTime() : dEnd.getTime(),
+          label,
+          amount: 0,
+        });
+      }
     }
 
+    // Filter real orders from database belonging to tenant
+    const validOrders = (orders || []).filter((o) => {
+      const p = String(o.paymentStatus || "").toLowerCase();
+      const s = String(o.orderStatus || "").toLowerCase();
+      return (
+        p === "completed" ||
+        p === "approved" ||
+        p === "paid" ||
+        p === "success" ||
+        s === "completed" ||
+        s === "delivered" ||
+        s === "collected"
+      );
+    });
+
+    const targetOrders = validOrders.length > 0
+      ? validOrders
+      : (orders || []).filter((o) => Number(o.totalAmount || o.totalPrice || 0) > 0);
+
+    // Sum matching orders into their respective chronological bucket
+    targetOrders.forEach((ord) => {
+      const ordDate = ord.createdAt
+        ? new Date(ord.createdAt)
+        : (ord.date ? new Date(ord.date) : null);
+      if (!ordDate || isNaN(ordDate.getTime())) return;
+      const time = ordDate.getTime();
+      const amt = Number(ord.totalAmount || ord.totalPrice || ord.amount || 0);
+      if (amt <= 0) return;
+
+      for (let idx = 0; idx < buckets.length; idx++) {
+        const b = buckets[idx];
+        const isLast = idx === buckets.length - 1;
+        if (time >= b.startTime && (isLast ? true : time <= b.endTime)) {
+          b.amount += amt;
+          break;
+        }
+      }
+    });
+
+    const periodTotal = buckets.reduce((acc, b) => acc + b.amount, 0);
+    const highestBucket = Math.max(...buckets.map((b) => b.amount), 0);
+
+    // Determine adaptive scale max
+    let scaleMax = 1000;
+    if (highestBucket > 0) {
+      if (highestBucket <= 200) scaleMax = 200;
+      else if (highestBucket <= 500) scaleMax = 500;
+      else if (highestBucket <= 1000) scaleMax = 1000;
+      else if (highestBucket <= 2000) scaleMax = 2000;
+      else if (highestBucket <= 5000) scaleMax = 5000;
+      else if (highestBucket <= 10000) scaleMax = 10000;
+      else if (highestBucket <= 25000) scaleMax = 25000;
+      else if (highestBucket <= 50000) scaleMax = 50000;
+      else if (highestBucket <= 100000) scaleMax = 100000;
+      else scaleMax = Math.ceil(highestBucket / 50000) * 50000;
+    }
+
+    const yLabels = [
+      formatAxisNumber(scaleMax),
+      formatAxisNumber(scaleMax * 0.75),
+      formatAxisNumber(scaleMax * 0.5),
+      formatAxisNumber(scaleMax * 0.25),
+      "0",
+    ];
+
+    const startX = 45;
+    const endX = 445;
+    const stepX = buckets.length > 1 ? (endX - startX) / (buckets.length - 1) : 0;
+
+    const points = buckets.map((b, idx) => {
+      const x = Math.round(startX + idx * stepX);
+      const ratio = scaleMax > 0 ? Math.min(1, Math.max(0, b.amount / scaleMax)) : 0;
+      const y = Math.round(155 - ratio * 120);
+      return {
+        x,
+        y,
+        amount: b.amount,
+        label: b.label,
+      };
+    });
+
+    // Spline curve smoothing
+    let pathD = "";
+    if (points.length <= 1) {
+      pathD = points.length === 1 ? `M ${points[0].x} ${points[0].y}` : "M 45 155 L 445 155";
+    } else {
+      pathD = `M ${points[0].x} ${points[0].y}`;
+      for (let i = 0; i < points.length - 1; i++) {
+        const pCurrent = points[i];
+        const pNext = points[i + 1];
+        const dx = pNext.x - pCurrent.x;
+        const cp1x = pCurrent.x + dx / 2.5;
+        const cp1y = pCurrent.y;
+        const cp2x = pNext.x - dx / 2.5;
+        const cp2y = pNext.y;
+        pathD += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${pNext.x.toFixed(1)} ${pNext.y.toFixed(1)}`;
+      }
+    }
+
+    const areaD = points.length > 0
+      ? `${pathD} L ${points[points.length - 1].x} 155 L ${points[0].x} 155 Z`
+      : "";
+
     return {
-      peakValue: "₹" + Number(stats.totalSales).toLocaleString("en-IN"),
-      labels: ["Day 1", "Day 2", "Day 3", "Day 4", "Today"],
-      points: [
-        { x: 35, y: 145 },
-        { x: 135, y: 135 },
-        { x: 235, y: 125 },
-        { x: 335, y: 110 },
-        { x: 435, y: 80 },
-      ],
-      pathD: "M 35 145 C 85 145, 95 135, 135 135 C 185 135, 195 125, 235 125 C 285 125, 295 110, 335 110 C 385 110, 405 80, 435 80",
-      areaD: "M 35 145 C 85 145, 95 135, 135 135 C 185 135, 195 125, 235 125 C 285 125, 295 110, 335 110 C 385 110, 405 80, 435 80 L 435 155 L 35 155 Z",
+      peakValue: "₹" + Number(periodTotal).toLocaleString("en-IN"),
+      labels: buckets.map((b) => b.label),
+      points,
+      pathD,
+      areaD,
+      yLabels,
+      scaleMax,
     };
-  }, [stats.totalSales]);
+  }, [orders, chartPeriod, stats.totalSales]);
 
   // 100% Real-Time Orders from Database with Customer Name, Mobile Number & Address
   const displayOrders = useMemo(() => {
@@ -579,7 +744,107 @@ export default function AdminDashboard() {
         </div>
       </section>
 
-      <div className="db-main-grid"><div className="db-col-left"><div className="db-card" id="sales-analytics-section"><div className="db-card-header"><div className="db-card-title-group"><div className="db-card-icon-pill blue"><TrendingUp size={19} color="#2563EB" strokeWidth={2.4} /></div><div><h3 className="db-card-title">Sales Analytics</h3><p className="db-card-subtitle">Your business performance at a glance</p></div></div><div className="db-period-pills">{["7D", "1M", "3M", "6M", "1Y"].map((period) => (<button key={period} type="button" className="db-period-btn" onClick={() => setChartPeriod(period)}>{period}</button>))}</div></div><div className="db-chart-container"><div className="db-chart-peak-badge"><span role="img" aria-label="trophy">🏆</span><span>{splineChartData.peakValue}</span></div><svg viewBox="0 0 480 170" className="db-chart-svg" preserveAspectRatio="none"><defs><linearGradient id="salesSplineGrad" x1="0" y1="0" x2="0" y2="100%"><stop offset="0%" stopColor="#1455D9" stopOpacity="0.22" /><stop offset="60%" stopColor="#2563EB" stopOpacity="0.06" /><stop offset="100%" stopColor="#1455D9" stopOpacity="0.00" /></linearGradient></defs><line x1="35" y1="35" x2="455" y2="35" className="db-chart-grid-line" /><line x1="35" y1="65" x2="455" y2="65" className="db-chart-grid-line" /><line x1="35" y1="95" x2="455" y2="95" className="db-chart-grid-line" /><line x1="35" y1="125" x2="455" y2="125" className="db-chart-grid-line" /><line x1="35" y1="155" x2="455" y2="155" stroke="#E2E8F0" strokeWidth="1" /><text x="28" y="38" textAnchor="end" fontSize="10" fill="#94A3B8" fontWeight="600" fontFamily="sans-serif">1K</text><text x="28" y="68" textAnchor="end" fontSize="10" fill="#94A3B8" fontWeight="600" fontFamily="sans-serif">750</text><text x="28" y="98" textAnchor="end" fontSize="10" fill="#94A3B8" fontWeight="600" fontFamily="sans-serif">500</text><text x="28" y="128" textAnchor="end" fontSize="10" fill="#94A3B8" fontWeight="600" fontFamily="sans-serif">250</text><text x="28" y="158" textAnchor="end" fontSize="10" fill="#94A3B8" fontWeight="600" fontFamily="sans-serif">0</text><path d={splineChartData.areaD} fill="url(#salesSplineGrad)" /><path d={splineChartData.pathD} className="db-chart-spline-line" />{splineChartData.points.map((pt, idx) => (<circle key={idx} cx={pt.x} cy={pt.y} className="db-chart-dot" />))}{splineChartData.labels.map((lbl, idx) => { const xPos = splineChartData.points[idx]?.x || 35 + idx * 100; return (<text key={idx} x={xPos} y="167" textAnchor="middle" fontSize="9.5" fill="#94A3B8" fontWeight="600" fontFamily="sans-serif">{lbl}</text>); })}</svg></div></div>
+      <div className="db-main-grid">
+        <div className="db-col-left">
+          <div className="db-card" id="sales-analytics-section">
+            <div className="db-card-header">
+              <div className="db-card-title-group">
+                <div className="db-card-icon-pill blue">
+                  <TrendingUp size={19} color="#2563EB" strokeWidth={2.4} />
+                </div>
+                <div>
+                  <h3 className="db-card-title">Sales Analytics</h3>
+                  <p className="db-card-subtitle">Your business performance at a glance</p>
+                </div>
+              </div>
+              <div className="db-period-pills" style={{ display: "flex", background: "#f1f5f9", padding: "3px", borderRadius: "8px", gap: "3px" }}>
+                {["7D", "1M", "3M", "6M", "1Y"].map((period) => {
+                  const isActive = chartPeriod === period;
+                  return (
+                    <button
+                      key={period}
+                      type="button"
+                      className={`db-period-btn ${isActive ? "active" : ""}`}
+                      onClick={() => setChartPeriod(period)}
+                      style={{
+                        padding: "4px 10px",
+                        fontSize: "11px",
+                        fontWeight: isActive ? "800" : "600",
+                        borderRadius: "6px",
+                        border: "none",
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
+                        background: isActive ? "#1455d9" : "transparent",
+                        color: isActive ? "#ffffff" : "#64748b",
+                        boxShadow: isActive ? "0 2px 6px rgba(20, 85, 217, 0.35)" : "none",
+                      }}
+                    >
+                      {period}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="db-chart-container">
+              <div className="db-chart-peak-badge">
+                <span role="img" aria-label="trophy">🏆</span>
+                <span>{splineChartData.peakValue}</span>
+              </div>
+              <svg viewBox="0 0 480 170" className="db-chart-svg" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="salesSplineGrad" x1="0" y1="0" x2="0" y2="100%">
+                    <stop offset="0%" stopColor="#1455D9" stopOpacity="0.22" />
+                    <stop offset="60%" stopColor="#2563EB" stopOpacity="0.06" />
+                    <stop offset="100%" stopColor="#1455D9" stopOpacity="0.00" />
+                  </linearGradient>
+                </defs>
+                <line x1="35" y1="35" x2="455" y2="35" className="db-chart-grid-line" />
+                <line x1="35" y1="65" x2="455" y2="65" className="db-chart-grid-line" />
+                <line x1="35" y1="95" x2="455" y2="95" className="db-chart-grid-line" />
+                <line x1="35" y1="125" x2="455" y2="125" className="db-chart-grid-line" />
+                <line x1="35" y1="155" x2="455" y2="155" stroke="#E2E8F0" strokeWidth="1" />
+                <text x="28" y="38" textAnchor="end" fontSize="10" fill="#94A3B8" fontWeight="600" fontFamily="sans-serif">
+                  {splineChartData.yLabels?.[0] || "1K"}
+                </text>
+                <text x="28" y="68" textAnchor="end" fontSize="10" fill="#94A3B8" fontWeight="600" fontFamily="sans-serif">
+                  {splineChartData.yLabels?.[1] || "750"}
+                </text>
+                <text x="28" y="98" textAnchor="end" fontSize="10" fill="#94A3B8" fontWeight="600" fontFamily="sans-serif">
+                  {splineChartData.yLabels?.[2] || "500"}
+                </text>
+                <text x="28" y="128" textAnchor="end" fontSize="10" fill="#94A3B8" fontWeight="600" fontFamily="sans-serif">
+                  {splineChartData.yLabels?.[3] || "250"}
+                </text>
+                <text x="28" y="158" textAnchor="end" fontSize="10" fill="#94A3B8" fontWeight="600" fontFamily="sans-serif">
+                  {splineChartData.yLabels?.[4] || "0"}
+                </text>
+                <path d={splineChartData.areaD} fill="url(#salesSplineGrad)" />
+                <path d={splineChartData.pathD} className="db-chart-spline-line" />
+                {splineChartData.points.map((pt, idx) => (
+                  <circle key={idx} cx={pt.x} cy={pt.y} className="db-chart-dot">
+                    <title>{`${pt.label}: ₹${Number(pt.amount || 0).toLocaleString("en-IN")}`}</title>
+                  </circle>
+                ))}
+                {splineChartData.labels.map((lbl, idx) => {
+                  const xPos = splineChartData.points[idx]?.x || (45 + idx * 60);
+                  return (
+                    <text
+                      key={idx}
+                      x={xPos}
+                      y="167"
+                      textAnchor="middle"
+                      fontSize="9.5"
+                      fill="#94A3B8"
+                      fontWeight="600"
+                      fontFamily="sans-serif"
+                    >
+                      {lbl}
+                    </text>
+                  );
+                })}
+              </svg>
+            </div>
+          </div>
 
           <div className="db-card">
             <div className="db-card-header">

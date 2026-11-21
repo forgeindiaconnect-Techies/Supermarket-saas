@@ -494,6 +494,11 @@
   transition: all 0.15s ease;
 }
 
+.db-period-btn:hover:not(.active) {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
 .db-period-btn.active {
   background: #1455d9;
   color: #ffffff;

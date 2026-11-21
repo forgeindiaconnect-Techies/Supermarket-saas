@@ -939,20 +939,19 @@ exports.customerRegister = async (req, res) => {
     const registrationType = rawRegType === "OFFLINE" ? "OFFLINE" : "ONLINE";
 
     // Lookup supermarket
-    const targetId = supermarketId || supermarketCode;
-    if (!targetId) {
-      return res.status(400).json({
-        success: false,
-        message: `Please select a registered supermarket for ${registrationType === "ONLINE" ? "Online" : "Offline"} registration.`,
-      });
-    }
-
+    let targetId = supermarketId || supermarketCode;
     let store = null;
-    if (String(targetId).match(/^[0-9a-fA-F]{24}$/)) {
-      store = await Supermarket.findById(targetId);
+    if (targetId) {
+      if (String(targetId).match(/^[0-9a-fA-F]{24}$/)) {
+        store = await Supermarket.findById(targetId);
+      }
+      if (!store) {
+        store = await Supermarket.findOne({ code: String(targetId).toUpperCase() });
+      }
     }
-    if (!store) {
-      store = await Supermarket.findOne({ code: String(targetId).toUpperCase() });
+    // Fallback if targetId was omitted in offline flow: find first active supermarket
+    if (!store && registrationType === "OFFLINE") {
+      store = (await Supermarket.findOne({ status: "Active" })) || (await Supermarket.findOne());
     }
 
     if (!store) {
@@ -980,12 +979,6 @@ exports.customerRegister = async (req, res) => {
         },
       });
     }
-    if (registrationType === "OFFLINE" && store.offlineAvailable === false) {
-      return res.status(403).json({
-        success: false,
-        message: "This supermarket does not currently support Offline Walk-In Purchase.",
-      });
-    }
 
     const Customer = require("../models/Customer");
     let customer = await Customer.findOne({ phone: cleanPhone });
@@ -1000,9 +993,9 @@ exports.customerRegister = async (req, res) => {
       customer.supermarketName = store.name;
       customer.registeredLocation = `${store.city}, ${store.state || ""}`.trim();
       if (password) customer.password = password;
-      // Set or update registrationType strictly if explicitly specified
-      if (reqRegType) {
-        customer.registrationType = registrationType;
+      // Set registrationType: strictly enforce OFFLINE if this was an offline registration
+      if (registrationType === "OFFLINE") {
+        customer.registrationType = "OFFLINE";
       } else if (!customer.registrationType) {
         customer.registrationType = registrationType;
       }
@@ -1021,6 +1014,17 @@ exports.customerRegister = async (req, res) => {
         registrationType,
       });
     }
+
+    // Emit real-time notification to store admin dashboard
+    try {
+      const { emitTenantNotification } = require("../utils/notificationEmitter");
+      emitTenantNotification(store._id.toString(), {
+        type: "NEW_CUSTOMER",
+        title: registrationType === "OFFLINE" ? "New Offline Customer Registered" : "New Online Customer Registered",
+        message: `${customer.name} (${customer.phone}) registered as ${customer.registrationType} customer.`,
+        data: { customerId: customer._id, registrationType: customer.registrationType },
+      });
+    } catch (_) {}
 
     const token = jwt.sign(
       {

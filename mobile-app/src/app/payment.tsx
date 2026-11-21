@@ -205,10 +205,13 @@ export default function SecurePaymentScreen() {
         paymentMethod: paymentMethod,
         isPaid: true,
         paymentStatus: "Completed",
-        purchaseMode: currentMode,
-        orderType: fulfillmentType || (currentMode === "ONLINE" ? "DELIVERY" : "IN_STORE"),
-        pickupDate: pickupDate || "",
-        pickupTimeSlot: pickupTimeSlot || "",
+        purchaseMode: isOffline ? "OFFLINE" : "ONLINE",
+        orderType: isOffline ? "OFFLINE" : (fulfillmentType || "DELIVERY"),
+        fulfillmentChoice: isOffline ? "" : (fulfillmentType === "SELF_PICKUP" ? "STORE_COLLECTION" : "DOORSTEP_DELIVERY"),
+        pickupDate: isOffline ? "" : (pickupDate || ""),
+        pickupTimeSlot: isOffline ? "" : (pickupTimeSlot || ""),
+        pickupStatus: "",
+        deliveryStatus: isOffline ? "" : (fulfillmentType === "SELF_PICKUP" ? "" : "Order Confirmed"),
         customer: {
           customerId: effectiveCustomerId,
           name: effectiveName,
@@ -243,11 +246,26 @@ export default function SecurePaymentScreen() {
       addRecentOrder(data.order);
       clearCart();
 
-      // Navigate to Payment Successful screen (Screen 7)
-      router.replace({
-        pathname: "/payment-success",
-        params: { orderId: data.order._id },
-      });
+      // Dedicated automatic redirection based strictly on fulfillment type
+      if (isOffline) {
+        // Offline in-store shoppers -> Store Exit Pass / Confirmation
+        router.replace({
+          pathname: "/payment-success",
+          params: { orderId: data.order._id },
+        });
+      } else if (fulfillmentType === "SELF_PICKUP") {
+        // Collect from Store -> Dedicated Store Collection Status Page
+        router.replace({
+          pathname: "/store-collection",
+          params: { orderId: data.order._id },
+        });
+      } else {
+        // Home Delivery -> Dedicated Live Order Tracking Page
+        router.replace({
+          pathname: "/order-tracking",
+          params: { orderId: data.order._id },
+        });
+      }
     } catch (err: any) {
       Alert.alert("Payment Error", err.message || "Transaction failed.");
     } finally {

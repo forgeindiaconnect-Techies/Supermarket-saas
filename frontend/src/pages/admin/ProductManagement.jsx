@@ -427,7 +427,7 @@ export default function ProductManagement() {
       <ErpPageBanner
         title="Product Management"
         subtitle="Manage your supermarket product catalog efficiently"
-        badges={["Track Stock", "Monitor Sales", "Keep Store Ready"]}
+        badges={[]}
         icon={<ShoppingCart size={22} color="#ffffff" strokeWidth={2.4} />}
       />
 

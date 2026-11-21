@@ -115,6 +115,7 @@ export type OrderRecord = {
   supermarket?: any;
   supermarketCode?: string;
   supermarketName?: string;
+  customerName?: string;
   customer?: {
     name?: string;
     phone?: string;
@@ -399,12 +400,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     const effectivePrice = finalPrice;
 
     setCart((current) => {
-      // Data isolation check: Ensure cart only contains products from the active supermarket
+      // Strict Multi-Tenant Isolation: Ensure cart only accepts products from the active supermarket
       if (selectedSupermarket && product.supermarket) {
         const prodStoreId = typeof product.supermarket === "object" ? product.supermarket._id : product.supermarket;
         if (prodStoreId && String(prodStoreId) !== String(selectedSupermarket._id)) {
-          // Different store, reset cart to new store
-          current = [];
+          console.warn("Rejected product belonging to another store:", prodStoreId, "!=", selectedSupermarket._id);
+          success = false;
+          updatedCart = current;
+          return current;
         }
       }
 
@@ -448,9 +451,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           imageUrl: product.imageUrl,
           description: product.description,
           quantity: addQty,
-          supermarket: product.supermarket || selectedSupermarket?._id,
-          supermarketCode: product.supermarketCode || selectedSupermarket?.code,
-          supermarketName: product.supermarketName || selectedSupermarket?.name,
+          supermarket: selectedSupermarket?._id || product.supermarket,
+          supermarketCode: selectedSupermarket?.code || product.supermarketCode,
+          supermarketName: selectedSupermarket?.name || product.supermarketName,
         };
         updatedCart = [...current, newItem];
       }

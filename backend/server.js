@@ -441,6 +441,23 @@ app.use("/customers", customerRoutes);
 app.use("/delivery", deliveryRoutes);
 app.use("/upload", uploadRoutes);
 
+// Universal JSON 404 handler - prevents HTML error responses for mobile app clients
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: `API Route ${req.method} ${req.originalUrl} not found.`,
+  });
+});
+
+// Universal JSON Error handler
+app.use((err, req, res, next) => {
+  console.error("Global Server Error:", err);
+  res.status(err.status || 500).json({
+    success: false,
+    message: err.message || "Internal server error",
+  });
+});
+
 const PORT = process.env.PORT || 5001;
 
 const httpServer = http.createServer(app);

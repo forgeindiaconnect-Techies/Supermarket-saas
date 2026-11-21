@@ -108,7 +108,7 @@ export default function PaymentSuccessScreen() {
     method?: string;
     status?: string;
   }>();
-  const { recentOrders, updateRecentOrder, customerUser } = useCart();
+  const { recentOrders, updateRecentOrder, customerUser, clearCart, purchaseMode } = useCart();
 
   const [order, setOrder] = useState<OrderRecord | null>(null);
   const [loading, setLoading] = useState(true);
@@ -204,15 +204,18 @@ export default function PaymentSuccessScreen() {
       const res = await safeFetch(`${API_URL}/orders/${targetId}/customer-complete-pickup`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-      }, 5000);
-      const data = await res.json();
-      if (data?.success && data?.order) {
-        setOrder(data.order);
-        updateRecentOrder(data.order);
-        Alert.alert(
-          "Pickup Completed!",
-          "Thank you for shopping with GrocerEase! Store Admin has been notified that you collected your order."
-        );
+      }, 10000);
+      const contentType = res.headers?.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        const data = await res.json();
+        if (data?.success && data?.order) {
+          setOrder(data.order);
+          updateRecentOrder(data.order);
+          Alert.alert(
+            "Pickup Completed!",
+            "Thank you for shopping with GrocerEase! Store Admin has been notified that you collected your order."
+          );
+        }
       }
     } catch (_) {}
   };
@@ -237,9 +240,10 @@ export default function PaymentSuccessScreen() {
     ).start();
   }, [pulseAnim]);
 
-  // Initial load & Real-time Live Polling every 2.0s
+  // Initial load & Real-time Live Polling every 3.5s with concurrency lock
   useEffect(() => {
     let isMounted = true;
+    let isFetching = false;
 
     // 1. Initial hydrate from recentOrders cache if available
     if (orderId && recentOrders.length > 0) {
@@ -259,16 +263,23 @@ export default function PaymentSuccessScreen() {
         return;
       }
 
+      if (isFetching) return;
+      isFetching = true;
+
       try {
-        const res = await safeFetch(`${API_URL}/orders/${targetId}?_t=${Date.now()}`, {}, 4000);
-        const data = await res.json();
-        if (isMounted && data?.success && data?.order) {
-          setOrder(data.order);
-          updateRecentOrder(data.order);
+        const res = await safeFetch(`${API_URL}/orders/${targetId}?_t=${Date.now()}`, {}, 8000);
+        const contentType = res.headers?.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+          const data = await res.json();
+          if (isMounted && data?.success && data?.order) {
+            setOrder(data.order);
+            updateRecentOrder(data.order);
+          }
         }
       } catch (_) {
         // silent fail during background polling
       } finally {
+        isFetching = false;
         if (isMounted) setLoading(false);
       }
     };
@@ -277,7 +288,7 @@ export default function PaymentSuccessScreen() {
 
     const interval = setInterval(() => {
       fetchLiveStatus();
-    }, 2000);
+    }, 3500);
 
     return () => {
       isMounted = false;
@@ -294,14 +305,23 @@ export default function PaymentSuccessScreen() {
 
   const isPending = effectiveStatus === "pending";
 
+  const isOfflineOrder =
+    (order as any)?.purchaseMode === "OFFLINE" ||
+    (order as any)?.orderType === "IN_STORE" ||
+    purchaseMode === "offline" ||
+    (!order && purchaseMode !== "online");
+
   const isSelfPickupOrder =
-    (order as any)?.orderType === "SELF_PICKUP" ||
-    (order as any)?.orderType === "SELF_PICKUP_DOORSTEP" ||
-    (order as any)?.orderType === "SELF_PICKUP_STORE_COLLECTION" ||
-    (order as any)?.fulfillmentChoice === "PENDING_SELECTION" ||
-    (order as any)?.fulfillmentChoice === "DOORSTEP_DELIVERY" ||
-    (order as any)?.fulfillmentChoice === "STORE_COLLECTION" ||
-    Boolean((order as any)?.pickupStatus);
+    !isOfflineOrder &&
+    Boolean(
+      (order as any)?.orderType === "SELF_PICKUP" ||
+        (order as any)?.orderType === "SELF_PICKUP_DOORSTEP" ||
+        (order as any)?.orderType === "SELF_PICKUP_STORE_COLLECTION" ||
+        (order as any)?.fulfillmentChoice === "PENDING_SELECTION" ||
+        (order as any)?.fulfillmentChoice === "DOORSTEP_DELIVERY" ||
+        (order as any)?.fulfillmentChoice === "STORE_COLLECTION" ||
+        Boolean((order as any)?.pickupStatus)
+    );
 
   const orderNum = order?.orderNumber || (orderId ? `ORD-${orderId.slice(-6).toUpperCase()}` : "ORD-028427-8859");
   const amount = Number(order?.totalAmount || 0);
@@ -551,6 +571,17 @@ export default function PaymentSuccessScreen() {
                       <Text style={styles.metaValue}>{payMethod}</Text>
                     </View>
                   </View>
+
+                  {/* Supermarket Name Row */}
+                  <View style={[styles.metaRow, { marginTop: 12 }]}>
+                    <Text style={styles.metaIconGlyph}>🏬</Text>
+                    <View>
+                      <Text style={styles.metaLabel}>Supermarket</Text>
+                      <Text style={styles.metaValue} numberOfLines={1}>
+                        {order?.supermarketName || (order as any)?.supermarket?.name || "Supermarket"}
+                      </Text>
+                    </View>
+                  </View>
                 </View>
 
                 {/* Vertical Divider Line */}
@@ -569,6 +600,25 @@ export default function PaymentSuccessScreen() {
                   </View>
                 </View>
               </View>
+
+              {/* Itemized Purchased Products Card */}
+              {order?.items && order.items.length > 0 && (
+                <View style={styles.purchasedItemsCard}>
+                  <View style={styles.purchasedItemsHeader}>
+                    <Text style={styles.purchasedItemsTitle}>Purchased Items ({order.items.length})</Text>
+                    <Text style={styles.purchasedItemsStore}>{order.supermarketName || "In-Store Purchase"}</Text>
+                  </View>
+                  {order.items.map((it, idx) => (
+                    <View key={it._id || idx} style={styles.purchasedItemRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.purchasedItemName} numberOfLines={1}>{it.name}</Text>
+                        <Text style={styles.purchasedItemMeta}>Qty: {it.quantity} × ₹{Number(it.price || 0).toFixed(2)}</Text>
+                      </View>
+                      <Text style={styles.purchasedItemTotal}>₹{(Number(it.price || 0) * it.quantity).toFixed(2)}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
             </View>
 
             {/* 2b. Self Pickup 2-Choice Fulfillment Flow (Option A: Doorstep vs Option B: Collect from Store) */}
@@ -679,42 +729,91 @@ export default function PaymentSuccessScreen() {
               </View>
             )}
 
-            {/* 3. Action Buttons matching Image 2 & Live Order Tracking */}
-            <View style={styles.successActionsWrap}>
-              {/* Prominent Track My Order Button (Amazon Style) */}
-              <TouchableOpacity
-                style={styles.trackMyOrderBtn}
-                onPress={() => {
-                  const targetId = order?._id || orderId;
-                  router.push({
-                    pathname: "/order-tracking",
-                    params: { orderId: targetId },
-                  });
-                }}
-                activeOpacity={0.88}
-              >
-                <Text style={styles.trackOrderBtnIcon}>🚚</Text>
-                <Text style={styles.trackMyOrderBtnText}>Track My Order Live</Text>
-              </TouchableOpacity>
+            {/* In-Store Supermarket Exit Pass (Strictly for OFFLINE Self-Checkout Flow) */}
+            {isOfflineOrder && (
+              <View style={styles.offlineExitPassCard}>
+                <View style={styles.exitPassHeader}>
+                  <Text style={{ fontSize: 26 }}>🛡️</Text>
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={styles.exitPassTitle}>Supermarket Store Exit Pass</Text>
+                    <Text style={styles.exitPassSub}>
+                      {order?.supermarketName || "GrocerEase Supermarket"} • In-Store Self-Checkout
+                    </Text>
+                  </View>
+                  <View style={styles.exitPassVerifiedBadge}>
+                    <Text style={styles.exitPassVerifiedText}>PAID ✓</Text>
+                  </View>
+                </View>
 
-              {/* View Order Details Button (Solid Deep Purple) */}
+                {/* Vertical Barcode Lines */}
+                <View style={styles.barcodeBox}>
+                  <View style={styles.barcodeBars}>
+                    {[4, 2, 5, 1, 3, 2, 6, 2, 4, 1, 5, 3, 2, 6, 1, 4, 2, 5, 3, 2, 4, 1, 6, 2, 3, 5, 2, 4, 3, 6, 1, 4, 2, 5].map((w, i) => (
+                      <View
+                        key={i}
+                        style={{
+                          width: w * 1.8,
+                          height: 48,
+                          backgroundColor: "#0F172A",
+                          marginRight: i % 3 === 0 ? 3 : 1.5,
+                        }}
+                      />
+                    ))}
+                  </View>
+                  <Text style={styles.barcodeNumberText}>
+                    {order?.exitBarcode || `EXIT-${orderNum.replace(/\D/g, "") || "8829471"}`}
+                  </Text>
+                </View>
+
+                <Text style={styles.exitGateNotice}>
+                  Show this digital exit barcode to the security personnel at the supermarket exit door.
+                </Text>
+              </View>
+            )}
+
+            {/* 3. Action Buttons */}
+            <View style={styles.successActionsWrap}>
+              {/* Prominent Track My Order Button (STRICTLY for ONLINE delivery orders) */}
+              {!isOfflineOrder && (
+                <TouchableOpacity
+                  style={styles.trackMyOrderBtn}
+                  onPress={() => {
+                    const targetId = order?._id || orderId;
+                    router.push({
+                      pathname: "/order-tracking",
+                      params: { orderId: targetId },
+                    });
+                  }}
+                  activeOpacity={0.88}
+                >
+                  <Text style={styles.trackOrderBtnIcon}>🚚</Text>
+                  <Text style={styles.trackMyOrderBtnText}>Track My Order Live</Text>
+                </TouchableOpacity>
+              )}
+
+              {/* View Order Details Button */}
               <TouchableOpacity
                 style={styles.primaryViewOrderBtn}
                 onPress={() => setShowReceiptModal(true)}
                 activeOpacity={0.88}
               >
                 <Text style={styles.primaryBtnIcon}>📄</Text>
-                <Text style={styles.primaryViewOrderBtnText}>View Order Details</Text>
+                <Text style={styles.primaryViewOrderBtnText}>View Bill Details</Text>
               </TouchableOpacity>
 
-              {/* Continue Shopping Button (White with Purple Border) */}
+              {/* Start New Shopping / Done Button */}
               <TouchableOpacity
                 style={styles.secondaryContinueBtn}
-                onPress={() => router.replace("/scanner")}
+                onPress={() => {
+                  clearCart();
+                  router.replace(isOfflineOrder ? "/" : "/scanner");
+                }}
                 activeOpacity={0.85}
               >
                 <Text style={styles.secondaryBtnIcon}>🛒</Text>
-                <Text style={styles.secondaryContinueBtnText}>Continue Shopping</Text>
+                <Text style={styles.secondaryContinueBtnText}>
+                  {isOfflineOrder ? "Done • Start New Shopping" : "Continue Shopping"}
+                </Text>
               </TouchableOpacity>
             </View>
 
@@ -1333,6 +1432,82 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
 
+  /* In-Store Supermarket Exit Pass Card */
+  offlineExitPassCard: {
+    width: "100%",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 18,
+    marginTop: 16,
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  exitPassHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  exitPassTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  exitPassSub: {
+    fontSize: 12,
+    color: "#64748B",
+    fontWeight: "500",
+    marginTop: 2,
+  },
+  exitPassVerifiedBadge: {
+    backgroundColor: "#DCFCE7",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#86EFAC",
+  },
+  exitPassVerifiedText: {
+    fontSize: 11,
+    fontWeight: "900",
+    color: "#15803D",
+  },
+  barcodeBox: {
+    backgroundColor: "#F8FAFC",
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    marginVertical: 14,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  barcodeBars: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    height: 48,
+  },
+  barcodeNumberText: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#334155",
+    letterSpacing: 2,
+    marginTop: 8,
+  },
+  exitGateNotice: {
+    fontSize: 12,
+    color: "#64748B",
+    textAlign: "center",
+    lineHeight: 16,
+    fontWeight: "500",
+  },
+
   /* Action Buttons (Success Screen) */
   successActionsWrap: {
     width: "100%",
@@ -1625,6 +1800,62 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     color: "#FFFFFF",
+  },
+  purchasedItemsCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 14,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  purchasedItemsHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
+    marginBottom: 8,
+  },
+  purchasedItemsTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  purchasedItemsStore: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#059669",
+  },
+  purchasedItemRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F8FAFC",
+  },
+  purchasedItemName: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#1E293B",
+  },
+  purchasedItemMeta: {
+    fontSize: 11,
+    color: "#64748B",
+    marginTop: 2,
+  },
+  purchasedItemTotal: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#0F172A",
+    marginLeft: 10,
   },
 });
 

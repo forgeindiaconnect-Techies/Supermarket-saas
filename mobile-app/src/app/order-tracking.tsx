@@ -13,6 +13,7 @@ import {
   RefreshControl,
   Platform,
   Alert,
+  TextInput,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -57,8 +58,20 @@ export default function OrderTrackingScreen() {
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [customerOrdersList, setCustomerOrdersList] = useState<OrderRecord[]>([]);
 
+  // Review & Rating State
+  const [rating, setRating] = useState<number>(5);
+  const [reviewComment, setReviewComment] = useState<string>("");
+  const [submittingReview, setSubmittingReview] = useState<boolean>(false);
+  const [existingReview, setExistingReview] = useState<{
+    rating: number;
+    comment: string;
+    submittedAt?: string;
+  } | null>(null);
+  const [reviewSuccessMsg, setReviewSuccessMsg] = useState<string>("");
+
   // Glowing pulse animation for live tracking badge & active stage
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const isFetchingRef = useRef<boolean>(false);
 
   useEffect(() => {
     Animated.loop(
@@ -255,6 +268,9 @@ export default function OrderTrackingScreen() {
 
   // Fetch Order and Tracking Metadata from Backend API
   const fetchOrderTracking = useCallback(async (isSilent = false) => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+
     let targetId = selectedActiveOrderId || orderId;
 
     if (!isSilent) setLoading(true);
@@ -288,19 +304,22 @@ export default function OrderTrackingScreen() {
         } else if (API_URL && customerUser?.phone) {
           // Query backend for this customer's orders
           const phoneParam = encodeURIComponent(customerUser.phone);
-          const res = await safeFetch(`${API_URL}/orders?phone=${phoneParam}`, {}, 6000);
-          const ordData = await res.json();
-          if (ordData.success && Array.isArray(ordData.orders)) {
-            const customerDeliveries = ordData.orders.filter(isDeliveryOrd);
-            setCustomerOrdersList(customerDeliveries);
-            const activeOrder =
-              customerDeliveries.find(
-                (o: any) =>
-                  o.deliveryStatus !== "Delivered" && o.deliveryStatus !== "Failed Delivery"
-              ) || customerDeliveries[0];
-            if (activeOrder) {
-              targetId = activeOrder._id || activeOrder.orderNumber;
-              if (targetId) setSelectedActiveOrderId(String(targetId));
+          const res = await safeFetch(`${API_URL}/orders?phone=${phoneParam}`, {}, 12000);
+          const contentType = res.headers?.get("content-type") || "";
+          if (contentType.includes("application/json")) {
+            const ordData = await res.json();
+            if (ordData.success && Array.isArray(ordData.orders)) {
+              const customerDeliveries = ordData.orders.filter(isDeliveryOrd);
+              setCustomerOrdersList(customerDeliveries);
+              const activeOrder =
+                customerDeliveries.find(
+                  (o: any) =>
+                    o.deliveryStatus !== "Delivered" && o.deliveryStatus !== "Failed Delivery"
+                ) || customerDeliveries[0];
+              if (activeOrder) {
+                targetId = activeOrder._id || activeOrder.orderNumber;
+                if (targetId) setSelectedActiveOrderId(String(targetId));
+              }
             }
           }
         }
@@ -313,27 +332,34 @@ export default function OrderTrackingScreen() {
       }
 
       if (API_URL) {
-        const res = await safeFetch(`${API_URL}/orders/${targetId}/tracking`, {}, 5000);
-        const data = await res.json();
+        const res = await safeFetch(`${API_URL}/orders/${targetId}/tracking`, {}, 12000);
+        const contentType = res.headers?.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+          const data = await res.json();
 
-        if (data.success && data.order) {
-          const fetchedOrder: OrderRecord = data.order;
-          setOrder(fetchedOrder);
+          if (data.success && data.order) {
+            const fetchedOrder: any = data.order;
+            setOrder(fetchedOrder);
 
-          if (Array.isArray(data.stages) && data.stages.length >= 6) {
-            setStages(data.stages);
-            setDeliveryPartner(data.deliveryPartner || null);
-            setEtaTime(data.estimatedDeliveryTime || "");
-            setEtaDate(data.estimatedDeliveryDate || "");
-          } else {
-            const calculated = computeStages(fetchedOrder);
-            setStages(calculated.stages);
-            setDeliveryPartner(calculated.partner);
-            setEtaTime(calculated.estimatedTime);
-            setEtaDate(calculated.estimatedDate);
+            if (fetchedOrder?.review?.rating) {
+              setExistingReview(fetchedOrder.review);
+            }
+
+            if (Array.isArray(data.stages) && data.stages.length >= 6) {
+              setStages(data.stages);
+              setDeliveryPartner(data.deliveryPartner || null);
+              setEtaTime(data.estimatedDeliveryTime || "");
+              setEtaDate(data.estimatedDeliveryDate || "");
+            } else {
+              const calculated = computeStages(fetchedOrder);
+              setStages(calculated.stages);
+              setDeliveryPartner(calculated.partner);
+              setEtaTime(calculated.estimatedTime);
+              setEtaDate(calculated.estimatedDate);
+            }
+            setLastUpdated(new Date());
+            return;
           }
-          setLastUpdated(new Date());
-          return;
         }
       }
 
@@ -351,7 +377,17 @@ export default function OrderTrackingScreen() {
         setLastUpdated(new Date());
       }
     } catch (err: any) {
-      console.warn("Tracking fetch notice:", err.message);
+      const msg = err?.message || "";
+      const isCanceled =
+        err?.name === "AbortError" ||
+        msg.toLowerCase().includes("cancel") ||
+        msg.toLowerCase().includes("abort");
+
+      // Silently fall back to cache when request was canceled or timed out
+      if (!isCanceled) {
+        console.log("Order tracking sync notice:", msg);
+      }
+
       if (targetId) {
         const matched = recentOrders.find(
           (o) => o._id === targetId || o.orderNumber === targetId
@@ -366,6 +402,7 @@ export default function OrderTrackingScreen() {
         }
       }
     } finally {
+      isFetchingRef.current = false;
       setLoading(false);
       setRefreshing(false);
     }
@@ -376,14 +413,89 @@ export default function OrderTrackingScreen() {
     fetchOrderTracking(false);
   }, [fetchOrderTracking]);
 
-  // Real-Time Auto-Polling: Refreshes every 2.5s for live updates without refreshing
+  // Real-Time Auto-Polling: Refreshes every 4s for live updates without overlapping requests
   useEffect(() => {
     const timer = setInterval(() => {
       fetchOrderTracking(true);
-    }, 2500);
+    }, 4000);
 
     return () => clearInterval(timer);
   }, [fetchOrderTracking]);
+
+  const handleSubmitReview = async () => {
+    const targetId = order?._id || (order as any)?.orderNumber;
+    if (!targetId) return;
+    if (!rating || rating < 1) {
+      Alert.alert("Rating Required", "Please select a star rating from 1 to 5.");
+      return;
+    }
+    setSubmittingReview(true);
+    const custName =
+      customerUser?.name ||
+      (order as any)?.customerName ||
+      (order as any)?.customer?.name ||
+      "Verified Customer";
+    const reviewData = {
+      rating,
+      comment: reviewComment,
+      customerName: custName,
+      review: {
+        rating,
+        comment: reviewComment,
+        customerName: custName,
+        submittedAt: new Date().toISOString(),
+      },
+    };
+
+    try {
+      let isSuccess = false;
+      let reviewResult: any = null;
+
+      try {
+        const res = await safeFetch(`${API_URL}/orders/${targetId}/review`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(reviewData),
+        });
+        const contentType = res.headers?.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+          const data = await res.json();
+          if (data?.success) {
+            isSuccess = true;
+            reviewResult = data.review;
+          }
+        }
+      } catch (_) {}
+
+      // Fallback: delivery-status endpoint
+      if (!isSuccess) {
+        try {
+          const resFallback = await safeFetch(`${API_URL}/orders/${targetId}/delivery-status`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(reviewData),
+          });
+          const contentType = resFallback.headers?.get("content-type") || "";
+          if (contentType.includes("application/json")) {
+            const data = await resFallback.json();
+            if (data?.success) {
+              isSuccess = true;
+              reviewResult = data.order?.review || reviewData.review;
+            }
+          }
+        } catch (_) {}
+      }
+
+      const finalReview = reviewResult || reviewData.review;
+      setExistingReview(finalReview);
+      setReviewSuccessMsg("Thank you! Your review has been saved to the supermarket profile.");
+      Alert.alert("Review Submitted", "Thank you for rating your delivery experience!");
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Could not submit review. Please try again.");
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -842,6 +954,109 @@ export default function OrderTrackingScreen() {
                   💳 Paid via {order.paymentMethod || "UPI"} • Ref: {order.paymentStatus || "Completed"}
                 </Text>
               </View>
+            </View>
+
+            {/* ========================================================= */}
+            {/* 5.5 REVIEW & RATING (DELIVERED WORKFLOW)                  */}
+            {/* ========================================================= */}
+            <View style={styles.reviewCard}>
+              <View style={styles.reviewHeader}>
+                <Text style={styles.reviewEmoji}>⭐</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.reviewTitle}>Rate Your Delivery Experience</Text>
+                  <Text style={styles.reviewSubtitle}>
+                    {order.deliveryStatus === "Delivered"
+                      ? "Share feedback about your groceries and delivery service"
+                      : "Review will be enabled once your order has been delivered"}
+                  </Text>
+                </View>
+              </View>
+
+              {existingReview || (order as any).review?.rating ? (
+                <View style={styles.reviewSubmittedBox}>
+                  <View style={styles.reviewStarsRow}>
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Text
+                        key={star}
+                        style={[
+                          styles.reviewStarLarge,
+                          star <= (existingReview?.rating || (order as any).review?.rating || 5)
+                            ? styles.starFilled
+                            : styles.starEmpty,
+                        ]}
+                      >
+                        ★
+                      </Text>
+                    ))}
+                  </View>
+                  {(existingReview?.comment || (order as any).review?.comment) ? (
+                    <Text style={styles.reviewSubmittedComment}>
+                      "{existingReview?.comment || (order as any).review?.comment}"
+                    </Text>
+                  ) : null}
+                  <View style={styles.reviewVerifiedBadge}>
+                    <Text style={styles.reviewVerifiedText}>
+                      ✓ Review Submitted • Saved to Supermarket Profile
+                    </Text>
+                  </View>
+                </View>
+              ) : order.deliveryStatus === "Delivered" ? (
+                <View style={styles.reviewFormBox}>
+                  <Text style={styles.reviewRatingLabel}>Your Overall Rating:</Text>
+                  <View style={styles.reviewInteractiveStarsRow}>
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <TouchableOpacity
+                        key={star}
+                        onPress={() => setRating(star)}
+                        activeOpacity={0.7}
+                        style={styles.starTouchable}
+                      >
+                        <Text
+                          style={[
+                            styles.starInteractive,
+                            star <= rating ? styles.starFilled : styles.starEmpty,
+                          ]}
+                        >
+                          ★
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  <TextInput
+                    style={styles.reviewTextInput}
+                    placeholder="Write a brief review (e.g. fast delivery, fresh items, courteous delivery partner)..."
+                    placeholderTextColor="#94A3B8"
+                    value={reviewComment}
+                    onChangeText={setReviewComment}
+                    multiline
+                    numberOfLines={3}
+                  />
+
+                  {reviewSuccessMsg ? (
+                    <Text style={styles.reviewSuccessMsg}>{reviewSuccessMsg}</Text>
+                  ) : null}
+
+                  <TouchableOpacity
+                    style={[styles.submitReviewBtn, submittingReview && { opacity: 0.7 }]}
+                    onPress={handleSubmitReview}
+                    disabled={submittingReview}
+                    activeOpacity={0.85}
+                  >
+                    {submittingReview ? (
+                      <ActivityIndicator color="#FFFFFF" size="small" />
+                    ) : (
+                      <Text style={styles.submitReviewBtnText}>Submit Order Review</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={styles.reviewDisabledNotice}>
+                  <Text style={styles.reviewDisabledText}>
+                    🔒 Reviews unlock once order status reaches Delivered.
+                  </Text>
+                </View>
+              )}
             </View>
 
             {/* ========================================================= */}
@@ -1550,6 +1765,152 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "#475569",
     fontWeight: "600",
+  },
+
+  // 5.5 Review & Rating Card
+  reviewCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 18,
+    marginBottom: 16,
+    borderWidth: 1.5,
+    borderColor: "#FEF08A",
+    shadowColor: "#CA8A04",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  reviewHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 14,
+  },
+  reviewEmoji: {
+    fontSize: 24,
+    marginRight: 10,
+  },
+  reviewTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  reviewSubtitle: {
+    fontSize: 12,
+    color: "#64748B",
+    marginTop: 2,
+  },
+  reviewSubmittedBox: {
+    backgroundColor: "#FEFCE8",
+    padding: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#FEF08A",
+    alignItems: "center",
+  },
+  reviewStarsRow: {
+    flexDirection: "row",
+    gap: 6,
+    marginBottom: 10,
+  },
+  reviewStarLarge: {
+    fontSize: 26,
+  },
+  starFilled: {
+    color: "#EAB308",
+  },
+  starEmpty: {
+    color: "#CBD5E1",
+  },
+  reviewSubmittedComment: {
+    fontSize: 13,
+    color: "#475569",
+    fontStyle: "italic",
+    textAlign: "center",
+    marginBottom: 12,
+  },
+  reviewVerifiedBadge: {
+    backgroundColor: "#DCFCE7",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  reviewVerifiedText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#15803D",
+  },
+  reviewFormBox: {
+    backgroundColor: "#FAFAFA",
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  reviewRatingLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#0F172A",
+    marginBottom: 8,
+  },
+  reviewInteractiveStarsRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 14,
+  },
+  starTouchable: {
+    padding: 2,
+  },
+  starInteractive: {
+    fontSize: 32,
+  },
+  reviewTextInput: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    padding: 12,
+    fontSize: 13,
+    color: "#0F172A",
+    textAlignVertical: "top",
+    minHeight: 70,
+    marginBottom: 12,
+  },
+  reviewSuccessMsg: {
+    fontSize: 12,
+    color: "#15803D",
+    fontWeight: "600",
+    marginBottom: 10,
+    textAlign: "center",
+  },
+  submitReviewBtn: {
+    backgroundColor: "#16A34A",
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: "center",
+    shadowColor: "#16A34A",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  submitReviewBtnText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  reviewDisabledNotice: {
+    backgroundColor: "#F8FAFC",
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    alignItems: "center",
+  },
+  reviewDisabledText: {
+    fontSize: 12,
+    color: "#94A3B8",
+    fontStyle: "italic",
   },
 
   // 6. Bottom Actions

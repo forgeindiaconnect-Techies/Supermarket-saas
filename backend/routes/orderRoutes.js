@@ -20,12 +20,18 @@ const {
   setPickupReady,
   customerCompletePickup,
   getOrderTracking,
+  submitOrderReview,
+  getOrderReview,
 } = require("../controllers/orderController");
 
 // Public/Customer routes
 router.post("/checkout", checkout);
 router.post("/cart-activity", logCartActivity);
 router.get("/cart-activity", getCartActivity);
+
+// Order Customer Review routes
+router.post("/:id/review", submitOrderReview);
+router.get("/:id/review", getOrderReview);
 
 // Customer Post-Payment Fulfillment Choice (Option A: Doorstep vs Option B: Collect from Store)
 router.put("/:id/fulfillment-choice", setFulfillmentChoice);

@@ -351,38 +351,86 @@ exports.getProductByBarcode = async (req, res) => {
     const candidates = getBarcodeVariants(cleanBarcode);
     const numBarcode = Number(cleanBarcode.replace(/\D/g, ""));
 
-    let product = null;
+    // 1. Resolve Target Supermarket Strictly
+    // Enforce multi-tenant isolation: Never search across stores or use fallback stores.
+    const Supermarket = require("../models/Supermarket");
+    let targetStore = null;
+
+    const requestedStoreId =
+      req.supermarketId ||
+      req.headers["x-supermarket-id"] ||
+      req.query.supermarketId;
+    const requestedStoreCode =
+      req.supermarketCode ||
+      req.headers["x-supermarket-code"] ||
+      req.query.supermarketCode;
+
+    if (
+      requestedStoreId &&
+      requestedStoreId !== "all" &&
+      requestedStoreId !== "null" &&
+      requestedStoreId !== "undefined"
+    ) {
+      if (String(requestedStoreId).match(/^[0-9a-fA-F]{24}$/)) {
+        targetStore = await Supermarket.findById(requestedStoreId);
+      }
+    }
+    if (
+      !targetStore &&
+      requestedStoreCode &&
+      requestedStoreCode !== "ALL" &&
+      requestedStoreCode !== "DEFAULT"
+    ) {
+      targetStore = await Supermarket.findOne({
+        code: String(requestedStoreCode).toUpperCase(),
+      });
+    }
+    if (!targetStore && req.supermarket) {
+      targetStore = req.supermarket;
+    }
+
+    // MANDATORY: Barcode scanning is not allowed until supermarket is identified
+    if (!targetStore) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Supermarket identification required. Please identify and select your supermarket before scanning products.",
+      });
+    }
+
+    // Check if this product was explicitly deleted from this supermarket
+    const wasDeleted = await DeletedRecord.findOne({
+      entityType: "PRODUCT",
+      identifier: { $in: candidates },
+      $or: [{ supermarket: targetStore._id }, { supermarket: null }],
+    });
+    if (wasDeleted) {
+      return res.status(404).json({
+        success: false,
+        message: "This product was permanently deleted from inventory.",
+      });
+    }
 
     // Build comprehensive query that handles String or Number barcodes
-    const barcodeMatchOr = [
-      { barcode: { $in: candidates } },
-    ];
+    const barcodeMatchOr = [{ barcode: { $in: candidates } }];
     if (Number.isFinite(numBarcode) && numBarcode > 0) {
       barcodeMatchOr.push({ barcode: numBarcode });
     }
 
-    // 1. Try finding in the scoped supermarket (if specified)
-    if (req.supermarketId) {
-      product = await Product.findOne({
-        $or: barcodeMatchOr,
-        supermarket: req.supermarketId,
-        isActive: { $ne: false },
-      }).populate("supermarket", "name code logoUrl address phone");
-    }
+    // 2. Strict Supermarket Scoped Search: Search ONLY inside targetStore._id
+    // If the same barcode exists in multiple supermarkets, fetch ONLY from this supermarket.
+    let product = await Product.findOne({
+      $or: barcodeMatchOr,
+      supermarket: targetStore._id,
+      isActive: { $ne: false },
+    }).populate("supermarket", "name code logoUrl address phone");
 
-    // 2. Fallback: Search across all supermarkets / global active products
-    if (!product) {
-      product = await Product.findOne({
-        $or: barcodeMatchOr,
-        isActive: { $ne: false },
-      }).populate("supermarket", "name code logoUrl address phone");
-    }
-
-    // 3. Fallback: Case-insensitive / stripped leading zero regex match across all supermarkets
+    // Scoped regex fallback strictly within targetStore
     if (!product) {
       const stripped = cleanBarcode.replace(/\D/g, "").replace(/^0+/, "");
       if (stripped) {
         product = await Product.findOne({
+          supermarket: targetStore._id,
           isActive: { $ne: false },
           $or: [
             { barcode: { $regex: new RegExp(`^0*${stripped}$`, "i") } },
@@ -392,82 +440,17 @@ exports.getProductByBarcode = async (req, res) => {
       }
     }
 
-    // 4. Check if this product was explicitly deleted by the user - NEVER resurrect deleted products!
-    const wasDeleted = await DeletedRecord.findOne({
-      entityType: "PRODUCT",
-      identifier: { $in: candidates },
-    });
-    if (wasDeleted) {
-      return res.status(404).json({
-        success: false,
-        message: "This product was permanently deleted from inventory.",
-      });
-    }
-
-    // 5. Fallback: If not in DB and never deleted, check if it matches initial store product templates (e.g. 2001-2006 prefix)
-    if (!product) {
-      const matchedTemplate = INITIAL_STORE_PRODUCTS_TEMPLATE.find((tpl) =>
-        cleanBarcode.startsWith(tpl.barcodePrefix)
-      );
-
-      if (matchedTemplate) {
-        // Resolve target supermarket for auto-seeding
-        let targetSupermarketId = req.supermarketId;
-        let targetSupermarketCode = req.supermarketCode || "DEFAULT";
-
-        if (!targetSupermarketId) {
-          const defaultStore = await getDefaultSupermarket();
-          if (defaultStore) {
-            targetSupermarketId = defaultStore._id;
-            targetSupermarketCode = defaultStore.code;
-          }
-        }
-
-        // Dynamically persist the product so subsequent requests and inventory operations succeed permanently
-        try {
-          product = await Product.create({
-            name: matchedTemplate.name,
-            brand: matchedTemplate.brand,
-            category: matchedTemplate.category,
-            barcode: cleanBarcode,
-            price: matchedTemplate.price,
-            costPrice: matchedTemplate.costPrice,
-            stock: matchedTemplate.stock,
-            lowStockThreshold: matchedTemplate.lowStockThreshold,
-            imageUrl: matchedTemplate.imageUrl,
-            description: matchedTemplate.description,
-            supermarket: targetSupermarketId || null,
-            supermarketCode: targetSupermarketCode,
-            isActive: true,
-          });
-
-          if (product && targetSupermarketId) {
-            product = await Product.findById(product._id).populate(
-              "supermarket",
-              "name code logoUrl address phone"
-            );
-          }
-        } catch (createErr) {
-          // If concurrent insert created it, find it
-          product = await Product.findOne({ barcode: cleanBarcode, isActive: { $ne: false } }).populate(
-            "supermarket",
-            "name code logoUrl address phone"
-          );
-        }
-      }
-    }
-
     if (!product) {
       return res.status(404).json({
         success: false,
-        message: "Product not found for this barcode",
+        message: `Product with barcode "${cleanBarcode}" was not found in ${targetStore.name}'s inventory.`,
       });
     }
 
     return res.status(200).json({
       success: true,
       product,
-      supermarket: product.supermarket || req.supermarket || null,
+      supermarket: product.supermarket || targetStore,
     });
   } catch (error) {
     return res.status(500).json({
@@ -489,48 +472,78 @@ exports.getProductByQr = async (req, res) => {
       });
     }
 
+    // Resolve Target Supermarket Strictly
+    const Supermarket = require("../models/Supermarket");
+    let targetStore = null;
+
+    const requestedStoreId =
+      req.supermarketId ||
+      req.headers["x-supermarket-id"] ||
+      req.query.supermarketId;
+    const requestedStoreCode =
+      req.supermarketCode ||
+      req.headers["x-supermarket-code"] ||
+      req.query.supermarketCode;
+
+    if (
+      requestedStoreId &&
+      requestedStoreId !== "all" &&
+      requestedStoreId !== "null" &&
+      requestedStoreId !== "undefined"
+    ) {
+      if (String(requestedStoreId).match(/^[0-9a-fA-F]{24}$/)) {
+        targetStore = await Supermarket.findById(requestedStoreId);
+      }
+    }
+    if (
+      !targetStore &&
+      requestedStoreCode &&
+      requestedStoreCode !== "ALL" &&
+      requestedStoreCode !== "DEFAULT"
+    ) {
+      targetStore = await Supermarket.findOne({
+        code: String(requestedStoreCode).toUpperCase(),
+      });
+    }
+    if (!targetStore && req.supermarket) {
+      targetStore = req.supermarket;
+    }
+
+    if (!targetStore) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Supermarket identification required. Please select a supermarket first.",
+      });
+    }
+
     let product = null;
 
-    // 1. Try finding by Mongo ObjectId in scoped supermarket
+    // 1. Try finding by Mongo ObjectId strictly in targetStore
     if (mongoose.Types.ObjectId.isValid(id)) {
-      if (req.supermarketId) {
-        product = await Product.findOne({
-          _id: id,
-          supermarket: req.supermarketId,
-          isActive: { $ne: false },
-        }).populate("supermarket", "name code logoUrl address phone");
-      }
-      if (!product) {
-        product = await Product.findOne({
-          _id: id,
-          isActive: { $ne: false },
-        }).populate("supermarket", "name code logoUrl address phone");
-      }
+      product = await Product.findOne({
+        _id: id,
+        supermarket: targetStore._id,
+        isActive: { $ne: false },
+      }).populate("supermarket", "name code logoUrl address phone");
     }
 
-    // 2. Try matching by barcode
+    // 2. Try matching by barcode variants strictly in targetStore
     if (!product) {
       const candidates = getBarcodeVariants(id);
-      if (req.supermarketId) {
-        product = await Product.findOne({
-          barcode: { $in: candidates },
-          supermarket: req.supermarketId,
-          isActive: { $ne: false },
-        }).populate("supermarket", "name code logoUrl address phone");
-      }
-      if (!product) {
-        product = await Product.findOne({
-          barcode: { $in: candidates },
-          isActive: { $ne: false },
-        }).populate("supermarket", "name code logoUrl address phone");
-      }
+      product = await Product.findOne({
+        barcode: { $in: candidates },
+        supermarket: targetStore._id,
+        isActive: { $ne: false },
+      }).populate("supermarket", "name code logoUrl address phone");
     }
 
-    // 3. Regex fallback
+    // 3. Scoped regex fallback strictly within targetStore
     if (!product) {
       const clean = String(id).trim();
       const stripped = clean.replace(/^0+/, "");
       product = await Product.findOne({
+        supermarket: targetStore._id,
         isActive: { $ne: false },
         $or: [
           { barcode: { $regex: new RegExp(`^0*${stripped}$`, "i") } },
@@ -542,14 +555,14 @@ exports.getProductByQr = async (req, res) => {
     if (!product) {
       return res.status(404).json({
         success: false,
-        message: "Product not found for this ID",
+        message: `Product was not found in ${targetStore.name}'s inventory.`,
       });
     }
 
     return res.status(200).json({
       success: true,
       product,
-      supermarket: product.supermarket || req.supermarket || null,
+      supermarket: product.supermarket || targetStore,
     });
   } catch (error) {
     return res.status(500).json({

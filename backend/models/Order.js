@@ -106,6 +106,7 @@ const orderSchema = new mongoose.Schema(
         "SELF_PICKUP_DOORSTEP",
         "SELF_PICKUP_STORE_COLLECTION",
         "IN_STORE",
+        "OFFLINE",
       ],
       default: "IN_STORE",
       index: true,
@@ -283,6 +284,25 @@ const orderSchema = new mongoose.Schema(
       type: String,
       default: "GrocerEase Supermarket",
       trim: true,
+    },
+    review: {
+      rating: {
+        type: Number,
+        min: 1,
+        max: 5,
+      },
+      comment: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+      submittedAt: {
+        type: Date,
+      },
+      customerName: {
+        type: String,
+        default: "",
+      },
     },
   },
   {

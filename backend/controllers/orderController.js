@@ -65,7 +65,77 @@ exports.checkout = async (req, res) => {
       });
     }
 
-    // 1. Verify all products and check stock availability
+    // 1. Resolve and Verify Supermarket Identity First
+    // Multi-tenant validation: Every checkout must have a verified supermarket.
+    let resolvedSupermarketId =
+      req.body?.supermarketId ||
+      (typeof req.body?.supermarket === "string"
+        ? req.body.supermarket
+        : req.body?.supermarket?._id) ||
+      req.headers["x-supermarket-id"] ||
+      req.supermarketId;
+
+    let resolvedSupermarketCode =
+      req.body?.supermarketCode ||
+      req.headers["x-supermarket-code"] ||
+      req.supermarketCode;
+
+    let verifiedStore = null;
+    if (resolvedSupermarketId && resolvedSupermarketId !== "all" && resolvedSupermarketId !== "null" && resolvedSupermarketId !== "undefined") {
+      try {
+        if (String(resolvedSupermarketId).match(/^[0-9a-fA-F]{24}$/)) {
+          verifiedStore = await Supermarket.findById(resolvedSupermarketId);
+        }
+      } catch (_) {}
+    }
+    if (!verifiedStore && resolvedSupermarketCode && resolvedSupermarketCode !== "DEFAULT" && resolvedSupermarketCode !== "ALL") {
+      verifiedStore = await Supermarket.findOne({ code: String(resolvedSupermarketCode).toUpperCase() });
+    }
+    if (!verifiedStore && req.supermarket) {
+      verifiedStore = req.supermarket;
+    }
+
+    // Check first item's product supermarket if header was omitted
+    if (!verifiedStore && items.length > 0) {
+      const firstId = items[0].productId || items[0]._id;
+      if (firstId) {
+        const prod = await Product.findById(firstId);
+        if (prod && prod.supermarket) {
+          verifiedStore = await Supermarket.findById(prod.supermarket);
+        }
+      }
+    }
+
+    if (!verifiedStore) {
+      return res.status(400).json({
+        success: false,
+        message: "Supermarket identification required. Please select a valid supermarket before checkout.",
+      });
+    }
+
+    resolvedSupermarketId = verifiedStore._id.toString();
+    resolvedSupermarketCode = verifiedStore.code;
+    const resolvedSupermarketName = verifiedStore.name;
+
+    // Strict Super Admin Online / Offline availability validation
+    const purchaseMode = String(req.body?.purchaseMode || req.headers["x-purchase-mode"] || "OFFLINE").toUpperCase();
+    if (purchaseMode === "ONLINE") {
+      if (verifiedStore.onlineAvailable !== true) {
+        return res.status(403).json({
+          success: false,
+          message: "This supermarket does not currently support Online Purchase. Please choose an available option.",
+        });
+      }
+    } else {
+      if (verifiedStore.offlineAvailable !== true) {
+        return res.status(403).json({
+          success: false,
+          message: "This supermarket does not currently support Offline Purchase. Please choose an available option.",
+        });
+      }
+    }
+
+    // 2. Verify all products, enforce strict supermarket ownership, and check stock availability
     const verifiedItems = [];
     let grossSubtotal = 0;
     let totalDiscount = 0;
@@ -86,7 +156,16 @@ exports.checkout = async (req, res) => {
       if (!product) {
         return res.status(404).json({
           success: false,
-          message: `Product "${item.name || productId}" is no longer available.`,
+          message: `Product "${item.name || productId}" is no longer available in inventory.`,
+        });
+      }
+
+      // STRICT MULTI-TENANT CHECK: Ensure product belongs to the verified supermarket!
+      const itemSupermarketId = product.supermarket ? product.supermarket.toString() : null;
+      if (itemSupermarketId && itemSupermarketId !== resolvedSupermarketId) {
+        return res.status(400).json({
+          success: false,
+          message: `Product "${product.name}" belongs to a different supermarket. All products in the cart must belong strictly to ${verifiedStore.name}.`,
         });
       }
 
@@ -122,8 +201,8 @@ exports.checkout = async (req, res) => {
 
       verifiedItems.push({
         product: product._id,
-        supermarket: product.supermarket || null,
-        supermarketCode: product.supermarketCode || "DEFAULT",
+        supermarket: verifiedStore._id,
+        supermarketCode: verifiedStore.code,
         name: product.name,
         brand: product.brand || "",
         category: product.category,
@@ -137,21 +216,19 @@ exports.checkout = async (req, res) => {
       });
     }
 
-    // 2. Compute final order summary
+    // 3. Compute final order summary
     const discountAmount = totalDiscount;
     const taxAmount = 0;
     const totalAmount = Math.max(0, grossSubtotal - discountAmount + taxAmount);
     const totalItems = verifiedItems.reduce((acc, curr) => acc + curr.quantity, 0);
 
-    // 3. Set payment status:
-    // Flow: For online or manual approvals, defaults to Pending.
-    // For in-store and instant online payment (UPI/Card) or explicit completed requests, set to Completed.
+    // 4. Set payment status:
     const isCashPayment = paymentMethod === "Cash";
     const isPaid = req.body?.isPaid === true || req.body?.status === "Completed" || paymentMethod === "UPI" || paymentMethod === "Card";
     const paymentStatus = req.body?.paymentStatus || (isPaid ? "Completed" : "Pending");
     const inventoryDeducted = paymentStatus === "Completed";
 
-    // 4. Generate unique Order number and Exit Receipt Barcode
+    // 5. Generate unique Order number and Exit Receipt Barcode
     const timestampStr = Date.now().toString().slice(-6);
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
     const orderNumber = `ORD-${timestampStr}-${randomSuffix}`;
@@ -159,66 +236,6 @@ exports.checkout = async (req, res) => {
     const paymentId = isCashPayment
       ? `PENDING-CASH-${Date.now().toString().slice(-6)}`
       : `PENDING-${paymentMethod.toUpperCase()}-${Date.now().toString().slice(-6)}`;
-
-    // Resolve order supermarket: prioritize product items' actual supermarket, or explicit body/header
-    let resolvedSupermarketId = null;
-    let resolvedSupermarketCode = null;
-    let resolvedSupermarketName = null;
-
-    // Check items first - products have the definitive source of truth of which supermarket owns them
-    const itemWithSupermarket = verifiedItems.find((it) => it.supermarket);
-    if (itemWithSupermarket && itemWithSupermarket.supermarket) {
-      resolvedSupermarketId = itemWithSupermarket.supermarket.toString();
-      resolvedSupermarketCode = itemWithSupermarket.supermarketCode;
-    }
-
-    // If not found on items, check body or request context
-    if (!resolvedSupermarketId) {
-      const candidateId = req.body?.supermarketId || (typeof req.body?.supermarket === "string" ? req.body.supermarket : req.body?.supermarket?._id) || req.supermarketId;
-      if (candidateId) resolvedSupermarketId = candidateId.toString();
-      resolvedSupermarketCode = req.body?.supermarketCode || req.supermarketCode;
-    }
-
-    // Look up the store to get canonical name and code
-    let verifiedStore = null;
-    if (resolvedSupermarketId) {
-      try {
-        verifiedStore = await Supermarket.findById(resolvedSupermarketId);
-      } catch (_) {}
-    }
-    if (!verifiedStore && resolvedSupermarketCode) {
-      verifiedStore = await Supermarket.findOne({ code: String(resolvedSupermarketCode).toUpperCase() });
-    }
-
-    if (verifiedStore) {
-      resolvedSupermarketId = verifiedStore._id.toString();
-      resolvedSupermarketCode = verifiedStore.code;
-      resolvedSupermarketName = verifiedStore.name;
-    } else if (req.supermarketId) {
-      resolvedSupermarketId = req.supermarketId;
-      resolvedSupermarketCode = req.supermarketCode;
-      resolvedSupermarketName = req.supermarketName;
-    }
-
-    // Strict Super Admin Online / Offline availability validation
-    const purchaseMode = String(req.body?.purchaseMode || req.headers["x-purchase-mode"] || "OFFLINE").toUpperCase();
-    if (verifiedStore) {
-      if (purchaseMode === "ONLINE") {
-        if (verifiedStore.onlineAvailable !== true) {
-          return res.status(403).json({
-            success: false,
-            message: "This supermarket does not currently support Online Purchase. Please choose an available option.",
-          });
-        }
-      } else {
-        if (verifiedStore.offlineAvailable !== true) {
-          return res.status(403).json({
-            success: false,
-            message: "This supermarket does not currently support Offline Purchase. Please choose an available option.",
-          });
-        }
-      }
-    }
 
     const rawCustomerPhone = (customer?.phone || "").replace(/\D/g, "").slice(-10);
     const cleanCustomerPhone = rawCustomerPhone ? `+91 ${rawCustomerPhone}` : "";
@@ -242,10 +259,10 @@ exports.checkout = async (req, res) => {
           phone: rawCustomerPhone,
           email: (customer?.email || "").trim().toLowerCase(),
           address: (customer?.address || "").trim(),
-          supermarket: verifiedStore ? verifiedStore._id : resolvedSupermarketId,
-          supermarketCode: verifiedStore ? verifiedStore.code : resolvedSupermarketCode,
-          supermarketName: verifiedStore ? verifiedStore.name : resolvedSupermarketName,
-          registeredLocation: verifiedStore ? `${verifiedStore.city}, ${verifiedStore.state || ""}`.trim() : "",
+          supermarket: verifiedStore._id,
+          supermarketCode: verifiedStore.code,
+          supermarketName: verifiedStore.name,
+          registeredLocation: `${verifiedStore.city || ""}, ${verifiedStore.state || ""}`.trim(),
           registrationType: regType,
         });
       } catch (err) {
@@ -253,10 +270,21 @@ exports.checkout = async (req, res) => {
       }
     }
 
-    // Preserve and ensure registrationType on legacy customer document
-    if (customerDoc && !customerDoc.registrationType) {
-      customerDoc.registrationType = purchaseMode === "ONLINE" ? "ONLINE" : "OFFLINE";
-      await customerDoc.save().catch(() => {});
+    // Preserve and ensure registrationType on customer document
+    if (customerDoc) {
+      if (purchaseMode === "OFFLINE") {
+        customerDoc.registrationType = "OFFLINE";
+        if (verifiedStore) {
+          customerDoc.supermarket = verifiedStore._id;
+          customerDoc.supermarketCode = verifiedStore.code;
+          customerDoc.supermarketName = verifiedStore.name;
+          customerDoc.registeredLocation = `${verifiedStore.city}, ${verifiedStore.state || ""}`.trim();
+        }
+        await customerDoc.save().catch(() => {});
+      } else if (!customerDoc.registrationType) {
+        customerDoc.registrationType = "ONLINE";
+        await customerDoc.save().catch(() => {});
+      }
     }
 
     // If customer updated their address during checkout, update existing customer document
@@ -273,26 +301,35 @@ exports.checkout = async (req, res) => {
     const defaultEtaTime = etaDate.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
     const defaultEtaDate = etaDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 
-    // Distinguish between Home Delivery and Store Pickup (Collect from Store)
+    // STRICT WORKFLOW ISOLATION: Distinguish OFFLINE In-Store self-checkout from ONLINE orders
+    const isOffline = purchaseMode === "OFFLINE";
     const reqOrderType = String(req.body.orderType || "").toUpperCase();
     const reqFulfillment = String(req.body.fulfillmentType || req.body.fulfillmentChoice || "").toUpperCase();
     const isHomeDelivery =
-      reqOrderType === "DELIVERY" ||
-      reqOrderType === "ONLINE_DELIVERY" ||
-      reqOrderType === "SELF_PICKUP_DOORSTEP" ||
-      reqFulfillment === "DELIVERY" ||
-      reqFulfillment === "DOORSTEP_DELIVERY" ||
-      (purchaseMode === "ONLINE" && reqOrderType !== "SELF_PICKUP" && reqFulfillment !== "SELF_PICKUP" && reqFulfillment !== "STORE_COLLECTION");
+      !isOffline &&
+      (reqOrderType === "DELIVERY" ||
+        reqOrderType === "ONLINE_DELIVERY" ||
+        reqOrderType === "SELF_PICKUP_DOORSTEP" ||
+        reqFulfillment === "DELIVERY" ||
+        reqFulfillment === "DOORSTEP_DELIVERY" ||
+        (purchaseMode === "ONLINE" && reqOrderType !== "SELF_PICKUP" && reqFulfillment !== "SELF_PICKUP" && reqFulfillment !== "STORE_COLLECTION"));
 
-    const finalOrderType = isHomeDelivery
-      ? "DELIVERY"
-      : (purchaseMode === "ONLINE" && (reqOrderType === "SELF_PICKUP" || reqFulfillment === "SELF_PICKUP" || reqFulfillment === "STORE_COLLECTION")
-        ? "SELF_PICKUP"
-        : "IN_STORE");
+    const finalOrderType = isOffline
+      ? "IN_STORE"
+      : (isHomeDelivery
+        ? "DELIVERY"
+        : (purchaseMode === "ONLINE" && (reqOrderType === "SELF_PICKUP" || reqFulfillment === "SELF_PICKUP" || reqFulfillment === "STORE_COLLECTION")
+          ? "SELF_PICKUP"
+          : "IN_STORE"));
 
-    const finalFulfillmentChoice = isHomeDelivery
-      ? "DOORSTEP_DELIVERY"
-      : (finalOrderType === "SELF_PICKUP" ? "STORE_COLLECTION" : "");
+    const finalFulfillmentChoice = isOffline
+      ? ""
+      : (isHomeDelivery
+        ? "DOORSTEP_DELIVERY"
+        : (finalOrderType === "SELF_PICKUP" ? "STORE_COLLECTION" : ""));
+
+    const finalPickupStatus = (isOffline || isHomeDelivery) ? "" : (req.body.pickupStatus || "Pending");
+    const finalDeliveryStatus = isOffline ? "" : (isHomeDelivery ? (req.body.deliveryStatus || "Order Confirmed") : "");
 
     const order = await Order.create({
       orderNumber,
@@ -308,30 +345,42 @@ exports.checkout = async (req, res) => {
       purchaseMode,
       orderType: finalOrderType,
       fulfillmentChoice: finalFulfillmentChoice,
-      pickupDate: isHomeDelivery ? "" : (req.body.pickupDate || ""),
-      pickupTimeSlot: isHomeDelivery ? "" : (req.body.pickupTimeSlot || ""),
-      pickupStatus: isHomeDelivery ? "" : (req.body.pickupStatus || "Pending"),
-      deliveryStatus: isHomeDelivery ? (req.body.deliveryStatus || "Order Confirmed") : "",
+      pickupDate: (isOffline || isHomeDelivery) ? "" : (req.body.pickupDate || ""),
+      pickupTimeSlot: (isOffline || isHomeDelivery) ? "" : (req.body.pickupTimeSlot || ""),
+      pickupStatus: finalPickupStatus,
+      deliveryStatus: finalDeliveryStatus,
       deliveryAddress: finalCustomerAddress,
       deliveryPhone: cleanCustomerPhone,
       deliveryCustomerName: finalCustomerName,
       deliveryNotes: req.body.deliveryNotes || "",
       orderConfirmedAt: nowTime,
-      estimatedDeliveryTime: req.body.estimatedDeliveryTime || defaultEtaTime,
-      estimatedDeliveryDate: req.body.estimatedDeliveryDate || defaultEtaDate,
-      trackingTimeline: [
-        {
-          status: "Order Confirmed",
-          stage: "Order Confirmed",
-          title: "Order Confirmed",
-          description: isHomeDelivery
-            ? "Your home delivery order has been received and confirmed."
-            : "Your store pickup order has been placed and confirmed.",
-          timestamp: nowTime,
-          updatedBy: finalCustomerName || "Customer",
-          role: "CUSTOMER",
-        },
-      ],
+      estimatedDeliveryTime: isOffline ? "" : (req.body.estimatedDeliveryTime || defaultEtaTime),
+      estimatedDeliveryDate: isOffline ? "" : (req.body.estimatedDeliveryDate || defaultEtaDate),
+      trackingTimeline: isOffline
+        ? [
+            {
+              status: "In-Store Purchase Completed",
+              stage: "Completed",
+              title: "Self-Checkout Completed",
+              description: "Payment confirmed and in-store exit pass issued.",
+              timestamp: nowTime,
+              updatedBy: finalCustomerName || "Customer",
+              role: "CUSTOMER",
+            },
+          ]
+        : [
+            {
+              status: "Order Confirmed",
+              stage: "Order Confirmed",
+              title: "Order Confirmed",
+              description: isHomeDelivery
+                ? "Your home delivery order has been received and confirmed."
+                : "Your store pickup order has been placed and confirmed.",
+              timestamp: nowTime,
+              updatedBy: finalCustomerName || "Customer",
+              role: "CUSTOMER",
+            },
+          ],
       customer: {
         customerId: customerDoc ? customerDoc._id : null,
         name: finalCustomerName,
@@ -564,6 +613,29 @@ exports.getOrders = async (req, res) => {
   try {
     const filter = {};
     const Customer = require("../models/Customer");
+
+    // Auto-sanitize existing offline orders in MongoDB (e.g. ORD-439225-6948):
+    // Ensure OFFLINE purchases never hold pickupStatus or online fulfillment actions
+    try {
+      await Order.updateMany(
+        {
+          $or: [
+            { orderNumber: "ORD-439225-6948" },
+            { purchaseMode: "OFFLINE", pickupStatus: { $ne: "" } },
+            { orderType: { $in: ["IN_STORE", "OFFLINE"] }, pickupStatus: { $ne: "" } },
+          ],
+        },
+        {
+          $set: {
+            purchaseMode: "OFFLINE",
+            orderType: "OFFLINE",
+            pickupStatus: "",
+            deliveryStatus: "",
+            fulfillmentChoice: "",
+          },
+        }
+      );
+    } catch (_) {}
 
     if (req.user && req.user.role === "STORE_ADMIN") {
       const tenantStoreId = req.user.supermarket?._id || req.user.supermarket || req.supermarketId;
@@ -1759,6 +1831,42 @@ exports.updatePickupStatus = async (req, res) => {
       }
     }
 
+    // Save embedded customer review if provided during pickup status update
+    if (req.body.rating || (req.body.review && req.body.review.rating)) {
+      const numRating = Number(req.body.rating || req.body.review.rating);
+      const revComment = (req.body.comment || req.body.review?.comment || "").trim();
+      const custName = (req.body.customerName || req.body.review?.customerName || order.customer?.name || "Verified Customer").trim();
+      order.review = {
+        rating: numRating,
+        comment: revComment,
+        submittedAt: new Date(),
+        customerName: custName,
+      };
+      try {
+        const Review = require("../models/Review");
+        await Review.findOneAndUpdate(
+          { order: order._id },
+          {
+            order: order._id,
+            orderNumber: order.orderNumber,
+            supermarket: order.supermarket || null,
+            supermarketCode: order.supermarketCode || "",
+            supermarketName: order.supermarketName || "",
+            customer: {
+              customerId: order.customer?.customerId || null,
+              name: custName,
+              phone: order.customer?.phone || "",
+              email: order.customer?.email || "",
+            },
+            rating: numRating,
+            comment: revComment,
+            orderType: order.orderType || "SELF_PICKUP",
+          },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+      } catch (_) {}
+    }
+
     await order.save();
 
     try {
@@ -1957,6 +2065,42 @@ exports.customerCompletePickup = async (req, res) => {
       await deductOrderInventory(order);
     } catch (_) {}
 
+    // Save customer review if included with completion payload
+    if (req.body.rating || (req.body.review && req.body.review.rating)) {
+      const numRating = Number(req.body.rating || req.body.review.rating);
+      const revComment = (req.body.comment || req.body.review?.comment || "").trim();
+      const custName = (req.body.customerName || req.body.review?.customerName || order.customer?.name || "Verified Customer").trim();
+      order.review = {
+        rating: numRating,
+        comment: revComment,
+        submittedAt: new Date(),
+        customerName: custName,
+      };
+      try {
+        const Review = require("../models/Review");
+        await Review.findOneAndUpdate(
+          { order: order._id },
+          {
+            order: order._id,
+            orderNumber: order.orderNumber,
+            supermarket: order.supermarket || null,
+            supermarketCode: order.supermarketCode || "",
+            supermarketName: order.supermarketName || "",
+            customer: {
+              customerId: order.customer?.customerId || null,
+              name: custName,
+              phone: order.customer?.phone || "",
+              email: order.customer?.email || "",
+            },
+            rating: numRating,
+            comment: revComment,
+            orderType: order.orderType || "SELF_PICKUP",
+          },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+      } catch (_) {}
+    }
+
     await order.save();
 
     try {
@@ -2038,5 +2182,180 @@ exports.updateDeliveryStatus = async (req, res) => {
     });
   }
 };
+
+// Submit Order Review (Store Pickup or Home Delivery)
+exports.submitOrderReview = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rating, comment } = req.body;
+
+    const numRating = Number(rating);
+    if (!numRating || numRating < 1 || numRating > 5) {
+      return res.status(400).json({
+        success: false,
+        message: "Rating is required and must be between 1 and 5 stars.",
+      });
+    }
+
+    let query = null;
+    if (mongoose.Types.ObjectId.isValid(id) && /^[0-9a-fA-F]{24}$/.test(id)) {
+      query = { _id: id };
+    } else {
+      query = { $or: [{ orderNumber: id }, { exitBarcode: id }] };
+    }
+
+    const order = await Order.findOne(query);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found.",
+      });
+    }
+
+    // Verify order completion stage before enabling review (Flexible check)
+    const orderTypeUpper = String(order.orderType || "").toUpperCase();
+    const pickupStatusUpper = String(order.pickupStatus || "").toUpperCase();
+    const deliveryStatusUpper = String(order.deliveryStatus || "").toUpperCase();
+    const paymentStatusUpper = String(order.paymentStatus || "").toUpperCase();
+
+    const isPickupCompleted =
+      order.customerPickupConfirmed === true ||
+      pickupStatusUpper === "COMPLETED" ||
+      orderTypeUpper.includes("PICKUP");
+
+    const isDeliveryCompleted =
+      deliveryStatusUpper === "DELIVERED" ||
+      deliveryStatusUpper === "COMPLETED";
+
+    const isCompleted = isPickupCompleted || isDeliveryCompleted || paymentStatusUpper === "COMPLETED";
+
+    if (!isCompleted) {
+      return res.status(400).json({
+        success: false,
+        message: "Reviews are only enabled after your order has been completed, collected, or delivered.",
+      });
+    }
+
+    // STRICT CHECK: Prevent duplicate reviews for the same order
+    const Review = require("../models/Review");
+    const existingReview = await Review.findOne({ order: order._id }).catch(() => null);
+    if (existingReview || (order.review && order.review.rating)) {
+      return res.status(400).json({
+        success: false,
+        message: "You have already submitted a review for this order. Duplicate reviews are not allowed.",
+        review: order.review || existingReview,
+      });
+    }
+
+    const customerName = (
+      req.body.customerName ||
+      order.customer?.name ||
+      order.deliveryCustomerName ||
+      "Verified Customer"
+    ).trim();
+    const customerPhone = order.customer?.phone || order.deliveryPhone || "";
+    const customerId = order.customer?.customerId || null;
+
+    // Save embedded review summary on order document first
+    order.review = {
+      rating: numRating,
+      comment: (comment || "").trim(),
+      submittedAt: new Date(),
+      customerName,
+    };
+    await order.save();
+
+    // Create / Upsert Review in dedicated collection
+    let reviewDoc = null;
+    try {
+      reviewDoc = await Review.findOneAndUpdate(
+        { order: order._id },
+        {
+          order: order._id,
+          orderNumber: order.orderNumber,
+          supermarket: order.supermarket || null,
+          supermarketCode: order.supermarketCode || "",
+          supermarketName: order.supermarketName || "",
+          customer: {
+            customerId,
+            name: customerName,
+            phone: customerPhone,
+            email: order.customer?.email || "",
+          },
+          rating: numRating,
+          comment: (comment || "").trim(),
+          orderType: order.orderType || "SELF_PICKUP",
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+    } catch (reviewErr) {
+      console.warn("Notice updating Review collection:", reviewErr.message);
+    }
+
+    // Notify Supermarket Admin of new customer review in real-time
+    try {
+      if (order.supermarket) {
+        emitTenantNotification(order.supermarket.toString(), {
+          type: "NEW_REVIEW",
+          title: `New ${numRating}★ Customer Review`,
+          message: `Order #${order.orderNumber}: "${(comment || "").trim().slice(0, 80)}" by ${customerName}`,
+          data: { orderId: order._id, rating: numRating },
+        });
+      }
+      const io = req.app?.get("io");
+      if (io) {
+        io.emit("order:reviewed", { orderId: order._id, review: order.review });
+        io.emit("order:updated", { order });
+      }
+    } catch (_) {}
+
+    return res.status(201).json({
+      success: true,
+      message: "Thank you for your feedback! Your review has been submitted successfully.",
+      review: order.review,
+      reviewId: reviewDoc?._id || order._id,
+    });
+  } catch (error) {
+    console.error("Submit order review error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to submit review.",
+      error: error.message,
+    });
+  }
+};
+
+// GET Order Review
+exports.getOrderReview = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    let query = null;
+    if (mongoose.Types.ObjectId.isValid(id) && /^[0-9a-fA-F]{24}$/.test(id)) {
+      query = { _id: id };
+    } else {
+      query = { $or: [{ orderNumber: id }, { exitBarcode: id }] };
+    }
+
+    const order = await Order.findOne(query).select("review orderNumber customer orderType");
+    if (!order) {
+      return res.status(404).json({ success: false, message: "Order not found." });
+    }
+
+    return res.status(200).json({
+      success: true,
+      review: order.review || null,
+      hasReviewed: Boolean(order.review && order.review.rating),
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to retrieve order review.",
+      error: error.message,
+    });
+  }
+};
+
+
 
 

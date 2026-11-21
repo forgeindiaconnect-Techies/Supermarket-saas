@@ -25,6 +25,19 @@ import { useAuth } from "../../context/AuthContext";
 import "./ProductManagement.css";
 import "./SettingsManagement.css";
 
+// Helper to extract clean 10 digits from any phone string
+const extract10Digits = (phoneStr) => {
+  if (!phoneStr) return "";
+  const digits = String(phoneStr).replace(/\D/g, "");
+  if (digits.length === 12 && digits.startsWith("91")) {
+    return digits.slice(2);
+  }
+  if (digits.length > 10) {
+    return digits.slice(-10);
+  }
+  return digits;
+};
+
 export default function SettingsManagement() {
   const { user, currentSupermarket } = useAuth();
 
@@ -75,7 +88,7 @@ export default function SettingsManagement() {
           const uName = u?.name || sm?.adminName || "";
           const uUsername = (u?.username || sm?.adminUsername || "").toLowerCase();
           const uEmail = (u?.email || sm?.email || "").toLowerCase();
-          const uPhone = u?.phone || sm?.phone || "";
+          const uPhone = extract10Digits(u?.phone || sm?.phone || "");
 
           setFullName(uName);
           setUsername(uUsername);
@@ -103,7 +116,7 @@ export default function SettingsManagement() {
           setFullName(user.name || "");
           setUsername((user.username || "").toLowerCase());
           setEmail((user.email || "").toLowerCase());
-          setPhone(user.phone || "");
+          setPhone(extract10Digits(user.phone || ""));
         }
       } finally {
         setLoading(false);
@@ -122,6 +135,60 @@ export default function SettingsManagement() {
 
   const handleEmailChange = (e) => {
     setEmail(e.target.value.toLowerCase().replace(/\s+/g, ""));
+  };
+
+  // Strictly accept only digits and strictly max 10 digits
+  const handlePhoneChange = (e) => {
+    let clean = e.target.value.replace(/\D/g, "");
+    if (clean.length === 12 && clean.startsWith("91")) {
+      clean = clean.slice(2);
+    }
+    if (clean.length > 10) {
+      clean = clean.slice(0, 10);
+    }
+    setPhone(clean);
+  };
+
+  const handlePhonePaste = (e) => {
+    e.preventDefault();
+    const pasted = e.clipboardData?.getData("text") || "";
+    let clean = pasted.replace(/\D/g, "");
+    if (clean.length === 12 && clean.startsWith("91")) {
+      clean = clean.slice(2);
+    }
+    if (clean.length > 10) {
+      clean = clean.slice(0, 10);
+    }
+    setPhone(clean);
+  };
+
+  const handlePhoneKeyDown = (e) => {
+    const allowedKeys = [
+      "Backspace",
+      "Delete",
+      "Tab",
+      "Escape",
+      "Enter",
+      "ArrowLeft",
+      "ArrowRight",
+      "ArrowUp",
+      "ArrowDown",
+      "Home",
+      "End",
+    ];
+    if (allowedKeys.includes(e.key) || e.ctrlKey || e.metaKey) {
+      return;
+    }
+    // Block any non-digit keypress
+    if (!/^[0-9]$/.test(e.key)) {
+      e.preventDefault();
+      return;
+    }
+    // Block typing beyond 10 digits unless text is highlighted to replace
+    const selectionLength = (e.target.selectionEnd || 0) - (e.target.selectionStart || 0);
+    if (phone.length >= 10 && selectionLength === 0) {
+      e.preventDefault();
+    }
   };
 
   const handleCancel = () => {
@@ -212,6 +279,11 @@ export default function SettingsManagement() {
       return;
     }
 
+    if (!phone || phone.trim().length !== 10) {
+      showToastMsg("Mobile Number must be exactly 10 digits.", "error");
+      return;
+    }
+
     if (showPasswordSection && (newPassword || currentPassword || confirmPassword)) {
       if (!currentPassword) {
         showToastMsg("Please enter your current password to proceed.", "error");
@@ -229,10 +301,11 @@ export default function SettingsManagement() {
 
     try {
       setSaving(true);
+      const formattedPhone = `+91 ${phone.trim()}`;
       const payload = {
         name: fullName.trim(),
         email: email.trim().toLowerCase(),
-        phone: phone.trim(),
+        phone: formattedPhone,
       };
 
       if (showPasswordSection && newPassword) {
@@ -257,7 +330,7 @@ export default function SettingsManagement() {
             ...currentU,
             name: fullName.trim(),
             email: email.trim().toLowerCase(),
-            phone: phone.trim(),
+            phone: formattedPhone,
           };
           localStorage.setItem("grocerease_user", JSON.stringify(updatedU));
           window.dispatchEvent(new Event("grocerease_storage_updated"));
@@ -548,7 +621,7 @@ export default function SettingsManagement() {
                 <Phone size={16} />
               </div>
               <span style={{ fontSize: "0.85rem", color: "#334155", fontWeight: 600 }}>
-                {phone || "+91 98765 43210"}
+                {phone ? `+91 ${phone}` : "+91 9876543210"}
               </span>
             </div>
 
@@ -858,13 +931,36 @@ export default function SettingsManagement() {
                 Mobile Number <span style={{ color: "#ef4444" }}>*</span>
               </label>
               <div style={{ position: "relative" }}>
-                <span style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)", color: "#2563eb" }}>
+                <span style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)", color: "#2563eb", pointerEvents: "none" }}>
                   <Phone size={16} />
                 </span>
+                <span
+                  style={{
+                    position: "absolute",
+                    left: "38px",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    fontSize: "0.88rem",
+                    fontWeight: 700,
+                    color: "#475569",
+                    borderRight: "1.5px solid #cbd5e1",
+                    paddingRight: "8px",
+                    lineHeight: "18px",
+                    userSelect: "none",
+                    pointerEvents: "none",
+                  }}
+                >
+                  +91
+                </span>
                 <input
-                  type="text"
+                  type="tel"
+                  inputMode="numeric"
+                  pattern="[0-9]{10}"
+                  maxLength={10}
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={handlePhoneChange}
+                  onKeyDown={handlePhoneKeyDown}
+                  onPaste={handlePhonePaste}
                   onFocus={(e) => {
                     e.target.style.borderColor = "#2563eb";
                     e.target.style.boxShadow = "0 0 0 3px rgba(37, 99, 235, 0.15)";
@@ -873,21 +969,25 @@ export default function SettingsManagement() {
                     e.target.style.borderColor = "#cbd5e1";
                     e.target.style.boxShadow = "none";
                   }}
-                  placeholder="+91 98765 43210"
+                  placeholder="9876543210"
                   required
                   style={{
                     width: "100%",
-                    padding: "10px 14px 10px 40px",
+                    padding: "10px 14px 10px 80px",
                     borderRadius: "10px",
                     border: "1px solid #cbd5e1",
                     fontSize: "0.9rem",
                     fontWeight: 600,
                     color: "#0f172a",
                     outline: "none",
+                    letterSpacing: "0.5px",
                     transition: "all 0.15s ease",
                   }}
                 />
               </div>
+              <small style={{ color: "#64748b", fontSize: "11px", marginTop: "4px", display: "block" }}>
+                Enter exactly 10 digits ({phone.length}/10 digits). Numbers beyond 10 digits are blocked.
+              </small>
             </div>
 
             {/* Change Admin Password Section */}

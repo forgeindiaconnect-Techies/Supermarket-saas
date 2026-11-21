@@ -57,10 +57,38 @@ exports.getStoreOfflineCustomers = async (req, res) => {
     // Run one-time legacy backfill check
     await backfillLegacyCustomerRecords(supermarketId);
 
+    const storeObjectId = mongoose.Types.ObjectId.isValid(supermarketId)
+      ? new mongoose.Types.ObjectId(supermarketId)
+      : supermarketId;
+
+    const storeCode = req.user?.supermarketCode || req.user?.supermarket?.code || "";
+
+    // Find any offline orders in this supermarket to also include any offline shoppers who shopped here
+    const offlineOrdersInStore = await Order.find({
+      $or: [{ supermarket: storeObjectId }, { supermarket: String(supermarketId) }],
+      purchaseMode: "OFFLINE",
+    }).select("customer");
+    const offlinePhonesFromOrders = offlineOrdersInStore
+      .map((o) => (o.customer?.phone || "").replace(/\D/g, "").slice(-10))
+      .filter((p) => p.length === 10);
+
+    const storeMatchConditions = [
+      { supermarket: storeObjectId },
+      { supermarket: String(supermarketId) },
+    ];
+    if (storeCode) {
+      storeMatchConditions.push({ supermarketCode: storeCode });
+    }
+    if (offlinePhonesFromOrders.length > 0) {
+      storeMatchConditions.push({ phone: { $in: offlinePhonesFromOrders } });
+    }
+
     // 2. Strict Database Filter: OFFLINE registrations only for this supermarket
     const query = {
-      supermarket: supermarketId,
-      registrationType: "OFFLINE", // MANDATORY: Online customers are strictly excluded at query level
+      $and: [
+        { $or: storeMatchConditions },
+        { registrationType: "OFFLINE" }, // MANDATORY: Online customers are strictly excluded at query level
+      ],
     };
 
     // Optional status filter
@@ -349,4 +377,100 @@ exports.deleteCustomer = async (req, res) => {
     });
   }
 };
+
+/**
+ * POST /api/customers/offline-register
+ * Public endpoint for walk-in offline mobile shoppers to register during barcode scan checkout
+ * Guaranteed to save exclusively as registrationType: "OFFLINE" in MongoDB and associate with store.
+ */
+exports.registerOfflineCustomerPublic = async (req, res) => {
+  try {
+    const { name, phone, email, address, supermarketId, supermarketCode } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, message: "Customer name is mandatory." });
+    }
+
+    const rawDigits = String(phone || "").replace(/\D/g, "");
+    const cleanPhone = rawDigits.length >= 10 ? rawDigits.slice(-10) : rawDigits;
+    if (!cleanPhone || cleanPhone.length !== 10 || !["6", "7", "8", "9"].includes(cleanPhone[0])) {
+      return res.status(400).json({
+        success: false,
+        message: "A valid 10-digit Indian mobile number starting with 6, 7, 8, or 9 is required.",
+      });
+    }
+
+    // Resolve Supermarket tenant strictly
+    let store = null;
+    const target = supermarketId || supermarketCode;
+    if (target) {
+      if (String(target).match(/^[0-9a-fA-F]{24}$/)) {
+        store = await Supermarket.findById(target);
+      }
+      if (!store) {
+        store = await Supermarket.findOne({ code: String(target).toUpperCase() });
+      }
+    }
+
+    if (!store) {
+      return res.status(400).json({
+        success: false,
+        message: "Supermarket identification is required to register an offline customer.",
+      });
+    }
+
+    // Find or create customer
+    let customer = await Customer.findOne({ phone: cleanPhone });
+
+    if (customer) {
+      customer.name = name.trim();
+      if (email) customer.email = email.trim().toLowerCase();
+      if (address) customer.address = address.trim();
+      customer.supermarket = store._id;
+      customer.supermarketCode = store.code;
+      customer.supermarketName = store.name;
+      customer.registeredLocation = `${store.city}, ${store.state || ""}`.trim();
+      customer.registrationType = "OFFLINE"; // STRICT
+      await customer.save();
+    } else {
+      customer = await Customer.create({
+        name: name.trim(),
+        phone: cleanPhone,
+        email: email ? email.trim().toLowerCase() : "",
+        address: address?.trim() || "",
+        supermarket: store._id,
+        supermarketCode: store.code,
+        supermarketName: store.name,
+        registeredLocation: `${store.city}, ${store.state || ""}`.trim(),
+        registrationType: "OFFLINE", // STRICT
+        status: "Active",
+      });
+    }
+
+    // Notify store admin
+    try {
+      const { emitTenantNotification } = require("../utils/notificationEmitter");
+      emitTenantNotification(store._id.toString(), {
+        type: "NEW_CUSTOMER",
+        title: "New Offline Customer Registered",
+        message: `${customer.name} (${customer.phone}) registered for offline shopping.`,
+        data: { customerId: customer._id, registrationType: "OFFLINE" },
+      });
+    } catch (_) {}
+
+    return res.status(200).json({
+      success: true,
+      message: `Offline customer "${customer.name}" registered successfully.`,
+      customer,
+    });
+  } catch (error) {
+    console.error("Register offline customer public error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to register offline customer.",
+      error: error.message,
+    });
+  }
+};
+
 

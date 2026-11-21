@@ -763,27 +763,6 @@ export default function NotificationsManagement() {
             </button>
           </div>
 
-          {/* Audio Chime Button */}
-          <button
-            type="button"
-            className={`mc-icon-toggle ${soundEnabled ? "on" : "off"}`}
-            onClick={handleToggleSound}
-            title={soundEnabled ? "Audio chimes active" : "Audio muted"}
-          >
-            {soundEnabled ? <Volume2 size={15} /> : <VolumeX size={15} />}
-          </button>
-
-          {/* Refresh Button */}
-          <button
-            type="button"
-            className="mc-icon-btn"
-            onClick={() => fetchAllSources(true)}
-            disabled={refreshing}
-            title="Refresh stream"
-          >
-            <RefreshCw size={14} className={refreshing ? "spinning" : ""} />
-          </button>
-
           {/* Mark All Read */}
           <button
             type="button"
@@ -986,7 +965,8 @@ export default function NotificationsManagement() {
                     CASE A: ORDER INSPECTION TERMINAL (DIGITAL RECEIPT & ACTION)
                     ========================================================= */}
                 {activeInspectedItem.sourceType === "order" && (
-                  <div className="inspector-order-workspace">
+                  <>
+                    <div className="inspector-order-workspace">
                     {/* Header Info Banner */}
                     <div className="order-inspector-header">
                       <div className="order-id-headline">
@@ -1159,96 +1139,97 @@ export default function NotificationsManagement() {
                         })()}
                       </div>
                     </div>
+                  </div>
 
-                    {/* Big Tactile Action Command Center Bar */}
-                    <div className="inspector-action-command-bar">
-                      {activeInspectedItem.paymentStatus === "Pending" && (
-                        <>
-                          {activeInspectedItem.paymentMethod === "Cash" ? (
-                            <button
-                              type="button"
-                              className="terminal-command-btn success"
-                              onClick={() =>
-                                handleConfirmCash(
-                                  activeInspectedItem.order._id,
-                                  activeInspectedItem.order.orderNumber ||
-                                    activeInspectedItem.order._id
-                                )
-                              }
-                              disabled={actionLoadingId === activeInspectedItem.order._id}
-                            >
-                              <CheckCircle2 size={18} />
-                              <span>
-                                {actionLoadingId === activeInspectedItem.order._id
-                                  ? "Confirming..."
-                                  : "Confirm Cash Received & Unlock Exit"}
-                              </span>
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              className="terminal-command-btn primary"
-                              onClick={() =>
-                                handleApproveOrder(
-                                  activeInspectedItem.order._id,
-                                  activeInspectedItem.order.orderNumber ||
-                                    activeInspectedItem.order._id
-                                )
-                              }
-                              disabled={actionLoadingId === activeInspectedItem.order._id}
-                            >
-                              <ShieldCheck size={18} />
-                              <span>
-                                {actionLoadingId === activeInspectedItem.order._id
-                                  ? "Authorizing..."
-                                  : "Approve Payment & Authorize Clearance"}
-                              </span>
-                            </button>
-                          )}
-                        </>
-                      )}
+                  {/* Big Tactile Action Command Center Bar (Docked at Bottom of Inspector) */}
+                  <div className="inspector-action-command-bar">
+                    {activeInspectedItem.paymentStatus === "Pending" && (
+                      <>
+                        {activeInspectedItem.paymentMethod === "Cash" ? (
+                          <button
+                            type="button"
+                            className="terminal-command-btn success"
+                            onClick={() =>
+                              handleConfirmCash(
+                                activeInspectedItem.order._id,
+                                activeInspectedItem.order.orderNumber ||
+                                  activeInspectedItem.order._id
+                              )
+                            }
+                            disabled={actionLoadingId === activeInspectedItem.order._id}
+                          >
+                            <CheckCircle2 size={18} />
+                            <span>
+                              {actionLoadingId === activeInspectedItem.order._id
+                                ? "Confirming..."
+                                : "Confirm Cash Received & Unlock Exit"}
+                            </span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="terminal-command-btn primary"
+                            onClick={() =>
+                              handleApproveOrder(
+                                activeInspectedItem.order._id,
+                                activeInspectedItem.order.orderNumber ||
+                                  activeInspectedItem.order._id
+                              )
+                            }
+                            disabled={actionLoadingId === activeInspectedItem.order._id}
+                          >
+                            <ShieldCheck size={18} />
+                            <span>
+                              {actionLoadingId === activeInspectedItem.order._id
+                                ? "Authorizing..."
+                                : "Approve Payment & Authorize Clearance"}
+                            </span>
+                          </button>
+                        )}
+                      </>
+                    )}
 
-                      {activeInspectedItem.paymentStatus === "Approved" && (
-                        <button
-                          type="button"
-                          className="terminal-command-btn success"
-                          onClick={() =>
-                            handleCompleteOrder(
-                              activeInspectedItem.order._id,
-                              activeInspectedItem.order.orderNumber ||
-                                activeInspectedItem.order._id
-                            )
-                          }
-                          disabled={actionLoadingId === activeInspectedItem.order._id}
-                        >
-                          <CheckCircle2 size={18} />
-                          <span>
-                            {actionLoadingId === activeInspectedItem.order._id
-                              ? "Completing..."
-                              : "Mark Completed & Gate Verified"}
-                          </span>
-                        </button>
-                      )}
-
+                    {activeInspectedItem.paymentStatus === "Approved" && (
                       <button
                         type="button"
-                        className="terminal-command-btn outline"
-                        onClick={() => window.print()}
+                        className="terminal-command-btn success"
+                        onClick={() =>
+                          handleCompleteOrder(
+                            activeInspectedItem.order._id,
+                            activeInspectedItem.order.orderNumber ||
+                              activeInspectedItem.order._id
+                          )
+                        }
+                        disabled={actionLoadingId === activeInspectedItem.order._id}
                       >
-                        <Printer size={15} />
-                        <span>Print Receipt</span>
+                        <CheckCircle2 size={18} />
+                        <span>
+                          {actionLoadingId === activeInspectedItem.order._id
+                            ? "Completing..."
+                            : "Mark Completed & Gate Verified"}
+                        </span>
                       </button>
+                    )}
 
-                      <Link
-                        to="/admin/orders"
-                        className="terminal-command-btn ghost"
-                      >
-                        <span>Open in Orders Portal</span>
-                        <ArrowRight size={14} />
-                      </Link>
-                    </div>
+                    <button
+                      type="button"
+                      className="terminal-command-btn outline"
+                      onClick={() => window.print()}
+                    >
+                      <Printer size={15} />
+                      <span>Print Receipt</span>
+                    </button>
+
+                    <Link
+                      to="/admin/orders"
+                      className="terminal-command-btn ghost"
+                    >
+                      <span>Open in Orders Portal</span>
+                      <ArrowRight size={14} />
+                    </Link>
                   </div>
-                )}
+                </>
+              )}
 
                 {/* =========================================================
                     CASE B: LOW STOCK INVENTORY INSPECTOR

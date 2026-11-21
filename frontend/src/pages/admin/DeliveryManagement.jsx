@@ -24,6 +24,9 @@ import {
   X,
   Send,
   Navigation,
+  Eye,
+  Copy,
+  Check,
 } from "lucide-react";
 import { io } from "socket.io-client";
 import API, { SOCKET_URL } from "../../services/api";
@@ -43,6 +46,18 @@ export default function DeliveryManagement() {
   const [loadingOrders, setLoadingOrders] = useState(true);
   const [orderStatusFilter, setOrderStatusFilter] = useState("all");
   const [orderSearch, setOrderSearch] = useState("");
+  const [copiedOrderId, setCopiedOrderId] = useState(null);
+  const [selectedOrderForView, setSelectedOrderForView] = useState(null);
+  const [viewOrderModalOpen, setViewOrderModalOpen] = useState(false);
+
+  // Quick Copy Order ID
+  const handleCopyOrderId = (orderNumber, e) => {
+    if (e) e.stopPropagation();
+    navigator.clipboard.writeText(orderNumber);
+    setCopiedOrderId(orderNumber);
+    showToast(`✓ Order ID ${orderNumber} copied to clipboard!`);
+    setTimeout(() => setCopiedOrderId(null), 2000);
+  };
 
   // Staff State
   const [staffList, setStaffList] = useState([]);
@@ -540,7 +555,7 @@ export default function DeliveryManagement() {
             </div>
           </div>
 
-          {/* Orders Grid / Cards */}
+          {/* Orders Table strictly matching Reference Mockup Design */}
           {loadingOrders ? (
             <div className="del-loading-box">
               <RefreshCw size={26} className="del-spin" />
@@ -579,182 +594,238 @@ export default function DeliveryManagement() {
               )}
             </div>
           ) : (
-            <div className="del-orders-grid">
-              {filteredOrders.map((ord) => {
-                const s = ord.deliveryStatus || "New";
-                const staffAssigned = ord.assignedStaff || ord.deliveryStaff;
-                const custName = ord.customer?.name || ord.customerName || "Customer";
-                const custPhone = ord.customer?.phone || ord.customerPhone || "";
-                const deliveryAddress =
-                  ord.deliveryAddress || ord.customer?.address || "Address not provided";
-
-                return (
-                  <div key={ord._id} className="del-order-card">
-                    {/* Header */}
-                    <div className="del-order-header">
-                      <div>
-                        <span className="del-order-num">{ord.orderNumber}</span>
-                        <div className="del-order-date">
-                          <Calendar size={12} />
-                          <span>
-                            {ord.createdAt
-                              ? new Date(ord.createdAt).toLocaleString("en-IN", {
-                                  day: "numeric",
-                                  month: "short",
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })
-                              : "Recent"}
-                          </span>
-                        </div>
-                      </div>
-                      <span className={`del-badge-status status-${s.toLowerCase()}`}>
-                        {s === "OutForDelivery" ? "Out for Delivery" : s === "OrderPickedUp" ? "Picked Up" : s}
-                      </span>
-                    </div>
-
-                    {/* Customer & Address */}
-                    <div className="del-order-body">
-                      <div className="del-meta-row">
-                        <strong className="del-cust-name">{custName}</strong>
-                        {custPhone ? (
-                          <span className="del-cust-phone">
-                            <Phone size={12} />
-                            <span>{custPhone}</span>
-                          </span>
-                        ) : null}
-                      </div>
-
-                      <div className="del-address-box">
-                        <MapPin size={14} color="#059669" style={{ flexShrink: 0, marginTop: 2 }} />
-                        <span className="del-address-text">{deliveryAddress}</span>
-                      </div>
-
-                      {/* Items & Amount */}
-                      <div className="del-items-summary">
-                        <div className="del-items-list">
-                          <Package size={13} color="#64748B" />
-                          <span>{ord.items?.length || ord.totalItems || 1} items</span>
-                          <span className="del-items-preview">
-                            • {ord.items?.[0]?.name}
-                            {ord.items?.length > 1 ? ` +${ord.items.length - 1} more` : ""}
-                          </span>
-                        </div>
-                        <strong className="del-amount-val">
-                          ₹{Number(ord.totalAmount || 0).toFixed(2)}
-                        </strong>
-                      </div>
-
-                      {/* Assigned Delivery Personnel & Timestamp */}
-                      <div className="del-assigned-box">
-                        <span className="del-assigned-label">Delivery Partner:</span>
-                        {staffAssigned ? (
-                          <div className="del-assigned-chip" style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 3 }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              <UserCheck size={14} color="#059669" />
-                              <strong>{staffAssigned.name || ord.assignedStaffName || "Assigned Driver"}</strong>
-                              {(staffAssigned.phone || ord.assignedStaffPhone) && (
-                                <span style={{ color: "#475569", fontSize: "12px" }}>
-                                  ({staffAssigned.phone || ord.assignedStaffPhone})
-                                </span>
-                              )}
-                            </div>
-                            <div style={{ fontSize: "11px", color: "#64748B", display: "flex", gap: 8, flexWrap: "wrap" }}>
-                              <span>Order: <strong>{ord.orderNumber}</strong></span>
-                              {ord.assignedAt && (
-                                <span>
-                                  • Assigned at: <strong>{new Date(ord.assignedAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}</strong>
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="del-unassigned-pill">Unassigned</span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Actions & Stage Progression */}
-                    <div className="del-order-actions" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                      {/* Timeline View Button */}
-                      <button
-                        type="button"
-                        className="del-secondary-btn"
-                        style={{ padding: "6px 12px", fontSize: "12px" }}
-                        onClick={() => handleOpenTimelineModal(ord)}
-                      >
-                        <Clock size={13} />
-                        <span>Delivery Timeline</span>
-                      </button>
-
-                      {/* Assign / Reassign Button */}
-                      <button
-                        type="button"
-                        className="del-assign-btn"
-                        onClick={() => handleOpenAssignModal(ord)}
-                      >
-                        <UserCheck size={14} />
-                        <span>{staffAssigned ? "Reassign" : "Assign Staff"}</span>
-                      </button>
-
-                      {/* Stage Progression Buttons matching 6 stages */}
-                      {s === "New" || s === "Pending" || s === "Order Confirmed" ? (
-                        <button
-                          type="button"
-                          className="del-advance-btn"
-                          style={{ background: "#7C3AED", color: "#fff" }}
-                          onClick={() => handleUpdateOrderStatus(ord._id, "Preparing")}
-                        >
-                          <Package size={14} />
-                          <span>Mark Preparing</span>
-                        </button>
-                      ) : s === "Preparing" || s === "Assigned" || s === "Accepted" ? (
-                        <button
-                          type="button"
-                          className="del-advance-btn"
-                          style={{ background: "#2563EB", color: "#fff" }}
-                          onClick={() => handleUpdateOrderStatus(ord._id, "Products Collected")}
-                        >
-                          <Package size={14} />
-                          <span>Mark Products Collected</span>
-                        </button>
-                      ) : s === "Products Collected" || s === "OrderPickedUp" ? (
-                        <button
-                          type="button"
-                          className="del-advance-btn"
-                          style={{ background: "#D97706", color: "#fff" }}
-                          onClick={() => handleUpdateOrderStatus(ord._id, "Out for Delivery")}
-                        >
-                          <Navigation size={14} />
-                          <span>Mark Out for Delivery</span>
-                        </button>
-                      ) : s === "Out for Delivery" || s === "OutForDelivery" ? (
-                        <>
-                          <button
-                            type="button"
-                            className="del-delivered-btn"
-                            onClick={() => handleUpdateOrderStatus(ord._id, "Delivered")}
-                          >
-                            <CheckCircle2 size={14} />
-                            <span>Mark Delivered</span>
-                          </button>
-                          <button
-                            type="button"
-                            className="del-secondary-btn"
-                            style={{ color: "#DC2626", borderColor: "#FCA5A5" }}
-                            onClick={() => {
-                              const reason = window.prompt("Reason for Failed Delivery:", "Customer unreachable or address incorrect");
-                              if (reason) handleUpdateOrderStatus(ord._id, "Failed Delivery");
-                            }}
-                          >
-                            <span>Report Failed</span>
-                          </button>
-                        </>
-                      ) : null}
-                    </div>
+            <div className="orders-table-card pm-catalog-card">
+              <div className="pm-catalog-header">
+                <div className="pm-catalog-title-group">
+                  <div
+                    className="pm-catalog-icon-box"
+                    style={{ background: "linear-gradient(135deg, #1455D9, #2563EB)" }}
+                  >
+                    <Truck size={18} color="#FFFFFF" />
                   </div>
-                );
-              })}
+                  <div>
+                    <h3 className="pm-catalog-heading">
+                      Home Delivery Orders Directory ({filteredOrders.length}{" "}
+                      {filteredOrders.length === 1 ? "Order" : "Orders"} Listed)
+                    </h3>
+                    <span
+                      style={{
+                        fontSize: "11.5px",
+                        color: "#64748B",
+                        fontWeight: "600",
+                      }}
+                    >
+                      Real-time door-to-door delivery fulfillment &amp; driver assignments
+                    </span>
+                  </div>
+                </div>
+
+                <div
+                  className="cm-header-controls"
+                  style={{
+                    display: "flex",
+                    gap: "8px",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="pm-action-btn primary"
+                    onClick={fetchOrders}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "5px",
+                      padding: "6px 14px",
+                      borderRadius: "8px",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      background: "#059669",
+                      color: "#FFFFFF",
+                      border: "none",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <RefreshCw size={13} />
+                    <span>Refresh Orders</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="orders-table-responsive pm-table-wrapper">
+                <table className="orders-table pm-products-table">
+                  <thead>
+                    <tr>
+                      <th className="th-idx">#</th>
+                      <th className="th-orderid">ORDER ID</th>
+                      <th className="th-datetime">DATE &amp; TIME</th>
+                      <th className="th-customer">CUSTOMER</th>
+                      <th className="th-mobile">MOBILE</th>
+                      <th className="th-address">DELIVERY ADDRESS</th>
+                      <th className="th-partner">DELIVERY PARTNER</th>
+                      <th className="th-items">ITEMS</th>
+                      <th className="th-amount">TOTAL AMOUNT</th>
+                      <th className="th-status">STATUS</th>
+                      <th className="th-action">ACTIONS</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredOrders.map((ord, index) => {
+                      const s = ord.deliveryStatus || "New";
+                      const staffAssigned = ord.assignedStaff || ord.deliveryStaff;
+                      const custName = ord.customer?.name || ord.customerName || "Customer";
+                      const custPhone = ord.customer?.phone || ord.customerPhone || "—";
+                      const deliveryAddress =
+                        ord.deliveryAddress || ord.customer?.address || "Address not provided";
+                      const itemCount = ord.items?.length || ord.totalItems || 1;
+                      const firstItemName =
+                        ord.items?.[0]?.name ||
+                        ord.items?.[0]?.product?.name ||
+                        (ord.items?.length ? "Package Items" : "Groceries");
+                      const formattedDate = ord.createdAt
+                        ? new Date(ord.createdAt).toLocaleString("en-IN", {
+                            day: "numeric",
+                            month: "short",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            hour12: true,
+                          })
+                        : "Recent";
+
+                      const isDelivered =
+                        s === "Delivered" || s === "Completed";
+
+                      return (
+                        <tr
+                          key={ord._id || index}
+                          className={isDelivered ? "row-completed-highlight" : ""}
+                        >
+                          <td className="td-idx">{index + 1}</td>
+                          <td className="td-orderid">
+                            <div className="order-id-cell">
+                              <span
+                                className="order-id-link"
+                                onClick={() => {
+                                  setSelectedOrderForView(ord);
+                                  setViewOrderModalOpen(true);
+                                }}
+                              >
+                                {ord.orderNumber}
+                              </span>
+                              <button
+                                type="button"
+                                className="order-id-copy-btn"
+                                title="Copy Order ID"
+                                onClick={(e) => handleCopyOrderId(ord.orderNumber, e)}
+                              >
+                                {copiedOrderId === ord.orderNumber ? (
+                                  <Check size={13} color="#16A34A" />
+                                ) : (
+                                  <Copy size={13} />
+                                )}
+                              </button>
+                            </div>
+                          </td>
+                          <td className="td-datetime">
+                            <span className="order-datetime-text">{formattedDate}</span>
+                          </td>
+                          <td className="td-customer">
+                            <span className="order-customer-name">{custName}</span>
+                          </td>
+                          <td className="td-mobile">
+                            <span className="order-mobile-text">
+                              <Phone size={12} color="#64748B" />
+                              <span>{custPhone}</span>
+                            </span>
+                          </td>
+                          <td className="td-address">
+                            <div className="order-address-cell" title={deliveryAddress}>
+                              📍 {deliveryAddress}
+                            </div>
+                          </td>
+                          <td className="td-partner">
+                            {staffAssigned ? (
+                              <span className="order-partner-cell">
+                                <UserCheck size={12} />
+                                <span>{staffAssigned.name || ord.assignedStaffName || "Driver"}</span>
+                              </span>
+                            ) : (
+                              <span className="order-partner-unassigned">
+                                Unassigned
+                              </span>
+                            )}
+                          </td>
+                          <td className="td-items">
+                            <div className="order-items-cell">
+                              <span className="order-items-count-badge">
+                                {itemCount} {itemCount === 1 ? "item" : "items"}
+                              </span>
+                              <span className="order-items-preview">
+                                ({firstItemName})
+                              </span>
+                            </div>
+                          </td>
+                          <td className="td-amount">
+                            <span className="order-amount-text">
+                              ₹{Number(ord.totalAmount || 0).toLocaleString("en-IN", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </span>
+                          </td>
+                          <td className="td-status">
+                            {isDelivered ? (
+                              <span className="order-status-pill status-completed">
+                                <CheckCircle2 size={13} color="#15803D" strokeWidth={2.4} />
+                                <span>Delivered</span>
+                              </span>
+                            ) : s === "Out for Delivery" || s === "OutForDelivery" ? (
+                              <span className="order-status-pill status-outfordelivery">
+                                <Navigation size={13} color="#0284C7" strokeWidth={2.4} />
+                                <span>Out for Delivery</span>
+                              </span>
+                            ) : s === "OrderPickedUp" || s === "Products Collected" ? (
+                              <span className="order-status-pill status-orderpickedup">
+                                <Package size={13} color="#7E22CE" strokeWidth={2.4} />
+                                <span>Picked Up</span>
+                              </span>
+                            ) : s === "Assigned" || s === "Accepted" ? (
+                              <span className="order-status-pill status-assigned">
+                                <UserCheck size={13} color="#6B21A8" strokeWidth={2.4} />
+                                <span>Assigned</span>
+                              </span>
+                            ) : s === "Preparing" ? (
+                              <span className="order-status-pill status-preparing">
+                                <Package size={13} color="#1D4ED8" strokeWidth={2.4} />
+                                <span>Preparing</span>
+                              </span>
+                            ) : (
+                              <span className="order-status-pill status-pending">
+                                <Clock size={13} color="#C2410C" strokeWidth={2.4} />
+                                <span>Pending</span>
+                              </span>
+                            )}
+                          </td>
+                          <td className="td-action">
+                            <button
+                              type="button"
+                              className="order-action-view-btn"
+                              onClick={() => {
+                                setSelectedOrderForView(ord);
+                                viewOrderModalOpen ? null : setViewOrderModalOpen(true);
+                              }}
+                            >
+                              <Eye size={13} />
+                              <span>View Details</span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
@@ -777,7 +848,7 @@ export default function DeliveryManagement() {
                   placeholder="Search staff by Name, Mobile, Email, or Username..."
                   value={staffSearch}
                   onChange={(e) => setStaffSearch(e.target.value)}
-                  autoComplete="new-password"
+                  autoComplete="off"
                   autoCorrect="off"
                   autoCapitalize="off"
                   spellCheck="false"
@@ -918,6 +989,334 @@ export default function DeliveryManagement() {
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: VIEW DELIVERY ORDER DETAILS (Matching Reference Mockup Action View)*/}
+      {/* ========================================================================= */}
+      {viewOrderModalOpen && selectedOrderForView && (
+        <div
+          className="del-modal-overlay"
+          onClick={() => setViewOrderModalOpen(false)}
+        >
+          <div
+            className="del-modal-card"
+            style={{ maxWidth: "660px" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="del-modal-header">
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div
+                  style={{
+                    width: "40px",
+                    height: "40px",
+                    borderRadius: "12px",
+                    background: "#F5F3FF",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#2E0854",
+                  }}
+                >
+                  <Eye size={20} />
+                </div>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "#0F172A" }}>
+                      {selectedOrderForView.orderNumber}
+                    </h3>
+                    <button
+                      type="button"
+                      className="order-id-copy-btn"
+                      onClick={(e) => handleCopyOrderId(selectedOrderForView.orderNumber, e)}
+                      title="Copy Order ID"
+                    >
+                      {copiedOrderId === selectedOrderForView.orderNumber ? (
+                        <Check size={14} color="#16A34A" />
+                      ) : (
+                        <Copy size={14} />
+                      )}
+                    </button>
+                  </div>
+                  <span style={{ fontSize: 12, color: "#64748B" }}>
+                    Placed on{" "}
+                    {selectedOrderForView.createdAt
+                      ? new Date(selectedOrderForView.createdAt).toLocaleString("en-IN", {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          hour12: true,
+                        })
+                      : "Recent"}
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {selectedOrderForView.deliveryStatus === "Delivered" ||
+                selectedOrderForView.deliveryStatus === "Completed" ? (
+                  <span className="order-status-pill status-completed">
+                    <CheckCircle2 size={13} color="#15803D" strokeWidth={2.4} />
+                    <span>Delivered</span>
+                  </span>
+                ) : selectedOrderForView.deliveryStatus === "Out for Delivery" ||
+                  selectedOrderForView.deliveryStatus === "OutForDelivery" ? (
+                  <span className="order-status-pill status-outfordelivery">
+                    <Navigation size={13} color="#0284C7" strokeWidth={2.4} />
+                    <span>Out for Delivery</span>
+                  </span>
+                ) : selectedOrderForView.deliveryStatus === "OrderPickedUp" ||
+                  selectedOrderForView.deliveryStatus === "Products Collected" ? (
+                  <span className="order-status-pill status-orderpickedup">
+                    <Package size={13} color="#7E22CE" strokeWidth={2.4} />
+                    <span>Picked Up</span>
+                  </span>
+                ) : selectedOrderForView.deliveryStatus === "Assigned" ||
+                  selectedOrderForView.deliveryStatus === "Accepted" ? (
+                  <span className="order-status-pill status-assigned">
+                    <UserCheck size={13} color="#6B21A8" strokeWidth={2.4} />
+                    <span>Assigned</span>
+                  </span>
+                ) : selectedOrderForView.deliveryStatus === "Preparing" ? (
+                  <span className="order-status-pill status-preparing">
+                    <Package size={13} color="#1D4ED8" strokeWidth={2.4} />
+                    <span>Preparing</span>
+                  </span>
+                ) : (
+                  <span className="order-status-pill status-pending">
+                    <Clock size={13} color="#C2410C" strokeWidth={2.4} />
+                    <span>Pending</span>
+                  </span>
+                )}
+                <button
+                  type="button"
+                  className="del-modal-close"
+                  onClick={() => setViewOrderModalOpen(false)}
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="del-modal-body" style={{ padding: "18px 22px", maxHeight: "72vh", overflowY: "auto" }}>
+              {/* Customer & Address Strip */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: "12px",
+                  background: "#F8FAFC",
+                  padding: "14px 16px",
+                  borderRadius: "12px",
+                  border: "1px solid #E2E8F0",
+                  marginBottom: "16px",
+                }}
+              >
+                <div>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase" }}>
+                    Customer Details
+                  </span>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: "#0F172A", marginTop: 2 }}>
+                    {selectedOrderForView.customer?.name || selectedOrderForView.customerName || "Customer"}
+                  </div>
+                  <div style={{ fontSize: 13, color: "#334155", marginTop: 2, display: "flex", alignItems: "center", gap: 5 }}>
+                    <Phone size={12} color="#059669" />
+                    <span>{selectedOrderForView.customer?.phone || selectedOrderForView.customerPhone || "Not provided"}</span>
+                  </div>
+                </div>
+
+                <div>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase" }}>
+                    Delivery Destination
+                  </span>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#0F172A", marginTop: 2, display: "flex", alignItems: "flex-start", gap: 5 }}>
+                    <MapPin size={13} color="#059669" style={{ flexShrink: 0, marginTop: 2 }} />
+                    <span>{selectedOrderForView.deliveryAddress || selectedOrderForView.customer?.address || "Address not provided"}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Delivery Partner Strip */}
+              <div
+                style={{
+                  background: "#F0FDF4",
+                  border: "1.5px solid #BBF7D0",
+                  borderRadius: "12px",
+                  padding: "12px 16px",
+                  marginBottom: "16px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ width: 34, height: 34, borderRadius: "50%", background: "#DCFCE7", display: "flex", alignItems: "center", justifyContent: "center", color: "#059669" }}>
+                    <UserCheck size={18} />
+                  </div>
+                  <div>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "#166534", textTransform: "uppercase" }}>
+                      Assigned Delivery Partner
+                    </span>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: "#064E3B", marginTop: 1 }}>
+                      {selectedOrderForView.assignedStaff?.name || selectedOrderForView.assignedStaffName || selectedOrderForView.deliveryStaff?.name || "Unassigned (No Driver Assigned Yet)"}
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="del-assign-btn"
+                  style={{ padding: "6px 14px", fontSize: "12px" }}
+                  onClick={() => {
+                    setViewOrderModalOpen(false);
+                    handleOpenAssignModal(selectedOrderForView);
+                  }}
+                >
+                  <UserCheck size={13} />
+                  <span>{selectedOrderForView.assignedStaff ? "Change Driver" : "Assign Driver"}</span>
+                </button>
+              </div>
+
+              {/* Order Items Table */}
+              <div style={{ marginBottom: "16px" }}>
+                <span style={{ fontSize: 12, fontWeight: 800, color: "#0F172A", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                  Items Purchased ({selectedOrderForView.items?.length || selectedOrderForView.totalItems || 1})
+                </span>
+                <div
+                  style={{
+                    border: "1px solid #E2E8F0",
+                    borderRadius: "10px",
+                    overflow: "hidden",
+                    marginTop: 8,
+                  }}
+                >
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ background: "#F1F5F9", textAlign: "left" }}>
+                        <th style={{ padding: "8px 12px", fontWeight: 750, color: "#334155" }}>Item</th>
+                        <th style={{ padding: "8px 12px", textAlign: "center", fontWeight: 750, color: "#334155" }}>Qty</th>
+                        <th style={{ padding: "8px 12px", textAlign: "right", fontWeight: 750, color: "#334155" }}>Price</th>
+                        <th style={{ padding: "8px 12px", textAlign: "right", fontWeight: 750, color: "#334155" }}>Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(selectedOrderForView.items || []).map((it, idx) => (
+                        <tr key={idx} style={{ borderBottom: "1px solid #F1F5F9" }}>
+                          <td style={{ padding: "9px 12px" }}>
+                            <strong style={{ color: "#0F172A", display: "block" }}>{it.name}</strong>
+                            {it.barcode && (
+                              <span style={{ fontSize: 11, color: "#64748B" }}>#{it.barcode}</span>
+                            )}
+                          </td>
+                          <td style={{ padding: "9px 12px", textAlign: "center", fontWeight: 700 }}>
+                            {it.quantity}
+                          </td>
+                          <td style={{ padding: "9px 12px", textAlign: "right", color: "#64748B" }}>
+                            ₹{Number(it.price || 0).toFixed(2)}
+                          </td>
+                          <td style={{ padding: "9px 12px", textAlign: "right", fontWeight: 800, color: "#0F172A" }}>
+                            ₹{Number((it.price || 0) * (it.quantity || 1)).toFixed(2)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ background: "#F8FAFC" }}>
+                        <td colSpan="3" style={{ padding: "10px 12px", fontWeight: 800, textAlign: "right", color: "#0F172A" }}>
+                          Grand Total (Online Paid):
+                        </td>
+                        <td style={{ padding: "10px 12px", fontWeight: 900, textAlign: "right", color: "#059669", fontSize: 15 }}>
+                          ₹{Number(selectedOrderForView.totalAmount || 0).toFixed(2)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Actions Footer */}
+            <div className="del-modal-footer" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+              <button
+                type="button"
+                className="del-secondary-btn"
+                style={{ padding: "8px 14px", fontSize: "12.5px" }}
+                onClick={() => {
+                  setViewOrderModalOpen(false);
+                  handleOpenTimelineModal(selectedOrderForView);
+                }}
+              >
+                <Clock size={13} />
+                <span>View Timeline</span>
+              </button>
+
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  type="button"
+                  className="del-btn-secondary"
+                  onClick={() => setViewOrderModalOpen(false)}
+                >
+                  Close
+                </button>
+
+                {selectedOrderForView.deliveryStatus === "New" ||
+                selectedOrderForView.deliveryStatus === "Pending" ? (
+                  <button
+                    type="button"
+                    className="del-advance-btn"
+                    style={{ background: "#7C3AED", color: "#fff" }}
+                    onClick={() => {
+                      handleUpdateOrderStatus(selectedOrderForView._id, "Preparing");
+                      setViewOrderModalOpen(false);
+                    }}
+                  >
+                    Mark Preparing
+                  </button>
+                ) : selectedOrderForView.deliveryStatus === "Preparing" ? (
+                  <button
+                    type="button"
+                    className="del-advance-btn"
+                    style={{ background: "#2563EB", color: "#fff" }}
+                    onClick={() => {
+                      handleUpdateOrderStatus(selectedOrderForView._id, "Products Collected");
+                      setViewOrderModalOpen(false);
+                    }}
+                  >
+                    Mark Products Collected
+                  </button>
+                ) : selectedOrderForView.deliveryStatus === "Products Collected" ? (
+                  <button
+                    type="button"
+                    className="del-advance-btn"
+                    style={{ background: "#D97706", color: "#fff" }}
+                    onClick={() => {
+                      handleUpdateOrderStatus(selectedOrderForView._id, "Out for Delivery");
+                      setViewOrderModalOpen(false);
+                    }}
+                  >
+                    Mark Out for Delivery
+                  </button>
+                ) : selectedOrderForView.deliveryStatus === "Out for Delivery" ||
+                  selectedOrderForView.deliveryStatus === "OutForDelivery" ? (
+                  <button
+                    type="button"
+                    className="del-delivered-btn"
+                    onClick={() => {
+                      handleUpdateOrderStatus(selectedOrderForView._id, "Delivered");
+                      setViewOrderModalOpen(false);
+                    }}
+                  >
+                    Mark Delivered
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

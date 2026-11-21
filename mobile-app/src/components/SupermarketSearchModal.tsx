@@ -11,7 +11,7 @@ import {
   Dimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { SupermarketInfo } from "../context/CartContext";
+import { SupermarketInfo, useCart } from "../context/CartContext";
 import { API_URL, safeFetch } from "../constants/api";
 
 const { width, height } = Dimensions.get("window");
@@ -35,6 +35,7 @@ export default function SupermarketSearchModal({
   onClose,
   onUnavailableSelected,
 }: SupermarketSearchModalProps) {
+  const { selectedSupermarket } = useCart();
   const [stores, setStores] = useState<SupermarketInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -50,17 +51,45 @@ export default function SupermarketSearchModal({
       if (!API_URL) throw new Error("API URL missing");
 
       const endpoint = `${API_URL}/supermarkets?_t=${Date.now()}`;
-      const res = await safeFetch(endpoint, {}, 6000);
-      const data = await res.json();
+      const res = await safeFetch(endpoint, {}, 18000);
+      
+      const contentType = res.headers?.get("content-type") || "";
+      let data: any = null;
+      if (contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        try {
+          data = JSON.parse(text);
+        } catch (_) {
+          throw new Error("Server is waking up. Please tap Retry in a few seconds.");
+        }
+      }
 
-      if (data.success && Array.isArray(data.supermarkets)) {
+      if (data && data.success && Array.isArray(data.supermarkets)) {
         setStores(data.supermarkets);
       } else {
-        setStores([]);
+        setStores(selectedSupermarket ? [selectedSupermarket] : []);
       }
     } catch (err: any) {
-      setError(err.message || "Failed to load supermarkets");
-      setStores([]);
+      if (selectedSupermarket) {
+        setStores([selectedSupermarket]);
+        setError("");
+      } else {
+        const msg = err.message || "";
+        if (
+          msg.toLowerCase().includes("cancel") ||
+          msg.toLowerCase().includes("abort") ||
+          msg.toLowerCase().includes("timed out")
+        ) {
+          setError(
+            "Connecting to the server timed out. The server may be waking up from sleep. Please tap Retry."
+          );
+        } else {
+          setError(msg || "Failed to load supermarkets. Please tap Retry.");
+        }
+        setStores([]);
+      }
     } finally {
       setLoading(false);
     }

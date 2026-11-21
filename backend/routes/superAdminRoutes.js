@@ -28,6 +28,7 @@ const {
   clearAllPlatformNotifications,
   clearDemoData,
   updateSupermarketAvailability,
+  getPlatformSystemSettings,
 } = require("../controllers/superAdminController");
 const { authMiddleware, requireSuperAdmin } = require("../middleware/authMiddleware");
 
@@ -52,6 +53,7 @@ router.get("/test-email", testEmailConnection);
 router.get("/email-logs", getEmailLogs);
 router.post("/clear-demo-data", clearDemoData);
 router.get("/clear-demo-data", clearDemoData);
+router.get("/system-settings", getPlatformSystemSettings);
 
 // 2. Centralized Analytics & Product-Wise Breakdown per Supermarket
 router.get("/analytics", getPlatformAnalytics);

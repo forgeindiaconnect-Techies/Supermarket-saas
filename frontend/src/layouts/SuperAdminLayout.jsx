@@ -343,6 +343,16 @@ export default function SuperAdminLayout() {
             <MessageSquare size={17} />
             <span>Supermarket Chat</span>
           </NavLink>
+
+          {/* 7. Platform Settings */}
+          <NavLink
+            to="/super-admin/settings"
+            onClick={handleNavClick}
+            className={({ isActive }) => `sa-nav-pill-main ${isActive ? "active" : ""}`}
+          >
+            <Settings size={17} />
+            <span>Settings</span>
+          </NavLink>
         </nav>
 
         {/* Sidebar Bottom CTA Promo Card & Logout Button */}
@@ -384,10 +394,65 @@ export default function SuperAdminLayout() {
 
       {/* Main Content Area */}
       <div className="sa-main-wrapper" ref={mainWrapperRef}>
-        {/* Decorative Fluid Ambient Mint Glow Waves */}
+        {/* Decorative Fluid Ambient Mint Glow Waves Matching Image 1 Reference */}
         <div className="sa-dashboard-bg-waves" aria-hidden="true">
-          <div className="sa-bg-wave-top" />
-          <div className="sa-bg-wave-bottom" />
+          <svg
+            className="sa-bg-waves-svg"
+            viewBox="0 0 1440 900"
+            preserveAspectRatio="none"
+            fill="none"
+          >
+            <defs>
+              <linearGradient id="waveGradTop1" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#A7F3D0" stopOpacity="0.45" />
+                <stop offset="60%" stopColor="#86EFAC" stopOpacity="0.30" />
+                <stop offset="100%" stopColor="#6EE7B7" stopOpacity="0.10" />
+              </linearGradient>
+              <linearGradient id="waveGradTop2" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#BBF7D0" stopOpacity="0.55" />
+                <stop offset="50%" stopColor="#A7F3D0" stopOpacity="0.35" />
+                <stop offset="100%" stopColor="#DCFCE7" stopOpacity="0" />
+              </linearGradient>
+              <linearGradient id="waveGradBottom1" x1="100%" y1="100%" x2="0%" y2="0%">
+                <stop offset="0%" stopColor="#86EFAC" stopOpacity="0.45" />
+                <stop offset="50%" stopColor="#A7F3D0" stopOpacity="0.30" />
+                <stop offset="100%" stopColor="#BBF7D0" stopOpacity="0" />
+              </linearGradient>
+              <linearGradient id="waveGradMiddle1" x1="0%" y1="50%" x2="50%" y2="50%">
+                <stop offset="0%" stopColor="#6EE7B7" stopOpacity="0.25" />
+                <stop offset="100%" stopColor="#A7F3D0" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            {/* Top Right Flowing Waves behind header & greeting */}
+            <path
+              d="M720,0 C880,90 1060,110 1440,20 L1440,0 Z"
+              fill="url(#waveGradTop1)"
+            />
+            <path
+              d="M920,0 C1040,160 1200,120 1440,160 L1440,0 Z"
+              fill="url(#waveGradTop2)"
+            />
+            <path
+              d="M1100,0 C1180,240 1320,180 1440,240 L1440,0 Z"
+              fill="#86EFAC"
+              fillOpacity="0.22"
+            />
+            {/* Middle Left Wave under Supermarket Overview */}
+            <path
+              d="M80,560 C240,540 400,620 520,580 C440,650 300,670 100,660 Z"
+              fill="url(#waveGradMiddle1)"
+            />
+            {/* Bottom Right Wave behind Smarter Management Promo Card */}
+            <path
+              d="M920,900 C1080,750 1260,810 1440,770 L1440,900 Z"
+              fill="url(#waveGradBottom1)"
+            />
+            <path
+              d="M1120,900 C1240,820 1340,850 1440,840 L1440,900 Z"
+              fill="#A7F3D0"
+              fillOpacity="0.35"
+            />
+          </svg>
         </div>
 
         {/* Top Header Bar Matching Reference Mockup */}
@@ -414,6 +479,17 @@ export default function SuperAdminLayout() {
           </div>
 
           <div className="sa-header-actions-right">
+            {/* Direct Platform Settings Shortcut Button */}
+            <button
+              type="button"
+              className="sa-settings-circle-btn"
+              onClick={() => navigate("/super-admin/settings")}
+              title="Platform Settings"
+              aria-label="Platform Settings"
+            >
+              <Settings size={19} strokeWidth={2.2} />
+            </button>
+
             {/* Notification Bell with Red Badge */}
             <div className="sa-notif-wrap" ref={notifRef}>
               <button
@@ -557,7 +633,7 @@ export default function SuperAdminLayout() {
                       }}
                     >
                       <Settings size={15} color="#059669" />
-                      <span>My Profile</span>
+                      <span>Platform Settings</span>
                     </button>
                     <button
                       type="button"

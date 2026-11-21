@@ -5,7 +5,7 @@ import erpBannerArt from "../assets/erp-banner-art.jpg";
 export default function ErpPageBanner({
   title = "Management Module",
   subtitle = "Manage your supermarket operations efficiently",
-  badges = ["Track Stock", "Monitor Sales", "Keep Store Ready"],
+  badges = [],
   icon = null,
 }) {
   return (
@@ -28,13 +28,15 @@ export default function ErpPageBanner({
         <div className="erp-banner-title-block">
           <h1 className="erp-banner-title">{title}</h1>
           <p className="erp-banner-sub">{subtitle}</p>
-          <div className="erp-banner-badges-row">
-            {badges.map((b, i) => (
-              <span key={i} className="erp-banner-pill-badge">
-                <span className="erp-check">✓</span> {b}
-              </span>
-            ))}
-          </div>
+          {Array.isArray(badges) && badges.length > 0 && (
+            <div className="erp-banner-badges-row">
+              {badges.map((b, i) => (
+                <span key={i} className="erp-banner-pill-badge">
+                  <span className="erp-check">✓</span> {b}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

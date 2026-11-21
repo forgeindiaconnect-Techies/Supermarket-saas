@@ -7,6 +7,13 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
+    fs: {
+      allow: [
+        '.',
+        'c:/PROJECTS/VMS/super-market-scan',
+        'C:/Users/Forgeindiaconnect/.gemini/antigravity/brain/e283c22d-059e-4cb2-a16e-319f4b39badf',
+      ],
+    },
     watch: {
       usePolling: true,
       interval: 100, // Polls every 100ms for instant hot-reload on Ctrl+S

@@ -139,11 +139,11 @@ async function tenantMiddleware(req, res, next) {
       }
     }
 
-    // Fallback ONLY for customer checkout / self-scanning without explicit store selection
-    // NEVER fall back to defaultStore for administrative notifications, reports, or management feeds
+    // Strict Validation: For barcode scanning and checkout, an explicit validated supermarket is mandatory.
+    // Do NOT automatically fall back to defaultStore for barcode scans or checkout, to prevent cross-supermarket leakage.
     const reqPath = String(req.originalUrl || req.path || "").toLowerCase();
-    const isCustomerRoute = reqPath.includes("checkout") || reqPath.includes("cart-activity") || reqPath.includes("barcode") || reqPath.includes("/customer");
-    if (isCustomerRoute) {
+    const isLegacyCustomerRoute = reqPath.includes("cart-activity") || reqPath.includes("/customer/dashboard");
+    if (isLegacyCustomerRoute && !req.supermarketId) {
       const defaultStore = await getDefaultSupermarket();
       if (defaultStore) {
         req.supermarketId = defaultStore._id.toString();

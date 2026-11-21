@@ -42,6 +42,7 @@ export default function CustomerDetailsScreen() {
   const [phone, setPhone] = useState(initialPhone);
   const [email, setEmail] = useState(initialEmail);
   const [address, setAddress] = useState(initialAddress);
+  const [registering, setRegistering] = useState(false);
 
   useEffect(() => {
     if (!name && (customerUser?.name || customerInfo?.name)) {
@@ -149,7 +150,7 @@ export default function CustomerDetailsScreen() {
     return isValid;
   };
 
-  const handleProceedToPayment = () => {
+  const handleProceedToPayment = async () => {
     if (cart.length === 0) {
       Alert.alert("Empty Cart", "Please scan items before proceeding to payment.");
       return;
@@ -170,28 +171,69 @@ export default function CustomerDetailsScreen() {
     const trimmedEmail = email.trim().toLowerCase();
     const trimmedAddress = address.trim();
 
-    // Register customer in MongoDB under current supermarket as OFFLINE
+    const resolvedStoreId =
+      selectedSupermarket?._id ||
+      (cart[0]?.supermarket ? String(cart[0].supermarket) : "");
+    const resolvedStoreCode =
+      selectedSupermarket?.code ||
+      (cart[0]?.supermarketCode ? String(cart[0].supermarketCode) : "");
+
+    setRegistering(true);
+
+    let savedCustomerId = customerUser?._id;
+
+    // Guaranteed MongoDB persistence for OFFLINE customer registration
     if (API_URL) {
-      safeFetch(`${API_URL}/auth/customer/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: trimmedName,
-          phone: cleanPhone,
-          email: trimmedEmail,
-          address: trimmedAddress,
-          supermarketId: selectedSupermarket?._id,
-          supermarketCode: selectedSupermarket?.code,
-          registrationType: "OFFLINE",
-        }),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data?.customer) {
-            setCustomerUser(data.customer);
+      try {
+        const regRes = await safeFetch(
+          `${API_URL}/customers/offline-register`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: trimmedName,
+              phone: cleanPhone,
+              email: trimmedEmail,
+              address: trimmedAddress,
+              supermarketId: resolvedStoreId,
+              supermarketCode: resolvedStoreCode,
+              registrationType: "OFFLINE",
+            }),
+          },
+          8000
+        );
+        const regData = await regRes.json();
+        if (regData?.customer) {
+          setCustomerUser(regData.customer);
+          savedCustomerId = regData.customer._id;
+        }
+      } catch (_) {
+        // Fallback to customer register endpoint
+        try {
+          const fallbackRes = await safeFetch(
+            `${API_URL}/auth/customer/register`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: trimmedName,
+                phone: cleanPhone,
+                email: trimmedEmail,
+                address: trimmedAddress,
+                supermarketId: resolvedStoreId,
+                supermarketCode: resolvedStoreCode,
+                registrationType: "OFFLINE",
+              }),
+            },
+            8000
+          );
+          const fallbackData = await fallbackRes.json();
+          if (fallbackData?.customer) {
+            setCustomerUser(fallbackData.customer);
+            savedCustomerId = fallbackData.customer._id;
           }
-        })
-        .catch(() => {});
+        } catch (_) {}
+      }
     }
 
     // Save details to CartContext
@@ -209,19 +251,21 @@ export default function CustomerDetailsScreen() {
         body: JSON.stringify({
           sessionId: cleanPhone,
           customerName: trimmedName,
-          productName: `Registered Customer Details (${cleanPhone})`,
+          productName: `Registered Offline Customer (${cleanPhone})`,
           quantity: totalCount,
           price: Number(totalAmount || 0),
           action: "updated",
           totalCartItems: totalCount,
           totalCartAmount: Number(totalAmount || 0),
-          supermarketId: selectedSupermarket?._id,
-          supermarketCode: selectedSupermarket?.code,
+          supermarketId: resolvedStoreId,
+          supermarketCode: resolvedStoreCode,
         }),
       }).catch(() => {});
     }
 
-    // Navigate to Payment Screen ONLY after successful validation
+    setRegistering(false);
+
+    // Navigate to Payment Screen ONLY after successful validation and offline customer registration
     router.push({
       pathname: "/payment",
       params: {
@@ -230,7 +274,7 @@ export default function CustomerDetailsScreen() {
         customerPhone: cleanPhone,
         customerEmail: trimmedEmail,
         customerAddress: trimmedAddress,
-        customerId: customerUser?._id,
+        customerId: savedCustomerId,
       },
     });
   };
@@ -450,14 +494,17 @@ export default function CustomerDetailsScreen() {
 
             {/* Action Button: Proceed to Payment */}
             <TouchableOpacity
-              style={styles.proceedBtn}
+              style={[styles.proceedBtn, registering && { opacity: 0.75 }]}
               onPress={handleProceedToPayment}
               activeOpacity={0.88}
+              disabled={registering}
             >
               <View style={styles.btnContent}>
                 <Text style={styles.lockIcon}>🔒</Text>
                 <Text style={styles.proceedBtnText}>
-                  Proceed to Payment (₹{Number(totalAmount || 0).toFixed(2)}) ➔
+                  {registering
+                    ? "Saving Customer Details..."
+                    : `Proceed to Payment (₹${Number(totalAmount || 0).toFixed(2)}) ➔`}
                 </Text>
               </View>
             </TouchableOpacity>

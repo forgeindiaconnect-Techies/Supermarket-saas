@@ -6,15 +6,15 @@
    ========================================================================= */
 
 :root {
-  --sa-bg: #ffffff;
+  --sa-bg: #f4faf6;
   --sa-card-bg: #ffffff;
-  --sa-sidebar-bg: #064e3b;
-  --sa-green-primary: #16a34a;
-  --sa-green-dark: #15803d;
-  --sa-heading: #172b24;
+  --sa-sidebar-bg: #023826;
+  --sa-green-primary: #10b981;
+  --sa-green-dark: #059669;
+  --sa-heading: #0f172a;
   --sa-border: #e2e8f0;
-  --sa-text-main: #172b24;
-  --sa-text-muted: #64748b;
+  --sa-text-main: #0f172a;
+  --sa-text-muted: #334155;
 }
 
 /* Global Heading Rule: Dark Green (#172B24) across all Super Admin tabs */
@@ -5974,144 +5974,177 @@ input[type="password"]::-ms-clear,
 }
 
 
+
 /* =========================================================================
-   EXACT GROCEREASE REFERENCE DASHBOARD STYLES (MATCHING USER MOCKUP)
+   EXACT GROCEREASE REFERENCE DASHBOARD STYLES (MATCHING USER MOCKUP EXACTLY)
    ========================================================================= */
 
 .sa-ref-dashboard-container {
-  padding: 18px 24px 36px;
+  padding: 16px 24px 36px;
   max-width: 1600px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: 20px;
   box-sizing: border-box;
+  position: relative;
+  z-index: 1;
 }
 
 /* -------------------------------------------------------------------------
-   1. TOP KPI GRID (1 ROW OF 4 CARDS)
+   1. TOP KPI GRID (COMPACT SLEEK 1 ROW OF 4 CARDS)
    ------------------------------------------------------------------------- */
 .sa-exact-kpi-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 18px;
+  gap: 14px;
   width: 100%;
 }
 
 .sa-exact-kpi-card {
-  background: #ffffff;
-  border: 1px solid rgba(226, 232, 240, 0.85);
-  border-radius: 16px;
-  padding: 16px 18px;
+  border-radius: 14px;
+  padding: 11px 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.03);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.035);
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
   cursor: pointer;
   box-sizing: border-box;
+  min-height: 72px;
 }
 
 .sa-exact-kpi-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.06);
-  border-color: rgba(203, 213, 225, 0.9);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.07);
+}
+
+/* Card 1: Total Supermarkets (Mint Green Theme) */
+.sa-exact-kpi-card.sa-card-mint {
+  background: linear-gradient(135deg, #EEFAF3 0%, #E0F8EC 100%) !important;
+  border: 1.5px solid #C4F1DA !important;
+  box-shadow: 0 3px 12px rgba(16, 185, 129, 0.07) !important;
+}
+.sa-exact-kpi-card.sa-card-mint .sa-exact-kpi-icon-box {
+  background: #A3EFC7 !important;
+  border: 1px solid #7BE6AF !important;
+  color: #047857 !important;
+}
+.sa-exact-kpi-card.sa-card-mint .sa-exact-kpi-pill {
+  color: #059669 !important;
+  background: rgba(16, 185, 129, 0.16) !important;
+  padding: 2px 6px !important;
+  border-radius: 5px !important;
+}
+
+/* Card 2: Active Subscriptions (Baby Blue Theme) */
+.sa-exact-kpi-card.sa-card-blue {
+  background: linear-gradient(135deg, #EEF6FF 0%, #E2EFFF 100%) !important;
+  border: 1.5px solid #CDE2FD !important;
+  box-shadow: 0 3px 12px rgba(59, 130, 246, 0.07) !important;
+}
+.sa-exact-kpi-card.sa-card-blue .sa-exact-kpi-icon-box {
+  background: #B6D8FD !important;
+  border: 1px solid #92C3FA !important;
+  color: #1D4ED8 !important;
+}
+.sa-exact-kpi-card.sa-card-blue .sa-exact-kpi-pill {
+  color: #2563EB !important;
+  background: rgba(37, 99, 235, 0.16) !important;
+  padding: 2px 6px !important;
+  border-radius: 5px !important;
+}
+
+/* Card 3: Total Revenue (Warm Peach / Orange Theme) */
+.sa-exact-kpi-card.sa-card-orange {
+  background: linear-gradient(135deg, #FFF7EE 0%, #FFEDE0 100%) !important;
+  border: 1.5px solid #FDE3CE !important;
+  box-shadow: 0 3px 12px rgba(249, 115, 22, 0.07) !important;
+}
+.sa-exact-kpi-card.sa-card-orange .sa-exact-kpi-icon-box {
+  background: #FDCDA3 !important;
+  border: 1px solid #FBB67B !important;
+  color: #C2410C !important;
+}
+.sa-exact-kpi-card.sa-card-orange .sa-exact-kpi-pill {
+  color: #EA580C !important;
+  background: rgba(234, 88, 12, 0.16) !important;
+  padding: 2px 6px !important;
+  border-radius: 5px !important;
+}
+
+/* Card 4: Platform Growth (Lavender / Purple Theme) */
+.sa-exact-kpi-card.sa-card-purple {
+  background: linear-gradient(135deg, #FAF5FF 0%, #F5EBFF 100%) !important;
+  border: 1.5px solid #EBD7FD !important;
+  box-shadow: 0 3px 12px rgba(168, 85, 247, 0.07) !important;
+}
+.sa-exact-kpi-card.sa-card-purple .sa-exact-kpi-icon-box {
+  background: #DCB6FD !important;
+  border: 1px solid #C891FB !important;
+  color: #7E22CE !important;
+}
+.sa-exact-kpi-card.sa-card-purple .sa-exact-kpi-pill {
+  color: #9333EA !important;
+  background: rgba(147, 51, 234, 0.16) !important;
+  padding: 2px 6px !important;
+  border-radius: 5px !important;
 }
 
 .sa-exact-kpi-left {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 11px;
 }
 
 .sa-exact-kpi-icon-box {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
 
-.sa-icon-box-mint {
-  background: #ecfdf5;
-  border: 1px solid #d1fae5;
-  color: #059669;
-}
-
-.sa-icon-box-blue {
-  background: #eff6ff;
-  border: 1px solid #dbeafe;
-  color: #2563eb;
-}
-
-.sa-icon-box-orange {
-  background: #fff7ed;
-  border: 1px solid #ffedd5;
-  color: #ea580c;
-}
-
-.sa-icon-box-purple {
-  background: #faf5ff;
-  border: 1px solid #f3e8ff;
-  color: #9333ea;
-}
-
 .sa-exact-kpi-meta {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .sa-exact-kpi-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #64748b;
-  line-height: 1.2;
+  font-size: 12.5px !important;
+  font-weight: 750 !important;
+  color: #1e293b !important;
+  line-height: 1.25;
 }
 
 .sa-exact-kpi-val-row {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: 6px;
 }
 
 .sa-exact-kpi-number {
-  font-size: 24px;
-  font-weight: 800;
-  color: #0f172a;
+  font-size: 22px !important;
+  font-weight: 900 !important;
+  color: #0f172a !important;
   letter-spacing: -0.02em;
   line-height: 1;
 }
 
 .sa-exact-kpi-pill {
-  font-size: 11.5px;
-  font-weight: 700;
+  font-size: 11px !important;
+  font-weight: 850 !important;
   display: inline-flex;
   align-items: center;
   gap: 2px;
 }
 
-.sa-pill-green {
-  color: #10b981;
-}
-
-.sa-pill-blue {
-  color: #3b82f6;
-}
-
-.sa-pill-orange {
-  color: #f97316;
-}
-
-.sa-pill-purple {
-  color: #a855f7;
-}
-
 .sa-exact-kpi-spark {
-  width: 82px;
-  height: 38px;
+  width: 68px;
+  height: 28px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -6138,11 +6171,12 @@ input[type="password"]::-ms-clear,
 .sa-exact-overview-card,
 .sa-exact-sales-card {
   background: #ffffff;
-  border: 1px solid rgba(226, 232, 240, 0.85);
+  border: 1.5px solid rgba(226, 232, 240, 0.95);
   border-radius: 18px;
   padding: 20px 22px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
   box-sizing: border-box;
+  position: relative;
 }
 
 .sa-exact-card-header {
@@ -6179,17 +6213,17 @@ input[type="password"]::-ms-clear,
 }
 
 .sa-exact-card-title {
-  font-size: 16px;
-  font-weight: 800;
-  color: #0f172a;
+  font-size: 16.5px !important;
+  font-weight: 850 !important;
+  color: #0f172a !important;
   margin: 0;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
 }
 
 .sa-exact-view-all-link {
-  font-size: 12.5px;
-  font-weight: 700;
-  color: #16a34a;
+  font-size: 13px !important;
+  font-weight: 850 !important;
+  color: #16a34a !important;
   text-decoration: none;
   display: flex;
   align-items: center;
@@ -6198,7 +6232,7 @@ input[type="password"]::-ms-clear,
 }
 
 .sa-exact-view-all-link:hover {
-  color: #15803d;
+  color: #15803d !important;
   transform: translateX(2px);
   text-decoration: none;
 }
@@ -6239,101 +6273,148 @@ input[type="password"]::-ms-clear,
 .sa-exact-stat-tiles-row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
+  gap: 12px;
 }
 
 .sa-exact-stat-tile {
-  background: #f8fafc;
-  border: 1px solid #f1f5f9;
-  border-radius: 12px;
-  padding: 10px 8px;
+  border-radius: 14px;
+  padding: 12px 6px 10px 6px;
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
   gap: 2px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  min-height: 126px;
+  justify-content: flex-start;
+  box-sizing: border-box;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
 }
 
+.sa-exact-stat-tile:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+
+/* Stat Tile 1: Stores (Fresh Pastel Mint Green Box) */
+.sa-exact-stat-tile.sa-tile-mint {
+  background: #F0FDF4 !important;
+  border: 1.5px solid #BBF7D0 !important;
+}
+.sa-exact-stat-tile.sa-tile-mint .sa-stat-tile-icon-box {
+  background: #DCFCE7 !important;
+  border: 1px solid #A7F3D0 !important;
+  color: #059669 !important;
+}
+
+/* Stat Tile 2: Items (Warm Peach / Orange Box) */
+.sa-exact-stat-tile.sa-tile-orange {
+  background: #FFF7ED !important;
+  border: 1.5px solid #FED7AA !important;
+}
+.sa-exact-stat-tile.sa-tile-orange .sa-stat-tile-icon-box {
+  background: #FFEDD5 !important;
+  border: 1px solid #FDBA74 !important;
+  color: #EA580C !important;
+}
+
+/* Stat Tile 3: Revenue (Lavender / Purple Box) */
+.sa-exact-stat-tile.sa-tile-purple {
+  background: #FAF5FF !important;
+  border: 1.5px solid #E9D5FF !important;
+}
+.sa-exact-stat-tile.sa-tile-purple .sa-stat-tile-icon-box {
+  background: #F3E8FF !important;
+  border: 1px solid #DDD6FE !important;
+  color: #9333EA !important;
+}
+
+/* Stat Tile 4: Online POS (Sky Blue Box) */
+.sa-exact-stat-tile.sa-tile-blue {
+  background: #EFF6FF !important;
+  border: 1.5px solid #BFDBFE !important;
+}
+.sa-exact-stat-tile.sa-tile-blue .sa-stat-tile-icon-box {
+  background: #DBEAFE !important;
+  border: 1px solid #93C5FD !important;
+  color: #0284C7 !important;
+}
+
+/* Circular Icon Badge matching Reference Mockup */
 .sa-stat-tile-icon-box {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 2px;
-}
-
-.sa-box-mint {
-  background: #ecfdf5;
-  color: #059669;
-}
-
-.sa-box-orange {
-  background: #fff7ed;
-  color: #ea580c;
-}
-
-.sa-box-purple {
-  background: #faf5ff;
-  color: #9333ea;
-}
-
-.sa-box-blue {
-  background: #f0f9ff;
-  color: #0284c7;
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 50% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin-bottom: 3px !important;
+  flex-shrink: 0 !important;
 }
 
 .sa-stat-tile-num {
-  font-size: 15px;
-  font-weight: 800;
-  color: #0f172a;
-  line-height: 1.1;
+  font-size: 20px !important;
+  font-weight: 900 !important;
+  color: #0F172A !important;
+  line-height: 1.15;
+  margin-top: 1px;
 }
 
 .sa-stat-tile-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: #64748b;
+  font-size: 13.5px !important;
+  font-weight: 850 !important;
+  color: #0F172A !important;
+  margin-top: 1px;
 }
 
 .sa-stat-tile-sub-active {
-  font-size: 9.5px;
-  font-weight: 700;
-  color: #16a34a;
+  font-size: 11px !important;
+  font-weight: 850 !important;
+  color: #059669 !important;
+  margin-top: 2px;
+  white-space: nowrap;
 }
 
 .sa-stat-tile-sub {
-  font-size: 9.5px;
-  font-weight: 500;
-  color: #94a3b8;
+  font-size: 10.5px !important;
+  font-weight: 700 !important;
+  color: #475569 !important;
+  margin-top: 2px;
+  white-space: nowrap;
 }
 
+/* Solid Green Checkmark Badges matching Reference Mockup */
 .sa-exact-features-list {
   list-style: none;
   padding: 0;
-  margin: 0;
+  margin: 12px 0 0 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .sa-exact-features-list li {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #334155;
+  gap: 10px;
+  font-size: 13.5px !important;
+  font-weight: 800 !important;
+  color: #0F172A !important;
 }
 
-.sa-feature-check-icon {
-  width: 18px;
-  height: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
+.sa-feature-solid-circle {
+  width: 20px !important;
+  height: 20px !important;
+  border-radius: 50% !important;
+  background: #10B981 !important;
+  color: #FFFFFF !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 11px !important;
+  font-weight: 900 !important;
+  flex-shrink: 0 !important;
+  box-shadow: 0 1px 4px rgba(16, 185, 129, 0.35) !important;
 }
 
 /* Sales Performance Card Inner */
@@ -6347,26 +6428,26 @@ input[type="password"]::-ms-clear,
 }
 
 .sa-time-filter-btn {
-  padding: 4px 12px;
+  padding: 5px 14px !important;
   border-radius: 16px;
   border: none;
   background: transparent;
-  font-size: 11.5px;
-  font-weight: 600;
-  color: #64748b;
+  font-size: 12.5px !important;
+  font-weight: 800 !important;
+  color: #1e293b !important;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .sa-time-filter-btn:hover {
-  color: #0f172a;
+  color: #0f172a !important;
 }
 
 .sa-time-filter-btn.active {
-  background: #10b981;
-  color: #ffffff;
-  font-weight: 700;
-  box-shadow: 0 1px 3px rgba(16, 185, 129, 0.3);
+  background: #059669 !important;
+  color: #ffffff !important;
+  font-weight: 900 !important;
+  box-shadow: 0 2px 6px rgba(5, 150, 105, 0.4) !important;
 }
 
 .sa-exact-chart-box {
@@ -6383,28 +6464,30 @@ input[type="password"]::-ms-clear,
 }
 
 .sa-svg-axis-label {
-  font-size: 10.5px;
-  fill: #94a3b8;
-  font-weight: 500;
+  font-size: 12px !important;
+  fill: #0f172a !important;
+  font-weight: 850 !important;
   font-family: inherit;
 }
 
 .sa-svg-date-label {
-  font-size: 10.5px;
-  fill: #64748b;
-  font-weight: 600;
+  font-size: 12px !important;
+  fill: #0f172a !important;
+  font-weight: 850 !important;
   font-family: inherit;
 }
 
+/* Floating Pinned Tooltip on Nov 15 with Pointer Arrow */
 .sa-exact-pinned-tooltip {
   position: absolute;
-  top: 16px;
-  right: 28%;
+  top: 14px;
+  left: 63.8%;
+  transform: translateX(-50%);
   background: #ffffff;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #cbd5e1;
   border-radius: 8px;
-  padding: 6px 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  padding: 5px 12px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.09);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -6413,12 +6496,25 @@ input[type="password"]::-ms-clear,
   animation: saTooltipPulse 3s infinite ease-in-out;
 }
 
+.sa-exact-pinned-tooltip::after {
+  content: "";
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 6px 6px 0;
+  border-style: solid;
+  border-color: #ffffff transparent transparent;
+  display: block;
+  width: 0;
+}
+
 @keyframes saTooltipPulse {
   0%, 100% {
-    transform: translateY(0);
+    transform: translateX(-50%) translateY(0);
   }
   50% {
-    transform: translateY(-3px);
+    transform: translateX(-50%) translateY(-3px);
   }
 }
 
@@ -6444,13 +6540,13 @@ input[type="password"]::-ms-clear,
   grid-template-columns: 1.25fr 1fr 1fr;
   gap: 20px;
   width: 100%;
+  align-items: stretch;
 }
 
 .sa-exact-recent-card,
-.sa-exact-qa-card,
-.sa-exact-promo-card {
+.sa-exact-qa-card {
   background: #ffffff;
-  border: 1px solid rgba(226, 232, 240, 0.85);
+  border: 1px solid rgba(226, 232, 240, 0.9);
   border-radius: 18px;
   padding: 20px 22px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
@@ -6470,18 +6566,18 @@ input[type="password"]::-ms-clear,
 }
 
 .sa-exact-activity-table th {
-  padding: 8px 10px;
-  font-size: 11px;
-  font-weight: 700;
-  color: #94a3b8;
-  border-bottom: 1px solid #f1f5f9;
+  padding: 10px 10px;
+  font-size: 12px !important;
+  font-weight: 900 !important;
+  color: #0f172a !important;
+  border-bottom: 2px solid #cbd5e1 !important;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
 .sa-exact-activity-table td {
-  padding: 10px 8px;
-  border-bottom: 1px solid #f8fafc;
+  padding: 11px 8px;
+  border-bottom: 1px solid #e2e8f0;
   vertical-align: middle;
 }
 
@@ -6490,8 +6586,9 @@ input[type="password"]::-ms-clear,
 }
 
 .sa-td-activity-idx {
-  color: #94a3b8;
-  font-weight: 600;
+  color: #1e293b !important;
+  font-weight: 900 !important;
+  font-size: 13px !important;
   text-align: center;
 }
 
@@ -6499,33 +6596,35 @@ input[type="password"]::-ms-clear,
   display: flex;
   align-items: center;
   gap: 8px;
-  font-weight: 700;
-  color: #1e293b;
+  font-weight: 800;
+  color: #0f172a !important;
 }
 
 .sa-activity-emoji-icon {
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .sa-activity-event-name {
-  font-size: 12px;
+  font-size: 13.5px !important;
+  font-weight: 900 !important;
+  color: #0f172a !important;
 }
 
 .sa-activity-details-text {
-  color: #64748b;
-  font-weight: 500;
-  font-size: 11.5px;
+  color: #1e293b !important;
+  font-weight: 800 !important;
+  font-size: 13px !important;
 }
 
 .sa-activity-time-text {
-  color: #94a3b8;
-  font-size: 11px;
-  font-weight: 500;
+  color: #334155 !important;
+  font-size: 12px !important;
+  font-weight: 800 !important;
   text-align: right;
   white-space: nowrap;
 }
 
-/* Quick Actions 2x2 Grid */
+/* Quick Actions 2x2 Grid with Exact Pastel Colors */
 .sa-exact-qa-grid-2x2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -6547,139 +6646,181 @@ input[type="password"]::-ms-clear,
 
 .sa-exact-qa-tile:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
 }
 
-.sa-qa-mint {
-  background: #f0fdf4;
-  border-color: #dcfce7;
+.sa-exact-qa-tile.sa-qa-mint {
+  background: #ECFDF5 !important;
+  border: 1.5px solid #BBF7D0 !important;
+}
+.sa-exact-qa-tile.sa-qa-mint .sa-qa-tile-icon-box {
+  background: #A7F3D0 !important;
+  color: #047857 !important;
+}
+.sa-exact-qa-tile.sa-qa-mint .sa-qa-tile-label {
+  color: #064E3B !important;
 }
 
-.sa-qa-blue {
-  background: #eff6ff;
-  border-color: #dbeafe;
+.sa-exact-qa-tile.sa-qa-blue {
+  background: #EFF6FF !important;
+  border: 1.5px solid #BFDBFE !important;
+}
+.sa-exact-qa-tile.sa-qa-blue .sa-qa-tile-icon-box {
+  background: #93C5FD !important;
+  color: #1D4ED8 !important;
+}
+.sa-exact-qa-tile.sa-qa-blue .sa-qa-tile-label {
+  color: #1E3A8A !important;
 }
 
-.sa-qa-orange {
-  background: #fff7ed;
-  border-color: #ffedd5;
+.sa-exact-qa-tile.sa-qa-orange {
+  background: #FFF7ED !important;
+  border: 1.5px solid #FED7AA !important;
+}
+.sa-exact-qa-tile.sa-qa-orange .sa-qa-tile-icon-box {
+  background: #FDBA74 !important;
+  color: #C2410C !important;
+}
+.sa-exact-qa-tile.sa-qa-orange .sa-qa-tile-label {
+  color: #7C2D12 !important;
 }
 
-.sa-qa-purple {
-  background: #faf5ff;
-  border-color: #f3e8ff;
+.sa-exact-qa-tile.sa-qa-purple {
+  background: #FAF5FF !important;
+  border: 1.5px solid #E9D5FF !important;
+}
+.sa-exact-qa-tile.sa-qa-purple .sa-qa-tile-icon-box {
+  background: #D8B4FE !important;
+  color: #7E22CE !important;
+}
+.sa-exact-qa-tile.sa-qa-purple .sa-qa-tile-label {
+  color: #581C87 !important;
 }
 
 .sa-qa-tile-icon-box {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
 
-.sa-qa-tile-icon-box.mint {
-  background: #dcfce7;
-}
-
-.sa-qa-tile-icon-box.blue {
-  background: #dbeafe;
-}
-
-.sa-qa-tile-icon-box.orange {
-  background: #ffedd5;
-}
-
-.sa-qa-tile-icon-box.purple {
-  background: #f3e8ff;
-}
-
 .sa-qa-tile-label {
-  font-size: 12.5px;
-  font-weight: 700;
-  color: #0f172a;
+  font-size: 13.5px !important;
+  font-weight: 850 !important;
   line-height: 1.25;
+  color: #0f172a !important;
 }
 
-/* Smarter Management Promo Card */
+/* Smarter Management Promo Card matching Reference Mockup */
 .sa-exact-promo-card {
-  background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 60%, #e6f9f0 100%);
-  border: 1px solid #bbf7d0;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  position: relative;
-  overflow: hidden;
+  background: linear-gradient(135deg, #F0FDF4 0%, #E8FADC 50%, #DCFCE7 100%) !important;
+  border: 1.5px solid #BBF7D0 !important;
+  border-radius: 18px !important;
+  padding: 20px 22px !important;
+  position: relative !important;
+  overflow: hidden !important;
+  display: flex !important;
+  align-items: center !important;
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.08) !important;
+  box-sizing: border-box !important;
+  height: 100% !important;
+  min-height: 185px !important;
+  cursor: pointer !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease !important;
 }
 
-.sa-exact-promo-card::before {
-  content: "";
-  position: absolute;
-  top: -20px;
-  right: -20px;
-  width: 100px;
-  height: 100px;
-  background: radial-gradient(circle, rgba(16, 185, 129, 0.15) 0%, transparent 70%);
-  border-radius: 50%;
-  pointer-events: none;
+.sa-exact-promo-card:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 8px 24px rgba(16, 185, 129, 0.16) !important;
+}
+
+/* Decorative Leaves in Top Right matching Reference Mockup */
+.sa-promo-leaves-svg {
+  position: absolute !important;
+  top: 10px !important;
+  right: 14px !important;
+  width: 52px !important;
+  height: 52px !important;
+  pointer-events: none !important;
+  z-index: 1 !important;
 }
 
 .sa-exact-promo-content {
-  position: relative;
-  z-index: 2;
+  position: relative !important;
+  z-index: 2 !important;
+  max-width: 58% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
 }
 
 .sa-exact-promo-title {
-  font-size: 16px;
-  font-weight: 800;
-  color: #064e3b;
-  margin: 0 0 6px 0;
-  line-height: 1.3;
-  letter-spacing: -0.01em;
+  font-size: 16.5px !important;
+  font-weight: 900 !important;
+  color: #0F172A !important;
+  margin: 0 0 6px 0 !important;
+  line-height: 1.25 !important;
+  letter-spacing: -0.015em !important;
 }
 
 .sa-exact-promo-sub {
-  font-size: 12px;
-  color: #047857;
-  margin: 0 0 16px 0;
-  font-weight: 500;
+  font-size: 12.5px !important;
+  color: #334155 !important;
+  margin: 0 0 16px 0 !important;
+  font-weight: 600 !important;
+  line-height: 1.35 !important;
 }
 
+/* Explore Features Button Matching Image 2 Exactly */
 .sa-exact-promo-explore-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: #10b981;
-  color: #ffffff;
-  font-size: 12px;
-  font-weight: 700;
-  padding: 8px 16px;
-  border-radius: 20px;
-  border: none;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.25);
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  background: #059669 !important;
+  color: #FFFFFF !important;
+  font-size: 12.5px !important;
+  font-weight: 800 !important;
+  padding: 8px 18px !important;
+  border-radius: 9999px !important;
+  border: none !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+  box-shadow: 0 3px 10px rgba(5, 150, 105, 0.35) !important;
+  letter-spacing: 0.01em !important;
+  white-space: nowrap !important;
 }
 
 .sa-exact-promo-explore-btn:hover {
-  background: #059669;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 10px rgba(16, 185, 129, 0.35);
+  background: #047857 !important;
+  transform: translateY(-1.5px) !important;
+  box-shadow: 0 6px 18px rgba(5, 150, 105, 0.45) !important;
 }
 
 .sa-exact-promo-cart-box {
-  display: flex;
-  justify-content: flex-end;
-  align-items: flex-end;
-  margin-top: 10px;
+  position: absolute !important;
+  right: 6px !important;
+  bottom: 0px !important;
+  width: 44% !important;
+  max-width: 160px !important;
+  height: 96% !important;
+  display: flex !important;
+  align-items: flex-end !important;
+  justify-content: flex-end !important;
+  pointer-events: none !important;
+  z-index: 1 !important;
 }
 
 .sa-exact-promo-cart-img {
-  max-height: 120px;
-  object-fit: contain;
-  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.1));
+  width: 100% !important;
+  height: 100% !important;
+  max-height: 155px !important;
+  object-fit: contain !important;
+  display: block !important;
+  mix-blend-mode: multiply !important;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.08)) !important;
 }
 
 /* -------------------------------------------------------------------------

@@ -43,10 +43,13 @@ export default function MyOrdersScreen() {
             "x-supermarket-id": selectedSupermarket?._id || "",
             "x-customer-phone": customerUser?.phone || "",
           },
-        }, 5000);
-        const data = await res.json();
-        if (data.success && Array.isArray(data.orders)) {
-          dbOrders = data.orders;
+        }, 12000);
+        const contentType = res.headers?.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.orders)) {
+            dbOrders = data.orders;
+          }
         }
       }
 

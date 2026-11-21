@@ -89,11 +89,16 @@ export default function OnlineCatalogScreen() {
           "x-supermarket-id": selectedSupermarket._id,
           "x-supermarket-code": selectedSupermarket.code || "",
         },
-      }, 6000);
+      }, 15000);
 
-      const data = await res.json();
-      if (data.success && Array.isArray(data.products)) {
-        setProducts(data.products);
+      const contentType = res.headers?.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.products)) {
+          setProducts(data.products);
+        } else {
+          setProducts([]);
+        }
       } else {
         setProducts([]);
       }

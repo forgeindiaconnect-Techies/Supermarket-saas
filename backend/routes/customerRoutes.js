@@ -5,10 +5,14 @@ const {
   createOfflineCustomer,
   updateCustomerStatus,
   deleteCustomer,
+  registerOfflineCustomerPublic,
 } = require("../controllers/customerController");
 const { authMiddleware, requireAuth } = require("../middleware/authMiddleware");
 
-// All routes require authentication and tenant isolation
+// PUBLIC ENDPOINT: Mobile walk-in offline shoppers registering during barcode shopping flow
+router.post("/offline-register", registerOfflineCustomerPublic);
+
+// All subsequent routes require authentication and tenant isolation (Store Admin)
 router.use(authMiddleware);
 router.use(requireAuth);
 
