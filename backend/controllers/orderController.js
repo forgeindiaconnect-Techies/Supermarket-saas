@@ -67,7 +67,29 @@ exports.checkout = async (req, res) => {
 
     // 1. Resolve and Verify Supermarket Identity First
     // Multi-tenant validation: Every checkout must have a verified supermarket.
+    // STRICT CUSTOMER SUPERMARKET ISOLATION:
+    // If request contains an authenticated customer token, customer MUST checkout at their registered supermarket!
+    let customerStore = null;
+    if (req.headers.authorization && req.headers.authorization.startsWith("Bearer ")) {
+      try {
+        const token = req.headers.authorization.split(" ")[1];
+        const jwt = require("jsonwebtoken");
+        const decoded = jwt.verify(
+          token,
+          process.env.JWT_SECRET || "your_super_secret_jwt_key_here_change_in_production"
+        );
+        if (decoded && decoded.role === "CUSTOMER") {
+          const Customer = require("../models/Customer");
+          const cust = await Customer.findById(decoded.id || decoded._id).populate("supermarket");
+          if (cust && cust.supermarket) {
+            customerStore = cust.supermarket;
+          }
+        }
+      } catch (_) {}
+    }
+
     let resolvedSupermarketId =
+      (customerStore ? customerStore._id.toString() : null) ||
       req.body?.supermarketId ||
       (typeof req.body?.supermarket === "string"
         ? req.body.supermarket
@@ -76,12 +98,13 @@ exports.checkout = async (req, res) => {
       req.supermarketId;
 
     let resolvedSupermarketCode =
+      (customerStore ? customerStore.code : null) ||
       req.body?.supermarketCode ||
       req.headers["x-supermarket-code"] ||
       req.supermarketCode;
 
-    let verifiedStore = null;
-    if (resolvedSupermarketId && resolvedSupermarketId !== "all" && resolvedSupermarketId !== "null" && resolvedSupermarketId !== "undefined") {
+    let verifiedStore = customerStore;
+    if (!verifiedStore && resolvedSupermarketId && resolvedSupermarketId !== "all" && resolvedSupermarketId !== "null" && resolvedSupermarketId !== "undefined") {
       try {
         if (String(resolvedSupermarketId).match(/^[0-9a-fA-F]{24}$/)) {
           verifiedStore = await Supermarket.findById(resolvedSupermarketId);
@@ -328,8 +351,8 @@ exports.checkout = async (req, res) => {
         ? "DOORSTEP_DELIVERY"
         : (finalOrderType === "SELF_PICKUP" ? "STORE_COLLECTION" : ""));
 
-    const finalPickupStatus = (isOffline || isHomeDelivery) ? "" : (req.body.pickupStatus || "Pending");
-    const finalDeliveryStatus = isOffline ? "" : (isHomeDelivery ? (req.body.deliveryStatus || "Order Confirmed") : "");
+    const finalPickupStatus = (isOffline || isHomeDelivery) ? "" : ((req.body.pickupStatus && String(req.body.pickupStatus).trim()) || "Pending");
+    const finalDeliveryStatus = isOffline ? "" : (isHomeDelivery ? ((req.body.deliveryStatus && String(req.body.deliveryStatus).trim()) || "Order Confirmed") : "");
 
     const order = await Order.create({
       orderNumber,
@@ -374,13 +397,22 @@ exports.checkout = async (req, res) => {
               stage: "Order Confirmed",
               title: "Order Confirmed",
               description: isHomeDelivery
-                ? "Your home delivery order has been received and confirmed."
+                ? "Your home delivery order has been received and confirmed by the supermarket."
                 : "Your store pickup order has been placed and confirmed.",
               timestamp: nowTime,
               updatedBy: finalCustomerName || "Customer",
               role: "CUSTOMER",
             },
           ],
+      statusHistory: [
+        {
+          previousStatus: "New",
+          newStatus: isOffline ? "Completed" : (isHomeDelivery ? "Order Confirmed" : finalPickupStatus),
+          timestamp: nowTime,
+          updatedBy: finalCustomerName || "Customer",
+          role: "CUSTOMER",
+        },
+      ],
       customer: {
         customerId: customerDoc ? customerDoc._id : null,
         name: finalCustomerName,
@@ -395,13 +427,25 @@ exports.checkout = async (req, res) => {
       supermarketName: resolvedSupermarketName || "GrocerEase Supermarket",
     });
 
+    // Payment completion handling:
+    // Only set completedAt for OFFLINE in-store checkout (where scanning, payment, and exit barcode all complete at store counter)
+    // Home delivery orders are fulfilled later step-by-step; payment success must NEVER automatically mark delivery as completed!
     if (paymentStatus === "Completed") {
-      order.completedAt = nowTime;
+      if (isOffline) {
+        order.completedAt = nowTime;
+      }
       await deductOrderInventory(order).catch(() => {});
     }
 
-    // 5. Clean up temporary scanning cart activity sessions for this customer upon order completion
+    // 5. Clean up temporary scanning cart activity sessions and clear customer MongoDB cart upon order completion
     try {
+      if (customerDoc?._id && resolvedSupermarketId) {
+        const Cart = require("../models/Cart");
+        await Cart.findOneAndUpdate(
+          { customer: customerDoc._id, supermarket: resolvedSupermarketId },
+          { items: [], totalItems: 0, grossAmount: 0, totalSavings: 0, totalAmount: 0 }
+        ).catch(() => {});
+      }
       if (rawCustomerPhone) {
         await CartActivity.deleteMany({
           supermarket: resolvedSupermarketId || null,
@@ -637,7 +681,26 @@ exports.getOrders = async (req, res) => {
       );
     } catch (_) {}
 
-    if (req.user && req.user.role === "STORE_ADMIN") {
+    if (req.user && req.user.role === "CUSTOMER") {
+      // STRICT CUSTOMER PRIVACY: Authenticated customers can only view their own orders!
+      const cleanPhone = (req.user.phone || "").replace(/\D/g, "").slice(-10);
+      const custId = req.user.id || req.user._id;
+      const customerConditions = [];
+      if (cleanPhone) {
+        customerConditions.push({ "customer.phone": { $regex: cleanPhone } });
+        customerConditions.push({ deliveryPhone: { $regex: cleanPhone } });
+        customerConditions.push({ customerPhone: { $regex: cleanPhone } });
+      }
+      if (custId) {
+        customerConditions.push({ "customer.customerId": custId });
+      }
+      filter.$or = customerConditions.length > 0 ? customerConditions : [{ "customer.phone": "NONE" }];
+
+      // Enforce strict supermarket isolation: customer only sees orders from their registered supermarket
+      if (req.user.supermarketId) {
+        filter.supermarket = req.user.supermarketId;
+      }
+    } else if (req.user && req.user.role === "STORE_ADMIN") {
       const tenantStoreId = req.user.supermarket?._id || req.user.supermarket || req.supermarketId;
       const orConditions = [];
       if (tenantStoreId) orConditions.push({ supermarket: tenantStoreId });
@@ -691,7 +754,20 @@ exports.getOrders = async (req, res) => {
     const queryPhone = req.query.phone || req.headers["x-customer-phone"];
     if (queryPhone) {
       const cleanPhone = queryPhone.replace(/\D/g, "").slice(-10);
-      filter["customer.phone"] = { $regex: cleanPhone };
+      const phoneRegex = { $regex: cleanPhone };
+      const phoneCondition = {
+        $or: [
+          { "customer.phone": phoneRegex },
+          { deliveryPhone: phoneRegex },
+          { customerPhone: phoneRegex },
+        ],
+      };
+      if (filter.$or) {
+        filter.$and = [{ $or: filter.$or }, phoneCondition];
+        delete filter.$or;
+      } else {
+        filter.$or = phoneCondition.$or;
+      }
     }
 
     const orders = await Order.find(filter)
@@ -736,7 +812,26 @@ exports.getNotifications = async (req, res) => {
   try {
     const filter = {};
 
-    if (req.user && req.user.role === "STORE_ADMIN") {
+    if (req.user && req.user.role === "CUSTOMER") {
+      // STRICT CUSTOMER PRIVACY: Authenticated customers can only view their own orders!
+      const cleanPhone = (req.user.phone || "").replace(/\D/g, "").slice(-10);
+      const custId = req.user.id || req.user._id;
+      const customerConditions = [];
+      if (cleanPhone) {
+        customerConditions.push({ "customer.phone": { $regex: cleanPhone } });
+        customerConditions.push({ deliveryPhone: { $regex: cleanPhone } });
+        customerConditions.push({ customerPhone: { $regex: cleanPhone } });
+      }
+      if (custId) {
+        customerConditions.push({ "customer.customerId": custId });
+      }
+      filter.$or = customerConditions.length > 0 ? customerConditions : [{ "customer.phone": "NONE" }];
+
+      // Enforce strict supermarket isolation: customer only sees orders from their registered supermarket
+      if (req.user.supermarketId) {
+        filter.supermarket = req.user.supermarketId;
+      }
+    } else if (req.user && req.user.role === "STORE_ADMIN") {
       const orConditions = [];
       if (req.supermarketId) orConditions.push({ supermarket: req.supermarketId });
       if (req.supermarketCode && req.supermarketCode !== "DEFAULT" && req.supermarketCode !== "ALL") {
@@ -829,9 +924,30 @@ exports.getNotifications = async (req, res) => {
   }
 };
 
-// Helper to build 6-stage delivery lifecycle matching Requirement 2
+// Universal helper to build flexible MongoDB order query (supports ObjectId, orderNumber with or without '#', exitBarcode)
+function buildOrderQuery(id) {
+  const cleanId = String(id || "").replace(/^#/, "").trim();
+  const conditions = [
+    { orderNumber: cleanId },
+    { orderNumber: `#${cleanId}` },
+    { exitBarcode: cleanId },
+  ];
+  if (mongoose.Types.ObjectId.isValid(cleanId) && /^[0-9a-fA-F]{24}$/.test(cleanId)) {
+    conditions.unshift({ _id: cleanId });
+  }
+  return { $or: conditions };
+}
+
+// Helper to build real-time lifecycle tracking data (Both Store Pickup & Doorstep Delivery)
 function formatTrackingData(order) {
-  const dStatus = String(order.deliveryStatus || "New").toLowerCase().trim();
+  const oType = String(order.orderType || "").toUpperCase();
+  const fChoice = String(order.fulfillmentChoice || "").toUpperCase();
+  const hasPickupStatus = Boolean(order.pickupStatus && String(order.pickupStatus).trim() !== "");
+  const isPickup =
+    oType.includes("PICKUP") ||
+    fChoice === "STORE_COLLECTION" ||
+    hasPickupStatus;
+
   const timeline = Array.isArray(order.trackingTimeline) ? order.trackingTimeline : [];
   const findEntry = (keyword) => {
     return [...timeline].reverse().find((t) => {
@@ -840,74 +956,210 @@ function formatTrackingData(order) {
     });
   };
 
+  if (isPickup) {
+    const pStatus = String(order.pickupStatus || "Pending").toLowerCase().trim();
+    
+    // STRICT LIFECYCLE: Pickup is ONLY completed when counter collection is confirmed by staff or customer.
+    // NEVER automatically mark completed on payment or order placement!
+    const isPickupCompleted =
+      pStatus === "completed" ||
+      order.customerPickupConfirmed === true ||
+      Boolean(order.customerPickupCompletedAt);
+    const isPickupReady = (pStatus === "readyforpickup" || pStatus === "ready") && !isPickupCompleted;
+    const isPickupPreparing = pStatus === "preparing" && !isPickupReady && !isPickupCompleted;
+
+    // Stage 1: Order Placed & Confirmed (Always completed upon order placement)
+    const s1Completed = true;
+    const s1Active = !isPickupPreparing && !isPickupReady && !isPickupCompleted;
+
+    // Stage 2: Preparing at Store (Completed only when store moves to Ready or Completed)
+    const s2Completed = isPickupReady || isPickupCompleted;
+    const s2Active = isPickupPreparing;
+
+    // Stage 3: Ready for Pickup (Completed only when customer actually collects order)
+    const s3Completed = isPickupCompleted;
+    const s3Active = isPickupReady;
+
+    // Stage 4: Order Completed & Collected (Strictly upon physical counter collection)
+    const s4Completed = isPickupCompleted;
+    const s4Active = false;
+
+    const e1 = findEntry("confirm") || findEntry("order placed");
+    const e2 = findEntry("prep");
+    const e3 = findEntry("ready");
+    const e4 = findEntry("collect") || findEntry("complete");
+
+    const stages = [
+      {
+        step: 1,
+        id: "ORDER_CONFIRMED",
+        title: "Order Placed & Confirmed",
+        description: "Your store pickup order has been placed and received by the supermarket.",
+        isCompleted: s1Completed,
+        isActive: s1Active,
+        isPending: false,
+        timestamp: order.orderConfirmedAt || e1?.timestamp || order.createdAt,
+        updatedBy: e1?.updatedBy || "System",
+        role: e1?.role || "SYSTEM",
+      },
+      {
+        step: 2,
+        id: "PREPARING",
+        title: "Preparing at Store",
+        description: "Supermarket store staff is packing and inspecting your items fresh from the shelves.",
+        isCompleted: s2Completed,
+        isActive: s2Active,
+        isPending: !s2Completed && !s2Active,
+        timestamp: (s2Completed || s2Active) ? (order.preparingAt || e2?.timestamp || null) : null,
+        updatedBy: e2?.updatedBy || "Store Admin",
+        role: e2?.role || "STORE_ADMIN",
+      },
+      {
+        step: 3,
+        id: "READY_FOR_PICKUP",
+        title: "Ready for Pickup",
+        description: order.estimatedReadyTime
+          ? `Your items are packaged! Please collect at the store pickup counter (Scheduled: ${order.estimatedReadyTime}).`
+          : "Your items are packaged and ready for collection at the store pickup counter.",
+        isCompleted: s3Completed,
+        isActive: s3Active,
+        isPending: !s3Completed && !s3Active,
+        timestamp: (s3Completed || s3Active) ? (order.pickupReadyAt || e3?.timestamp || null) : null,
+        updatedBy: e3?.updatedBy || "Store Admin",
+        role: e3?.role || "STORE_ADMIN",
+      },
+      {
+        step: 4,
+        id: "PICKUP_COMPLETED",
+        title: "Order Completed & Collected",
+        description: "Items verified and successfully collected by customer at the supermarket counter. Thank you!",
+        isCompleted: s4Completed,
+        isActive: false,
+        isPending: !s4Completed,
+        timestamp: s4Completed ? (order.customerPickupCompletedAt || e4?.timestamp || null) : null,
+        updatedBy: e4?.updatedBy || "Store Admin",
+        role: e4?.role || "STORE_ADMIN",
+      },
+    ];
+
+    return {
+      isPickup: true,
+      fulfillmentType: "SELF_PICKUP",
+      fulfillmentBadge: "Store Pickup",
+      stages,
+      deliveryPartner: null,
+      isFailed: false,
+      failedReason: "",
+      failedDeliveryAt: null,
+      estimatedDeliveryTime: order.estimatedReadyTime || order.pickupTimeSlot || "Today",
+      estimatedDeliveryDate: order.estimatedReadyDate || order.pickupDate || "Today",
+      isCompleted: s4Completed,
+      statusTitle: s4Completed
+        ? "Order Completed & Collected!"
+        : s3Active
+        ? "Ready for Pickup at Store Counter"
+        : s2Active
+        ? "Preparing at Store"
+        : "Order Placed & Confirmed",
+    };
+  }
+
+  // 6-stage Doorstep Delivery
+  const dStatus = String(order.deliveryStatus || "New").toLowerCase().trim();
+  const payStatus = String(order.paymentStatus || "").toLowerCase().trim();
   const isFailed = dStatus.includes("fail") || dStatus.includes("cancel");
+
+  // CRITICAL: isDelivered is strictly when delivery is completed by delivery partner, NEVER automatically on payment!
+  const isDelivered =
+    dStatus === "delivered" ||
+    (dStatus === "completed" && Boolean(order.deliveryCompletedAt)) ||
+    Boolean(order.deliveryCompletedAt);
+
+  // Canonical Delivery Stages (1 to 6 in strict sequential order):
+  // 1: Order Confirmed
+  // 2: Preparing
+  // 3: Delivery Partner Assigned
+  // 4: Products Collected
+  // 5: Out for Delivery
+  // 6: Delivered
 
   // Stage 1: Order Confirmed
   const e1 = findEntry("confirm") || findEntry("order placed");
   const stage1Completed = true;
-  const stage1Active = dStatus === "new" || dStatus === "pending" || dStatus === "order confirmed";
+  const stage1Active = (dStatus === "new" || dStatus === "pending" || dStatus === "order confirmed" || dStatus === "confirmed") && !isDelivered && !isFailed;
   const stage1Time = order.orderConfirmedAt || e1?.timestamp || order.createdAt;
 
   // Stage 2: Preparing
-  const isPreparingOrPast = [
+  const isPrepOrPast = isDelivered || [
     "preparing",
     "assigned",
     "accepted",
+    "delivery partner assigned",
     "orderpickedup",
     "products collected",
     "productscollected",
+    "collected",
+    "picked up",
     "outfordelivery",
     "out for delivery",
     "delivered",
   ].includes(dStatus);
+  const isPrepActive = dStatus === "preparing" && !isDelivered && !isFailed;
+  const stage2Completed = (isPrepOrPast && !isPrepActive && dStatus !== "order confirmed" && dStatus !== "new" && dStatus !== "pending") || isDelivered;
+  const stage2Active = isPrepActive;
   const e2 = findEntry("prep");
-  const stage2Completed = isPreparingOrPast && dStatus !== "preparing";
-  const stage2Active = dStatus === "preparing";
-  const stage2Time = order.preparingAt || e2?.timestamp || (isPreparingOrPast ? order.updatedAt : null);
+  const stage2Time = stage2Completed ? (order.preparingAt || e2?.timestamp || null) : null;
 
   // Stage 3: Delivery Partner Assigned
-  const isAssignedOrPast = [
+  const isAssignedOrPast = isDelivered || [
     "assigned",
     "accepted",
+    "delivery partner assigned",
     "orderpickedup",
     "products collected",
     "productscollected",
+    "collected",
+    "picked up",
     "outfordelivery",
     "out for delivery",
     "delivered",
   ].includes(dStatus);
+  const isAssignedActive = (dStatus === "assigned" || dStatus === "accepted" || dStatus === "delivery partner assigned") && !isDelivered && !isFailed;
+  const stage3Completed = (isAssignedOrPast && !isAssignedActive && !isPrepActive && dStatus !== "order confirmed" && dStatus !== "new" && dStatus !== "pending") || isDelivered;
+  const stage3Active = isAssignedActive;
   const e3 = findEntry("assign") || findEntry("accept");
-  const stage3Completed = isAssignedOrPast && dStatus !== "assigned" && dStatus !== "accepted";
-  const stage3Active = dStatus === "assigned" || dStatus === "accepted";
-  const stage3Time = order.assignedAt || e3?.timestamp || order.deliveryAcceptedAt || null;
+  const stage3Time = stage3Completed ? (order.assignedAt || e3?.timestamp || order.deliveryAcceptedAt || null) : null;
 
   // Stage 4: Products Collected
-  const isCollectedOrPast = [
+  const isCollectedOrPast = isDelivered || [
     "orderpickedup",
     "products collected",
     "productscollected",
+    "collected",
+    "picked up",
     "outfordelivery",
     "out for delivery",
     "delivered",
   ].includes(dStatus);
+  const isCollectedActive = ["orderpickedup", "products collected", "productscollected", "collected", "picked up"].includes(dStatus) && !isDelivered && !isFailed;
+  const stage4Completed = (isCollectedOrPast && !isCollectedActive && !isAssignedActive && !isPrepActive && dStatus !== "order confirmed" && dStatus !== "new" && dStatus !== "pending") || isDelivered;
+  const stage4Active = isCollectedActive;
   const e4 = findEntry("collect") || findEntry("picked");
-  const stage4Completed = isCollectedOrPast && !["orderpickedup", "products collected", "productscollected"].includes(dStatus);
-  const stage4Active = ["orderpickedup", "products collected", "productscollected"].includes(dStatus);
-  const stage4Time = order.productsCollectedAt || order.pickedUpAt || e4?.timestamp || null;
+  const stage4Time = stage4Completed ? (order.productsCollectedAt || order.pickedUpAt || e4?.timestamp || null) : null;
 
   // Stage 5: Out for Delivery
-  const isOutOrDelivered = ["outfordelivery", "out for delivery", "delivered"].includes(dStatus);
+  const isOutOrDelivered = isDelivered || ["outfordelivery", "out for delivery", "delivered"].includes(dStatus);
+  const isOutActive = (dStatus === "outfordelivery" || dStatus === "out for delivery") && !isDelivered && !isFailed;
+  const stage5Completed = isDelivered;
+  const stage5Active = isOutActive;
   const e5 = findEntry("out");
-  const stage5Completed = dStatus === "delivered";
-  const stage5Active = dStatus === "outfordelivery" || dStatus === "out for delivery";
-  const stage5Time = order.deliveryOutAt || e5?.timestamp || null;
+  const stage5Time = stage5Completed ? (order.deliveryOutAt || e5?.timestamp || null) : null;
 
   // Stage 6: Delivered
-  const isDelivered = dStatus === "delivered";
   const e6 = findEntry("deliver");
   const stage6Completed = isDelivered;
   const stage6Active = false;
-  const stage6Time = order.deliveryCompletedAt || order.completedAt || (isDelivered ? e6?.timestamp : null);
+  const stage6Time = stage6Completed ? (order.deliveryCompletedAt || e6?.timestamp || null) : null;
 
   const staffName = order.assignedStaffName || (typeof order.assignedStaff === "object" ? order.assignedStaff?.name : "") || "Delivery Partner";
 
@@ -918,7 +1170,7 @@ function formatTrackingData(order) {
       title: "Order Confirmed",
       description: "Your home delivery order has been received and confirmed by the supermarket.",
       isCompleted: stage1Completed,
-      isActive: stage1Active && !isFailed,
+      isActive: stage1Active,
       isPending: false,
       timestamp: stage1Time,
       updatedBy: e1?.updatedBy || "System",
@@ -930,8 +1182,8 @@ function formatTrackingData(order) {
       title: "Preparing",
       description: "Supermarket store staff is packing and inspecting your items fresh from the shelves.",
       isCompleted: stage2Completed,
-      isActive: stage2Active && !isFailed,
-      isPending: !isPreparingOrPast && !isFailed,
+      isActive: stage2Active,
+      isPending: !stage2Completed && !stage2Active && !isFailed,
       timestamp: stage2Time,
       updatedBy: e2?.updatedBy || "Store Admin",
       role: e2?.role || "STORE_ADMIN",
@@ -944,8 +1196,8 @@ function formatTrackingData(order) {
         ? `${staffName} has been assigned to deliver your order.`
         : "A dedicated delivery partner will be assigned to deliver your package.",
       isCompleted: stage3Completed,
-      isActive: stage3Active && !isFailed,
-      isPending: !isAssignedOrPast && !isFailed,
+      isActive: stage3Active,
+      isPending: !stage3Completed && !stage3Active && !isFailed,
       timestamp: stage3Time,
       updatedBy: e3?.updatedBy || "Store Admin",
       role: e3?.role || "STORE_ADMIN",
@@ -956,8 +1208,8 @@ function formatTrackingData(order) {
       title: "Products Collected",
       description: `${staffName} has collected the packed grocery products from the supermarket counter.`,
       isCompleted: stage4Completed,
-      isActive: stage4Active && !isFailed,
-      isPending: !isCollectedOrPast && !isFailed,
+      isActive: stage4Active,
+      isPending: !stage4Completed && !stage4Active && !isFailed,
       timestamp: stage4Time,
       updatedBy: e4?.updatedBy || staffName,
       role: e4?.role || "DELIVERY_STAFF",
@@ -968,8 +1220,8 @@ function formatTrackingData(order) {
       title: "Out for Delivery",
       description: `${staffName} is on the way to your delivery address with your groceries.`,
       isCompleted: stage5Completed,
-      isActive: stage5Active && !isFailed,
-      isPending: !isOutOrDelivered && !isFailed,
+      isActive: stage5Active,
+      isPending: !stage5Completed && !stage5Active && !isFailed,
       timestamp: stage5Time,
       updatedBy: e5?.updatedBy || staffName,
       role: e5?.role || "DELIVERY_STAFF",
@@ -988,10 +1240,9 @@ function formatTrackingData(order) {
     },
   ];
 
-  // Delivery Partner Information: strictly displayed after assignment
   let deliveryPartner = null;
   const hasStaff = Boolean(order.assignedStaff || order.assignedStaffName);
-  if (isAssignedOrPast && hasStaff) {
+  if ((isAssignedOrPast || isDelivered) && hasStaff) {
     const staffObj = typeof order.assignedStaff === "object" ? order.assignedStaff : null;
     deliveryPartner = {
       _id: staffObj?._id || order.assignedStaff || null,
@@ -999,7 +1250,7 @@ function formatTrackingData(order) {
       phone: order.assignedStaffPhone || staffObj?.phone || "",
       photoUrl: staffObj?.photoUrl || "",
       assignedAt: order.assignedAt || null,
-      status: dStatus === "delivered" ? "Delivered" : dStatus.includes("out") ? "Out for Delivery" : dStatus.includes("collect") ? "Products Collected" : "Assigned",
+      status: isDelivered ? "Delivered" : dStatus.includes("out") ? "Out for Delivery" : dStatus.includes("collect") ? "Products Collected" : "Assigned",
     };
   }
 
@@ -1009,6 +1260,9 @@ function formatTrackingData(order) {
   const estimatedDeliveryDate = order.estimatedDeliveryDate || etaTarget.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 
   return {
+    isPickup: false,
+    fulfillmentType: "DELIVERY",
+    fulfillmentBadge: "Doorstep Delivery",
     stages,
     deliveryPartner,
     isFailed,
@@ -1016,6 +1270,18 @@ function formatTrackingData(order) {
     failedDeliveryAt: order.failedDeliveryAt || null,
     estimatedDeliveryTime,
     estimatedDeliveryDate,
+    isCompleted: stage6Completed,
+    statusTitle: stage6Completed
+      ? "Delivered to Your Doorstep"
+      : stage5Active
+      ? "Out for Delivery"
+      : stage4Active
+      ? "Products Collected"
+      : stage3Active
+      ? "Delivery Partner Assigned"
+      : stage2Active
+      ? "Preparing Your Order"
+      : "Order Confirmed",
   };
 }
 
@@ -1023,9 +1289,15 @@ function formatTrackingData(order) {
 exports.getOrderById = async (req, res) => {
   try {
     const { id } = req.params;
+    const cleanId = String(id || "").replace(/^#/, "").trim();
 
     const query = {
-      $or: [{ _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null }, { orderNumber: id }],
+      $or: [
+        { _id: cleanId.match(/^[0-9a-fA-F]{24}$/) ? cleanId : null },
+        { orderNumber: cleanId },
+        { orderNumber: `#${cleanId}` },
+        { exitBarcode: cleanId },
+      ],
     };
     if (req.user && req.user.role === "STORE_ADMIN" && req.supermarketId) {
       query.supermarket = req.supermarketId;
@@ -1066,9 +1338,15 @@ exports.getOrderById = async (req, res) => {
 exports.getOrderTracking = async (req, res) => {
   try {
     const { id } = req.params;
+    const cleanId = String(id || "").replace(/^#/, "").trim();
 
     const query = {
-      $or: [{ _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null }, { orderNumber: id }],
+      $or: [
+        { _id: cleanId.match(/^[0-9a-fA-F]{24}$/) ? cleanId : null },
+        { orderNumber: cleanId },
+        { orderNumber: `#${cleanId}` },
+        { exitBarcode: cleanId },
+      ],
     };
 
     const order = await Order.findOne(query)
@@ -1088,7 +1366,13 @@ exports.getOrderTracking = async (req, res) => {
       success: true,
       orderNumber: order.orderNumber,
       orderId: order._id,
+      isPickup: trackingMeta.isPickup,
+      fulfillmentType: trackingMeta.fulfillmentType,
+      fulfillmentBadge: trackingMeta.fulfillmentBadge,
+      statusTitle: trackingMeta.statusTitle,
+      isCompleted: trackingMeta.isCompleted,
       deliveryStatus: order.deliveryStatus,
+      pickupStatus: order.pickupStatus,
       paymentStatus: order.paymentStatus,
       paymentMethod: order.paymentMethod,
       totalAmount: order.totalAmount,
@@ -1120,14 +1404,7 @@ exports.getOrderTracking = async (req, res) => {
 exports.approvePayment = async (req, res) => {
   try {
     const { id } = req.params;
-
-    const query = {
-      $or: [
-        { _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null },
-        { orderNumber: id },
-        { exitBarcode: id },
-      ],
-    };
+    const query = buildOrderQuery(id);
     if (req.user && req.user.role === "STORE_ADMIN" && req.supermarketId) {
       query.supermarket = req.supermarketId;
     }
@@ -1191,14 +1468,7 @@ exports.approvePayment = async (req, res) => {
 exports.completePayment = async (req, res) => {
   try {
     const { id } = req.params;
-
-    const query = {
-      $or: [
-        { _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null },
-        { orderNumber: id },
-        { exitBarcode: id },
-      ],
-    };
+    const query = buildOrderQuery(id);
     if (req.user && req.user.role === "STORE_ADMIN" && req.supermarketId) {
       query.supermarket = req.supermarketId;
     }
@@ -1212,10 +1482,18 @@ exports.completePayment = async (req, res) => {
       });
     }
 
-    if (order.paymentStatus !== "Approved") {
+    if (order.paymentStatus === "Completed") {
+      return res.status(200).json({
+        success: true,
+        message: `Order #${order.orderNumber} is already completed.`,
+        order,
+      });
+    }
+
+    if (order.paymentStatus !== "Approved" && order.paymentStatus !== "Pending") {
       return res.status(400).json({
         success: false,
-        message: "Payment must be approved before completion.",
+        message: `Cannot complete this order because its status is ${order.paymentStatus}.`,
       });
     }
 
@@ -1223,11 +1501,46 @@ exports.completePayment = async (req, res) => {
     await deductOrderInventory(order);
 
     order.paymentStatus = "Completed";
-    order.completedAt = new Date();
+    // Only mark completedAt if order is offline. Delivery orders are completed later upon genuine doorstep delivery.
+    if (order.isOffline || (!order.deliveryStatus && !order.pickupStatus)) {
+      order.completedAt = new Date();
+    }
     if (!order.paymentId || order.paymentId.startsWith("PENDING")) {
       order.paymentId = `${order.paymentMethod.toUpperCase()}-${Date.now().toString().slice(-6)}`;
     }
+
+    // Automatically sync fulfillment lifecycle status when order payment is marked completed
+    const oType = String(order.orderType || "").toUpperCase();
+    const fChoice = String(order.fulfillmentChoice || "").toUpperCase();
+    if (oType.includes("PICKUP") || fChoice === "STORE_COLLECTION" || order.pickupStatus) {
+      if (!order.pickupStatus || order.pickupStatus === "New" || order.pickupStatus === "Pending") {
+        order.pickupStatus = "Order Confirmed";
+      }
+    } else if (order.deliveryStatus) {
+      // CRITICAL FIX: Payment success must NEVER mark home delivery as Delivered!
+      if (!order.deliveryStatus || order.deliveryStatus === "New" || order.deliveryStatus === "Pending") {
+        order.deliveryStatus = "Order Confirmed";
+        if (!order.orderConfirmedAt) order.orderConfirmedAt = new Date();
+      }
+    }
     await order.save();
+
+    // Broadcast real-time order update so customer mobile app and admin dashboards reflect changes immediately
+    try {
+      const io = req.app?.get("io");
+      if (io) {
+        io.emit("order:updated", { order });
+        io.emit("order:tracking_update", {
+          orderId: order._id,
+          orderNumber: order.orderNumber,
+          deliveryStatus: order.deliveryStatus,
+          pickupStatus: order.pickupStatus,
+          paymentStatus: order.paymentStatus,
+          completedAt: order.completedAt,
+          order,
+        });
+      }
+    } catch (_) {}
 
     // Send digital receipt and exit QR via Brevo SMTP if customer email is provided
     if (order.customer?.email) {
@@ -1300,9 +1613,24 @@ exports.updatePaymentStatus = async (req, res) => {
 
     if (paymentStatus === "Completed") {
       await deductOrderInventory(order);
-      order.completedAt = new Date();
+      if (order.isOffline || (!order.deliveryStatus && !order.pickupStatus)) {
+        order.completedAt = new Date();
+      }
       if (!order.paymentId || order.paymentId.startsWith("PENDING")) {
         order.paymentId = `${order.paymentMethod.toUpperCase()}-${Date.now().toString().slice(-6)}`;
+      }
+      const oType = String(order.orderType || "").toUpperCase();
+      const fChoice = String(order.fulfillmentChoice || "").toUpperCase();
+      if (oType.includes("PICKUP") || fChoice === "STORE_COLLECTION" || order.pickupStatus) {
+        if (!order.pickupStatus || order.pickupStatus === "New" || order.pickupStatus === "Pending") {
+          order.pickupStatus = "Order Confirmed";
+        }
+      } else if (order.deliveryStatus) {
+        // CRITICAL FIX: Payment success must NEVER mark home delivery as Delivered!
+        if (!order.deliveryStatus || order.deliveryStatus === "New" || order.deliveryStatus === "Pending") {
+          order.deliveryStatus = "Order Confirmed";
+          if (!order.orderConfirmedAt) order.orderConfirmedAt = new Date();
+        }
       }
     } else if (paymentStatus === "Approved") {
       order.approvedAt = new Date();
@@ -1313,6 +1641,23 @@ exports.updatePaymentStatus = async (req, res) => {
       order.failureReason = failureReason;
     }
     await order.save();
+
+    // Broadcast real-time order update
+    try {
+      const io = req.app?.get("io");
+      if (io) {
+        io.emit("order:updated", { order });
+        io.emit("order:tracking_update", {
+          orderId: order._id,
+          orderNumber: order.orderNumber,
+          deliveryStatus: order.deliveryStatus,
+          pickupStatus: order.pickupStatus,
+          paymentStatus: order.paymentStatus,
+          completedAt: order.completedAt,
+          order,
+        });
+      }
+    } catch (_) {}
 
     return res.status(200).json({
       success: true,
@@ -1704,14 +2049,7 @@ exports.getReports = async (req, res) => {
 exports.deleteOrder = async (req, res) => {
   try {
     const { id } = req.params;
-    let query = null;
-
-    if (mongoose.Types.ObjectId.isValid(id) && /^[0-9a-fA-F]{24}$/.test(id)) {
-      query = { _id: id };
-    } else {
-      query = { $or: [{ orderNumber: id }, { exitBarcode: id }] };
-    }
-
+    const query = buildOrderQuery(id);
     if (req.supermarketId) {
       query.supermarket = req.supermarketId;
     }
@@ -1788,13 +2126,7 @@ exports.updatePickupStatus = async (req, res) => {
       });
     }
 
-    let query = null;
-    if (mongoose.Types.ObjectId.isValid(id) && /^[0-9a-fA-F]{24}$/.test(id)) {
-      query = { _id: id };
-    } else {
-      query = { $or: [{ orderNumber: id }, { exitBarcode: id }] };
-    }
-
+    const query = buildOrderQuery(id);
     if (req.supermarketId) {
       query.supermarket = req.supermarketId;
     }
@@ -1819,16 +2151,50 @@ exports.updatePickupStatus = async (req, res) => {
     if (instructions) {
       order.pickupInstructions = instructions;
     }
+    if (pickupStatus === "Preparing") {
+      if (!order.preparingAt) order.preparingAt = new Date();
+      if (!Array.isArray(order.trackingTimeline)) order.trackingTimeline = [];
+      order.trackingTimeline.push({
+        status: "Preparing at Store",
+        stage: "PREPARING",
+        title: "Preparing at Store",
+        description: "Supermarket store staff is packing and inspecting your items fresh from the shelves.",
+        timestamp: order.preparingAt,
+        updatedBy: req.user?.name || "Store Admin",
+        role: "STORE_ADMIN",
+      });
+    }
     if (pickupStatus === "ReadyForPickup") {
       order.pickupReadyNotificationSent = true;
+      if (!order.pickupReadyAt) order.pickupReadyAt = new Date();
+      if (!Array.isArray(order.trackingTimeline)) order.trackingTimeline = [];
+      order.trackingTimeline.push({
+        status: "Ready for Pickup",
+        stage: "READY_FOR_PICKUP",
+        title: "Ready for Pickup",
+        description: `Your items are packaged and ready for collection at the store pickup counter.`,
+        timestamp: order.pickupReadyAt,
+        updatedBy: req.user?.name || "Store Admin",
+        role: "STORE_ADMIN",
+      });
     }
     if (pickupStatus === "Completed") {
       order.customerPickupConfirmed = true;
-      order.customerPickupCompletedAt = new Date();
-      order.completedAt = new Date();
+      if (!order.customerPickupCompletedAt) order.customerPickupCompletedAt = new Date();
+      order.completedAt = order.customerPickupCompletedAt;
       if (order.paymentStatus === "Pending" || order.paymentStatus === "Approved") {
         order.paymentStatus = "Completed";
       }
+      if (!Array.isArray(order.trackingTimeline)) order.trackingTimeline = [];
+      order.trackingTimeline.push({
+        status: "Order Completed & Collected",
+        stage: "PICKUP_COMPLETED",
+        title: "Order Completed & Collected",
+        description: "Items verified and successfully collected by customer at the supermarket counter.",
+        timestamp: order.customerPickupCompletedAt,
+        updatedBy: req.user?.name || "Store Admin",
+        role: "STORE_ADMIN",
+      });
     }
 
     // Save embedded customer review if provided during pickup status update
@@ -1873,6 +2239,14 @@ exports.updatePickupStatus = async (req, res) => {
       const io = req.app?.get("io");
       if (io) {
         io.emit("order:updated", { order });
+        io.emit("order:tracking_update", {
+          orderId: order._id,
+          orderNumber: order.orderNumber,
+          pickupStatus: order.pickupStatus,
+          paymentStatus: order.paymentStatus,
+          completedAt: order.completedAt,
+          order,
+        });
         if (pickupStatus === "ReadyForPickup") {
           io.emit("order:pickup_ready", {
             orderId: order._id,
@@ -1880,6 +2254,14 @@ exports.updatePickupStatus = async (req, res) => {
             estimatedReadyTime: order.estimatedReadyTime,
             estimatedReadyDate: order.estimatedReadyDate,
             message: `Your order will be ready for pickup at ${order.estimatedReadyTime || "the scheduled time"}. Please visit the store and collect your products.`,
+          });
+        }
+        if (pickupStatus === "Completed") {
+          io.emit("order:pickup_completed", {
+            orderId: order._id,
+            orderNumber: order.orderNumber,
+            customerName: order.customer?.name || "Customer",
+            collectedAt: order.customerPickupCompletedAt,
           });
         }
       }
@@ -1912,13 +2294,7 @@ exports.setFulfillmentChoice = async (req, res) => {
       });
     }
 
-    let query = null;
-    if (mongoose.Types.ObjectId.isValid(id) && /^[0-9a-fA-F]{24}$/.test(id)) {
-      query = { _id: id };
-    } else {
-      query = { $or: [{ orderNumber: id }, { exitBarcode: id }] };
-    }
-
+    const query = buildOrderQuery(id);
     const order = await Order.findOne(query);
     if (!order) {
       return res.status(404).json({
@@ -1981,13 +2357,7 @@ exports.setPickupReady = async (req, res) => {
     const { id } = req.params;
     const { estimatedReadyTime = "5:30 PM", estimatedReadyDate = "Today", instructions = "Please visit the store and collect your products." } = req.body;
 
-    let query = null;
-    if (mongoose.Types.ObjectId.isValid(id) && /^[0-9a-fA-F]{24}$/.test(id)) {
-      query = { _id: id };
-    } else {
-      query = { $or: [{ orderNumber: id }, { exitBarcode: id }] };
-    }
-
+    const query = buildOrderQuery(id);
     const order = await Order.findOne(query);
     if (!order) {
       return res.status(404).json({
@@ -2001,6 +2371,17 @@ exports.setPickupReady = async (req, res) => {
     order.estimatedReadyDate = estimatedReadyDate.trim();
     order.pickupInstructions = instructions.trim();
     order.pickupReadyNotificationSent = true;
+    if (!order.pickupReadyAt) order.pickupReadyAt = new Date();
+    if (!Array.isArray(order.trackingTimeline)) order.trackingTimeline = [];
+    order.trackingTimeline.push({
+      status: "Ready for Pickup",
+      stage: "READY_FOR_PICKUP",
+      title: "Ready for Pickup",
+      description: `Your order will be ready for pickup at ${order.estimatedReadyTime}. Please visit the store and collect your products.`,
+      timestamp: order.pickupReadyAt,
+      updatedBy: req.user?.name || "Store Admin",
+      role: "STORE_ADMIN",
+    });
     await order.save();
 
     const notifMessage = `Your order will be ready for pickup at ${order.estimatedReadyTime}. Please visit the store and collect your products.`;
@@ -2039,13 +2420,7 @@ exports.customerCompletePickup = async (req, res) => {
   try {
     const { id } = req.params;
 
-    let query = null;
-    if (mongoose.Types.ObjectId.isValid(id) && /^[0-9a-fA-F]{24}$/.test(id)) {
-      query = { _id: id };
-    } else {
-      query = { $or: [{ orderNumber: id }, { exitBarcode: id }] };
-    }
-
+    const query = buildOrderQuery(id);
     const order = await Order.findOne(query);
     if (!order) {
       return res.status(404).json({
@@ -2059,6 +2434,16 @@ exports.customerCompletePickup = async (req, res) => {
     order.customerPickupConfirmed = true;
     order.customerPickupCompletedAt = new Date();
     order.completedAt = new Date();
+    if (!Array.isArray(order.trackingTimeline)) order.trackingTimeline = [];
+    order.trackingTimeline.push({
+      status: "Order Completed & Collected",
+      stage: "PICKUP_COMPLETED",
+      title: "Order Completed & Collected",
+      description: "Items verified and successfully collected by customer at the supermarket counter.",
+      timestamp: order.customerPickupCompletedAt,
+      updatedBy: req.body?.adminOverride ? "Store Admin" : (order.customer?.name || "Customer"),
+      role: req.body?.adminOverride ? "STORE_ADMIN" : "CUSTOMER",
+    });
 
     // Deduct stock if not already done
     try {
@@ -2107,6 +2492,14 @@ exports.customerCompletePickup = async (req, res) => {
       const io = req.app?.get("io");
       if (io) {
         io.emit("order:updated", { order });
+        io.emit("order:tracking_update", {
+          orderId: order._id,
+          orderNumber: order.orderNumber,
+          pickupStatus: order.pickupStatus,
+          paymentStatus: order.paymentStatus,
+          completedAt: order.customerPickupCompletedAt,
+          order,
+        });
         io.emit("order:pickup_completed", {
           orderId: order._id,
           orderNumber: order.orderNumber,
@@ -2130,19 +2523,13 @@ exports.customerCompletePickup = async (req, res) => {
   }
 };
 
-// Update Delivery status (Pending, Assigned, PickedUp, OutForDelivery, Delivered, Failed)
+// Update Delivery status (Order Confirmed, Preparing, Assigned, Products Collected, Out for Delivery, Delivered)
 exports.updateDeliveryStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { deliveryStatus, assignedStaffName } = req.body;
+    const { deliveryStatus, assignedStaffName, assignedStaffId, notes } = req.body;
 
-    let query = null;
-    if (mongoose.Types.ObjectId.isValid(id) && /^[0-9a-fA-F]{24}$/.test(id)) {
-      query = { _id: id };
-    } else {
-      query = { $or: [{ orderNumber: id }, { exitBarcode: id }] };
-    }
-
+    const query = buildOrderQuery(id);
     if (req.supermarketId) {
       query.supermarket = req.supermarketId;
     }
@@ -2155,23 +2542,118 @@ exports.updateDeliveryStatus = async (req, res) => {
       });
     }
 
-    if (deliveryStatus) order.deliveryStatus = deliveryStatus;
-    if (assignedStaffName) order.assignedStaffName = assignedStaffName;
-    if (deliveryStatus === "Delivered" && order.paymentStatus === "Pending") {
-      order.paymentStatus = "Completed";
+    const previousStatus = order.deliveryStatus || "Order Confirmed";
+    const now = new Date();
+    const sLower = String(deliveryStatus || "").toLowerCase().trim();
+
+    let canonicalStatus = deliveryStatus;
+    let timelineStage = "Order Confirmed";
+    let timelineTitle = "Order Confirmed";
+    let timelineDesc = notes || "";
+
+    if (sLower === "order confirmed" || sLower === "confirmed" || sLower === "new") {
+      canonicalStatus = "Order Confirmed";
+      timelineStage = "Order Confirmed";
+      if (!order.orderConfirmedAt) order.orderConfirmedAt = now;
+      timelineTitle = "Order Confirmed";
+      timelineDesc = notes || "Your order has been confirmed and received by the supermarket.";
+    } else if (sLower === "preparing") {
+      canonicalStatus = "Preparing";
+      timelineStage = "Preparing";
+      order.preparingAt = now;
+      timelineTitle = "Preparing Your Order";
+      timelineDesc = notes || "The supermarket team is picking, packing, and quality-checking your items.";
+    } else if (sLower === "assigned" || sLower === "accepted" || sLower === "delivery partner assigned") {
+      canonicalStatus = "Assigned";
+      timelineStage = "Delivery Partner Assigned";
+      order.assignedAt = now;
+      if (assignedStaffId) order.assignedStaff = assignedStaffId;
+      if (assignedStaffName) order.assignedStaffName = assignedStaffName;
+      timelineTitle = "Delivery Partner Assigned";
+      timelineDesc = notes || `${order.assignedStaffName || "Delivery partner"} has been assigned to your order.`;
+    } else if (sLower === "products collected" || sLower === "orderpickedup" || sLower === "collected" || sLower === "picked up") {
+      canonicalStatus = "Products Collected";
+      timelineStage = "Products Collected";
+      order.productsCollectedAt = now;
+      order.pickedUpAt = now;
+      timelineTitle = "Products Collected";
+      timelineDesc = notes || `${order.assignedStaffName || "Delivery partner"} has collected the packed grocery products from the supermarket counter.`;
+    } else if (sLower === "out for delivery" || sLower === "outfordelivery") {
+      canonicalStatus = "Out for Delivery";
+      timelineStage = "Out for Delivery";
+      order.deliveryOutAt = now;
+      timelineTitle = "Out for Delivery";
+      timelineDesc = notes || `${order.assignedStaffName || "Delivery partner"} is on the way to your delivery address.`;
+    } else if (sLower === "delivered" || sLower === "completed") {
+      canonicalStatus = "Delivered";
+      timelineStage = "Delivered";
+      order.deliveryCompletedAt = now;
+      order.completedAt = now;
+      if (order.paymentStatus === "Pending") {
+        order.paymentStatus = "Completed";
+      }
+      timelineTitle = "Order Delivered";
+      timelineDesc = notes || "Your groceries have been successfully delivered to your doorstep. Thank you for shopping with us!";
+    } else if (sLower === "failed delivery" || sLower === "failed" || sLower === "cancelled") {
+      canonicalStatus = "Failed Delivery";
+      timelineStage = "Failed Delivery";
+      order.failedDeliveryAt = now;
+      order.failedReason = notes || "Delivery could not be completed";
+      timelineTitle = "Delivery Failed";
+      timelineDesc = order.failedReason;
     }
+
+    order.deliveryStatus = canonicalStatus;
+    if (assignedStaffName) order.assignedStaffName = assignedStaffName;
+    if (notes) order.deliveryNotes = notes;
+
+    // Audit tracking and status transitions
+    if (!Array.isArray(order.trackingTimeline)) {
+      order.trackingTimeline = [];
+    }
+    order.trackingTimeline.push({
+      stage: timelineStage,
+      status: canonicalStatus,
+      title: timelineTitle,
+      description: timelineDesc,
+      timestamp: now,
+      updatedBy: req.user?.name || "Store Admin",
+      updatedById: req.user?._id || null,
+      role: req.user?.role || "STORE_ADMIN",
+    });
+
+    if (!Array.isArray(order.statusHistory)) {
+      order.statusHistory = [];
+    }
+    order.statusHistory.push({
+      previousStatus,
+      newStatus: canonicalStatus,
+      timestamp: now,
+      updatedBy: req.user?.name || "Store Admin",
+      updatedById: req.user?._id || null,
+      role: req.user?.role || "STORE_ADMIN",
+    });
+
     await order.save();
 
     try {
       const io = req.app?.get("io");
       if (io) {
         io.emit("order:updated", { order });
+        io.emit("order:tracking_update", {
+          orderId: order._id,
+          orderNumber: order.orderNumber,
+          deliveryStatus: order.deliveryStatus,
+          paymentStatus: order.paymentStatus,
+          completedAt: order.deliveryCompletedAt || null,
+          order,
+        });
       }
     } catch (_) {}
 
     return res.status(200).json({
       success: true,
-      message: `Delivery status updated for Order #${order.orderNumber}.`,
+      message: `Delivery status updated to "${canonicalStatus}" for Order #${order.orderNumber}.`,
       order,
     });
   } catch (error) {
@@ -2197,13 +2679,7 @@ exports.submitOrderReview = async (req, res) => {
       });
     }
 
-    let query = null;
-    if (mongoose.Types.ObjectId.isValid(id) && /^[0-9a-fA-F]{24}$/.test(id)) {
-      query = { _id: id };
-    } else {
-      query = { $or: [{ orderNumber: id }, { exitBarcode: id }] };
-    }
-
+    const query = buildOrderQuery(id);
     const order = await Order.findOne(query);
     if (!order) {
       return res.status(404).json({
@@ -2329,14 +2805,7 @@ exports.submitOrderReview = async (req, res) => {
 exports.getOrderReview = async (req, res) => {
   try {
     const { id } = req.params;
-
-    let query = null;
-    if (mongoose.Types.ObjectId.isValid(id) && /^[0-9a-fA-F]{24}$/.test(id)) {
-      query = { _id: id };
-    } else {
-      query = { $or: [{ orderNumber: id }, { exitBarcode: id }] };
-    }
-
+    const query = buildOrderQuery(id);
     const order = await Order.findOne(query).select("review orderNumber customer orderType");
     if (!order) {
       return res.status(404).json({ success: false, message: "Order not found." });

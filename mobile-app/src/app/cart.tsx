@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
+  RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -20,13 +21,25 @@ export default function MyCartScreen() {
   const {
     cart,
     updateQuantity,
+    removeFromCart,
     clearCart,
+    refreshCart,
     grossAmount,
     totalSavings,
     totalAmount,
     totalCount,
     purchaseMode,
+    customerUser,
+    selectedSupermarket,
   } = useCart();
+
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await refreshCart();
+    setRefreshing(false);
+  };
 
   const handleClearCart = () => {
     if (cart.length === 0) return;
@@ -36,7 +49,14 @@ export default function MyCartScreen() {
     ]);
   };
 
-  // Exact real-time price & savings from database (NEVER fake 15% discount)
+  const handleRemoveItem = (id: string, name: string) => {
+    Alert.alert("Remove Product", `Remove "${name}" from your cart?`, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Remove", style: "destructive", onPress: () => removeFromCart(id) },
+    ]);
+  };
+
+  // Exact real-time price & savings from database
   const displayDiscount = totalSavings;
   const displayTotal = totalAmount;
 
@@ -56,7 +76,12 @@ export default function MyCartScreen() {
               <Text style={styles.headerBackArrow}>‹</Text>
             </TouchableOpacity>
 
-            <Text style={styles.headerTitle}>My Cart</Text>
+            <View style={{ alignItems: "center" }}>
+              <Text style={styles.headerTitle}>My Cart</Text>
+              <Text style={styles.headerStoreName} numberOfLines={1}>
+                {selectedSupermarket?.name || customerUser?.supermarketName || "Supermarket Store"}
+              </Text>
+            </View>
 
             <TouchableOpacity
               style={styles.headerBtn}
@@ -74,21 +99,37 @@ export default function MyCartScreen() {
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={["#3B0764"]}
+            />
+          }
         >
           {cart.length === 0 ? (
             <View style={styles.emptyCartBox}>
               <Text style={{ fontSize: 52, marginBottom: 14 }}>🛍️</Text>
               <Text style={styles.emptyCartTitle}>Your cart is empty</Text>
               <Text style={styles.emptyCartSub}>
-                Scan product barcodes in the supermarket to add items to your basket.
+                Select fresh products from your registered supermarket or scan product barcodes to add items to your cart.
               </Text>
-              <TouchableOpacity
-                style={styles.scanBtn}
-                onPress={() => router.push("/scanner")}
-                activeOpacity={0.88}
-              >
-                <Text style={styles.scanBtnText}>Open Barcode Scanner</Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: "row", gap: 10, marginTop: 18, width: "100%" }}>
+                <TouchableOpacity
+                  style={[styles.scanBtn, { backgroundColor: "#3B0764", flex: 1 }]}
+                  onPress={() => router.replace("/catalog")}
+                  activeOpacity={0.88}
+                >
+                  <Text style={styles.scanBtnText}>Browse Store</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.scanBtn, { backgroundColor: "#475569", flex: 1 }]}
+                  onPress={() => router.push("/scanner")}
+                  activeOpacity={0.88}
+                >
+                  <Text style={styles.scanBtnText}>Scan Barcode</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           ) : (
             <>
@@ -148,8 +189,16 @@ export default function MyCartScreen() {
                       </View>
                     </View>
 
-                    {/* Row Total on Far Right matching Screen 4 */}
+                    {/* Row Total & Quick Delete on Far Right */}
                     <View style={styles.itemRight}>
+                      <TouchableOpacity
+                        style={styles.removeItemBtn}
+                        onPress={() => handleRemoveItem(item._id, item.name)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.removeItemBtnText}>✕</Text>
+                      </TouchableOpacity>
+
                       <Text style={styles.itemRowTotal}>
                         ₹{Number(item.effectivePrice * item.quantity || 0).toFixed(2)}
                       </Text>
@@ -173,25 +222,29 @@ export default function MyCartScreen() {
                 )}
 
                 <View style={styles.summaryRowTotal}>
-                  <Text style={styles.totalLabel}>Total</Text>
+                  <Text style={styles.totalLabel}>Total Amount</Text>
                   <Text style={styles.totalValue}>₹{Number(displayTotal || 0).toFixed(2)}</Text>
                 </View>
               </View>
 
-              {/* Proceed to Customer Details / Checkout Button */}
+              {/* Proceed to Checkout Button */}
               <TouchableOpacity
                 style={styles.checkoutBtn}
                 onPress={() => {
                   if (purchaseMode === "offline") {
                     router.push("/customer-details");
                   } else {
-                    router.push("/checkout");
+                    if (!customerUser || !customerUser.token) {
+                      router.push({ pathname: "/auth", params: { tab: "register" } });
+                    } else {
+                      router.push("/checkout");
+                    }
                   }
                 }}
                 activeOpacity={0.88}
               >
                 <Text style={styles.checkoutBtnText}>
-                  {purchaseMode === "offline" ? "Proceed to Customer Details →" : "Proceed to Checkout →"}
+                  {purchaseMode === "offline" ? "Proceed to Customer Details →" : `Proceed to Checkout (₹${Number(displayTotal || 0).toFixed(2)}) →`}
                 </Text>
               </TouchableOpacity>
             </>
@@ -199,7 +252,7 @@ export default function MyCartScreen() {
         </ScrollView>
       </View>
 
-      {/* 5-Tab Customer Bottom Navigation matching Screen 4 */}
+      {/* 6-Tab Customer Bottom Navigation */}
       <CustomerBottomNav activeTab="cart" />
     </View>
   );
@@ -239,6 +292,12 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 18,
     fontWeight: "800",
+  },
+  headerStoreName: {
+    color: "#E9D5FF",
+    fontSize: 11.5,
+    fontWeight: "600",
+    marginTop: 1,
   },
   trashIcon: {
     fontSize: 20,
@@ -366,7 +425,23 @@ const styles = StyleSheet.create({
   },
   itemRight: {
     alignItems: "flex-end",
+    justifyContent: "space-between",
     paddingRight: 6,
+    paddingVertical: 2,
+  },
+  removeItemBtn: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "#FEE2E2",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 6,
+  },
+  removeItemBtnText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#EF4444",
   },
   itemRowTotal: {
     fontSize: 15,

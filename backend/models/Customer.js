@@ -3,6 +3,12 @@ const bcrypt = require("bcryptjs");
 
 const customerSchema = new mongoose.Schema(
   {
+    customerId: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true,
+    },
     name: {
       type: String,
       required: true,
@@ -29,11 +35,12 @@ const customerSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
-    // Permanently connected supermarket tenant
+    // Optional initially for online customers until they select their supermarket in the dashboard
     supermarket: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Supermarket",
-      required: true,
+      required: false,
+      default: null,
     },
     supermarketCode: {
       type: String,
@@ -55,7 +62,7 @@ const customerSchema = new mongoose.Schema(
     registrationType: {
       type: String,
       enum: ["ONLINE", "OFFLINE"],
-      default: "OFFLINE",
+      default: "ONLINE",
       index: true,
     },
     status: {
@@ -80,6 +87,10 @@ customerSchema.pre("save", async function () {
       this.phone = this.phone.slice(2);
     }
   }
+  if (!this.customerId && this.phone) {
+    const prefix = this.registrationType === "OFFLINE" ? "CUST-OFF" : "CUST-ONL";
+    this.customerId = `${prefix}-${this.phone.slice(-4)}`;
+  }
   if (this.isModified("password") && this.password && !this.password.startsWith("$2a$")) {
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
@@ -87,11 +98,12 @@ customerSchema.pre("save", async function () {
 });
 
 customerSchema.methods.comparePassword = async function (enteredPassword) {
-  if (!this.password) return true; // If registered without password (mobile OTP style)
+  if (!this.password) return false;
   return await bcrypt.compare(enteredPassword, this.password);
 };
 
 customerSchema.index({ phone: 1 }, { unique: true });
+customerSchema.index({ customerId: 1 }, { unique: true, sparse: true });
 customerSchema.index({ supermarket: 1 });
 customerSchema.index({ supermarket: 1, registrationType: 1 });
 

@@ -182,6 +182,7 @@ exports.updateDeliveryOrderStatus = async (req, res) => {
     }
 
     // Normalize status into canonical stages
+    const previousStatus = order.deliveryStatus || "Order Confirmed";
     let canonicalStatus = status;
     const sLower = String(status).toLowerCase().trim();
 
@@ -263,6 +264,18 @@ exports.updateDeliveryOrderStatus = async (req, res) => {
       status: canonicalStatus,
       title: timelineTitle,
       description: timelineDesc,
+      timestamp: now,
+      updatedBy: req.user.name || "Store Admin",
+      updatedById: req.user._id,
+      role: req.user.role || "STORE_ADMIN",
+    });
+
+    if (!Array.isArray(order.statusHistory)) {
+      order.statusHistory = [];
+    }
+    order.statusHistory.push({
+      previousStatus,
+      newStatus: canonicalStatus,
       timestamp: now,
       updatedBy: req.user.name || "Store Admin",
       updatedById: req.user._id,

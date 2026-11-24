@@ -42,23 +42,28 @@ export default function WelcomeHomeScreen() {
   const [searchModalVisible, setSearchModalVisible] = useState(false);
   const [pendingMode, setPendingMode] = useState<"online" | "offline">("online");
 
-  // Handle Online Purchase selection:
+  // 1. ONLINE: Customer clicks ONLINE → Create Account / Registration page opens.
   const handleSelectOnline = () => {
     setPurchaseMode("online");
-    setPendingMode("online");
-    setSearchModalVisible(true);
+    router.push({ pathname: "/auth", params: { tab: "register" } });
   };
 
-  // Handle Offline Purchase selection (Enforce supermarket identification before scanning)
+  // 3. CUSTOMER SIGN IN: Existing registered customers sign in using mobile number & PIN.
+  const handleCustomerSignIn = () => {
+    if (customerUser && customerUser.token) {
+      router.push("/profile");
+    } else {
+      router.push({ pathname: "/auth", params: { tab: "login" } });
+    }
+  };
+
+  // 2. OFFLINE: Customer clicks OFFLINE → Barcode Scanner only opens.
+  // No supermarket name before scanning. After scanning, show the correct supermarket name and product details.
   const handleSelectOffline = () => {
     setPurchaseMode("offline");
-    if (!selectedSupermarket) {
-      setPendingMode("offline");
-      setSearchModalVisible(true);
-    } else {
-      clearCart();
-      router.push({ pathname: "/scanner", params: { fresh: "true" } });
-    }
+    setSelectedSupermarket(null);
+    clearCart();
+    router.push({ pathname: "/scanner", params: { fresh: "true" } });
   };
 
   // Handle Delivery / Track Orders selection:
@@ -118,25 +123,36 @@ export default function WelcomeHomeScreen() {
                   <Text style={styles.brandNameSuper}>Super</Text>
                   <Text style={styles.brandNameMart}>Mart</Text>
                 </View>
-                <Text style={styles.brandTagline}>Smart Shopping. Smarter Life.</Text>
+                <Text style={styles.brandTagline}>Smart Shopping. Better Living.</Text>
               </View>
             </View>
 
-            {/* Right Customer Avatar with Active 🟢 Badge */}
-            <TouchableOpacity
-              style={styles.avatarTouchBox}
-              onPress={handleProfilePress}
-              activeOpacity={0.8}
-            >
-              <View style={styles.avatarFrame}>
-                <Image
-                  source={require("../../assets/images/customer-avatar-shopper.jpg")}
-                  style={styles.avatarImg}
-                  resizeMode="cover"
-                />
-                <View style={styles.onlineDot} />
-              </View>
-            </TouchableOpacity>
+            {/* Right Customer Avatar or Prominent Sign In Button (Always visible on initial screen) */}
+            {customerUser && customerUser.token ? (
+              <TouchableOpacity
+                style={styles.avatarTouchBox}
+                onPress={handleProfilePress}
+                activeOpacity={0.8}
+                accessibilityLabel="My Account & Profile"
+              >
+                <View style={styles.avatarFrame}>
+                  <Image
+                    source={require("../../assets/images/customer-avatar-shopper.jpg")}
+                    style={styles.avatarImg}
+                    resizeMode="cover"
+                  />
+                  <View style={styles.onlineDot} />
+                </View>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.headerSignInBtn}
+                onPress={handleCustomerSignIn}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.headerSignInBtnText}>Sign In</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </SafeAreaView>
       </View>
@@ -162,11 +178,11 @@ export default function WelcomeHomeScreen() {
               <Text style={styles.heroTitleMart}>Mart</Text>
             </View>
             <View style={styles.heroUnderlineBar} />
-            <Text style={styles.heroTagline}>Shop Smart, Live Better</Text>
+            <Text style={styles.heroTagline}>Smart Shopping. Better Living.</Text>
           </View>
         </View>
 
-        {/* Action Cards Section (ONLINE, OFFLINE, DELIVERY) */}
+        {/* Action Cards Section (1. ONLINE, 2. OFFLINE, 3. CUSTOMER SIGN IN, 4. DELIVERY) */}
         <View style={styles.cardsSection}>
           {verifying ? (
             <View style={styles.verifyingBox}>
@@ -196,7 +212,7 @@ export default function WelcomeHomeScreen() {
                     </View>
                   </View>
                   <Text style={styles.cardSubText}>
-                    Browse products, add to cart and order.
+                    Order fresh groceries online with doorstep delivery. Opens Create Account.
                   </Text>
                 </View>
 
@@ -226,7 +242,7 @@ export default function WelcomeHomeScreen() {
                     </View>
                   </View>
                   <Text style={styles.cardSubText}>
-                    Scan products, add to cart and pay.
+                    Barcode Scanner only. Scan products in-store & self-checkout.
                   </Text>
                 </View>
 
@@ -235,32 +251,28 @@ export default function WelcomeHomeScreen() {
                 </View>
               </TouchableOpacity>
 
-              {/* Card 3: DELIVERY */}
+              {/* Card 3: CUSTOMER SIGN IN (Fixed and constant on Home Screen) */}
               <TouchableOpacity
-                style={[styles.actionCard, styles.deliveryCardBorder]}
-                onPress={handleSelectDelivery}
+                style={[styles.actionCard, styles.signInCardBorder]}
+                onPress={handleCustomerSignIn}
                 activeOpacity={0.88}
               >
-                <View style={styles.cardIconBoxOrange}>
-                  <Image
-                    source={require("../../assets/images/icon-delivery-exact.jpg")}
-                    style={styles.card3DIcon}
-                    resizeMode="contain"
-                  />
+                <View style={styles.cardIconBoxBlue}>
+                  <Text style={{ fontSize: 26 }}>🔐</Text>
                 </View>
 
                 <View style={styles.cardTextCol}>
                   <View style={styles.pillBadgeRow}>
-                    <View style={styles.deliveryPill}>
-                      <Text style={styles.deliveryPillText}>DELIVERY</Text>
+                    <View style={styles.signInPill}>
+                      <Text style={styles.signInPillText}>CUSTOMER SIGN IN</Text>
                     </View>
                   </View>
                   <Text style={styles.cardSubText}>
-                    Track your orders & get home delivery.
+                    Existing registered customers sign in using Mobile Number & PIN.
                   </Text>
                 </View>
 
-                <View style={styles.orangeCircleBtn}>
+                <View style={styles.blueCircleBtn}>
                   <Text style={styles.arrowText}>→</Text>
                 </View>
               </TouchableOpacity>
@@ -553,6 +565,9 @@ const styles = StyleSheet.create({
   deliveryCardBorder: {
     borderColor: "#FED7AA",
   },
+  signInCardBorder: {
+    borderColor: "#C7D2FE",
+  },
   cardIconBoxPurple: {
     width: 52,
     height: 52,
@@ -572,6 +587,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 1,
     borderColor: "#BBF7D0",
+  },
+  cardIconBoxBlue: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: "#EEF2FF",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#C7D2FE",
   },
   cardIconBoxOrange: {
     width: 52,
@@ -610,6 +635,82 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: 0.5,
   },
+  headerSignInBtn: {
+    backgroundColor: "#F59E0B", // Vibrant gold matching SuperMart branding
+    paddingHorizontal: 15,
+    paddingVertical: 7,
+    borderRadius: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  headerSignInBtnText: {
+    color: "#1E1B4B",
+    fontSize: 13,
+    fontWeight: "900",
+    letterSpacing: 0.3,
+  },
+  signInDirectCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1.5,
+    borderColor: "#DDD6FE",
+    shadowColor: "#7C3AED",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 5,
+    elevation: 2,
+    marginBottom: 2,
+  },
+  signInDirectIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: "#EDE9FE",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
+  },
+  signInDirectTitle: {
+    fontSize: 13.5,
+    fontWeight: "800",
+    color: "#2E0854",
+  },
+  signInDirectSub: {
+    fontSize: 11,
+    color: "#6B7280",
+    marginTop: 2,
+  },
+  signInDirectBtn: {
+    backgroundColor: "#7C3AED",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginLeft: 8,
+  },
+  signInDirectBtnText: {
+    color: "#FFFFFF",
+    fontSize: 11.5,
+    fontWeight: "800",
+  },
+  registerBadgePill: {
+    backgroundColor: "#F3E8FF",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    marginLeft: 6,
+  },
+  registerBadgePillText: {
+    color: "#7C3AED",
+    fontSize: 10,
+    fontWeight: "900",
+  },
   offlinePill: {
     backgroundColor: "#D1FAE5",
     paddingHorizontal: 10,
@@ -632,6 +733,19 @@ const styles = StyleSheet.create({
   },
   deliveryPillText: {
     color: "#C2410C",
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  signInPill: {
+    backgroundColor: "#EEF2FF",
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 12,
+    alignSelf: "flex-start",
+  },
+  signInPillText: {
+    color: "#4338CA",
     fontSize: 12,
     fontWeight: "800",
     letterSpacing: 0.5,
@@ -676,6 +790,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#EA580C",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  blueCircleBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#4F46E5",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#4F46E5",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.35,
     shadowRadius: 4,

@@ -70,7 +70,8 @@ export default function StoreCollectionScreen() {
     if (showSpinner) setLoading(true);
 
     try {
-      const res = await safeFetch(`${API_URL}/orders/${targetId}?_t=${Date.now()}`, {}, 4000);
+      const cleanTargetId = encodeURIComponent(String(targetId).replace(/^#/, "").trim());
+      const res = await safeFetch(`${API_URL}/orders/${cleanTargetId}?_t=${Date.now()}`, {}, 4000);
       const data = await res.json();
       if (data?.success && data?.order) {
         setOrder(data.order);
@@ -597,7 +598,7 @@ export default function StoreCollectionScreen() {
                   <Text style={styles.itemQtyText}>Qty: {it.quantity}</Text>
                 </View>
                 <Text style={styles.itemPriceText}>
-                  ₹{(Number(it.subtotal || it.price * it.quantity || 0)).toFixed(2)}
+                  ₹{(Number((it as any).subtotal || it.price * it.quantity || 0)).toFixed(2)}
                 </Text>
               </View>
             ))}

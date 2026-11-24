@@ -113,6 +113,13 @@ export default function DeliveryDashboardScreen() {
       const ordersData = await ordersRes.json();
       if (ordersData.success && Array.isArray(ordersData.orders)) {
         setOrders(ordersData.orders);
+        setSelectedOrderDetails((current: any) => {
+          if (!current) return null;
+          const fresh = ordersData.orders.find(
+            (o: any) => o._id === current._id || o.orderNumber === current.orderNumber
+          );
+          return fresh || current;
+        });
       }
 
       // 2. Fetch Isolated Analytics
@@ -172,13 +179,27 @@ export default function DeliveryDashboardScreen() {
       }
 
       Alert.alert("Status Updated", `Order marked as "${nextStatus}".`);
-      fetchDashboardData();
-      if (selectedOrderDetails && selectedOrderDetails._id === orderId) {
+      const updatedOrder = data.order || null;
+      if (updatedOrder) {
+        setOrders((prev) =>
+          prev.map((o) => (o._id === orderId ? updatedOrder : o))
+        );
+        setSelectedOrderDetails((current: any) => {
+          if (
+            current &&
+            (current._id === orderId || current.orderNumber === updatedOrder.orderNumber)
+          ) {
+            return updatedOrder;
+          }
+          return current;
+        });
+      } else if (selectedOrderDetails && selectedOrderDetails._id === orderId) {
         setSelectedOrderDetails({
           ...selectedOrderDetails,
           deliveryStatus: nextStatus,
         });
       }
+      fetchDashboardData();
     } catch (err: any) {
       Alert.alert("Update Error", err.message || "Failed to update status.");
     } finally {
@@ -234,15 +255,52 @@ export default function DeliveryDashboardScreen() {
     return require("../../assets/images/product-kitkat.jpg");
   };
 
-  // Helper to extract real stage timestamps
-  const getStageTimestamp = (order: any, stageName: string) => {
-    if (Array.isArray(order.trackingTimeline)) {
-      const entry = order.trackingTimeline.find(
-        (t: any) =>
-          t.status?.toLowerCase() === stageName.toLowerCase() ||
-          t.stage?.toLowerCase() === stageName.toLowerCase() ||
-          t.title?.toLowerCase() === stageName.toLowerCase()
-      );
+  // Helper to extract real stage timestamps (Strictly from real database audit logs - No dummy fallbacks)
+  const getStageTimestamp = (order: any, stageName: string): string | null => {
+    if (!order) return null;
+    const target = stageName.toLowerCase().trim();
+
+    // 1. Direct millisecond-accurate audit properties
+    let directDate: any = null;
+    if (target.includes("confirmed") || target === "order confirmed") {
+      directDate = order.orderConfirmedAt || order.createdAt;
+    } else if (target.includes("prep") || target === "preparing") {
+      directDate = order.preparingAt;
+    } else if (target.includes("assign") || target === "assigned") {
+      directDate = order.assignedAt || order.deliveryAcceptedAt;
+    } else if (target.includes("collect") || target.includes("picked") || target === "products collected") {
+      directDate = order.productsCollectedAt || order.pickedUpAt;
+    } else if (target.includes("out") || target === "out for delivery") {
+      directDate = order.deliveryOutAt;
+    } else if (target.includes("deliver") || target.includes("complete") || target === "delivered") {
+      directDate = order.deliveryCompletedAt || order.completedAt;
+    }
+
+    if (directDate) {
+      const d = new Date(directDate);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true });
+      }
+    }
+
+    // 2. Timeline array search
+    if (Array.isArray(order.trackingTimeline) && order.trackingTimeline.length > 0) {
+      const entry = [...order.trackingTimeline].reverse().find((t: any) => {
+        const s = String(t.status || "").toLowerCase().trim();
+        const st = String(t.stage || "").toLowerCase().trim();
+        const ti = String(t.title || "").toLowerCase().trim();
+        return (
+          s === target ||
+          st === target ||
+          ti === target ||
+          s.includes(target) ||
+          st.includes(target) ||
+          ti.includes(target) ||
+          (target.includes("collect") && (s.includes("pick") || st.includes("pick") || ti.includes("pick") || s.includes("collect") || st.includes("collect"))) ||
+          (target.includes("out") && (s.includes("out") || st.includes("out") || ti.includes("out"))) ||
+          (target.includes("deliver") && (s.includes("deliver") || st.includes("deliver") || ti.includes("deliver") || s.includes("complete") || st.includes("complete")))
+        );
+      });
       if (entry && entry.timestamp) {
         const d = new Date(entry.timestamp);
         if (!isNaN(d.getTime())) {
@@ -251,26 +309,26 @@ export default function DeliveryDashboardScreen() {
       }
     }
 
-    let ts: any = null;
-    const sLower = stageName.toLowerCase();
-    if (sLower.includes("confirmed")) {
-      ts = order.orderConfirmedAt || order.createdAt;
-    } else if (sLower.includes("prep")) {
-      ts = order.preparingAt;
-    } else if (sLower.includes("collected") || sLower.includes("picked")) {
-      ts = order.productsCollectedAt || order.pickedUpAt;
-    } else if (sLower.includes("out")) {
-      ts = order.deliveryOutAt || order.pickedUpAt;
-    } else if (sLower.includes("deliver")) {
-      ts = order.deliveryCompletedAt || order.completedAt;
-    }
-
-    if (ts) {
-      const d = new Date(ts);
-      if (!isNaN(d.getTime())) {
-        return d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true });
+    // 3. Status history search
+    if (Array.isArray(order.statusHistory) && order.statusHistory.length > 0) {
+      const entry = [...order.statusHistory].reverse().find((h: any) => {
+        const s = String(h.newStatus || "").toLowerCase().trim();
+        return (
+          s === target ||
+          s.includes(target) ||
+          (target.includes("collect") && (s.includes("collect") || s.includes("pick"))) ||
+          (target.includes("out") && s.includes("out")) ||
+          (target.includes("deliver") && (s.includes("deliver") || s.includes("complete")))
+        );
+      });
+      if (entry && entry.timestamp) {
+        const d = new Date(entry.timestamp);
+        if (!isNaN(d.getTime())) {
+          return d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true });
+        }
       }
     }
+
     return null;
   };
 
@@ -1252,7 +1310,7 @@ export default function DeliveryDashboardScreen() {
               order.deliveryCustomerName || order.customer?.name || "Customer";
             const customerPhone = order.deliveryPhone || order.customer?.phone || "";
             const customerAddress =
-              order.deliveryAddress || order.customer?.address || "123, Main Street, Local Area";
+              order.deliveryAddress || order.customer?.address || "Address not provided";
             const totalAmount = Number(order.totalAmount || 0).toFixed(2);
             const firstItem =
               Array.isArray(order.items) && order.items.length > 0 ? order.items[0] : null;
@@ -2058,13 +2116,13 @@ export default function DeliveryDashboardScreen() {
       order.deliveryCustomerName || order.customer?.name || "Customer";
     const customerPhone = order.deliveryPhone || order.customer?.phone || "";
     const customerAddress =
-      order.deliveryAddress || order.customer?.address || "123, Main Street, Store Town";
+      order.deliveryAddress || order.customer?.address || "Address not provided";
 
     const firstItem =
       Array.isArray(order.items) && order.items.length > 0 ? order.items[0] : null;
-    const itemName = firstItem?.name || "Kitkat";
+    const itemName = firstItem?.name || "Grocery Package";
     const itemQty = firstItem?.quantity || 1;
-    const itemTotal = Number(order.totalAmount || 138).toFixed(2);
+    const itemTotal = Number(order.totalAmount || 0).toFixed(2);
     const actionInfo = getNextDeliveryAction(order);
 
     return (
@@ -2160,6 +2218,22 @@ export default function DeliveryDashboardScreen() {
       sLower === "products collected" ||
       sLower === "orderpickedup" ||
       sLower === "collected";
+    const isAssigned =
+      sLower === "assigned" ||
+      sLower === "accepted" ||
+      isCollected ||
+      isOut ||
+      isDelivered;
+    const isPrepDone =
+      sLower !== "order confirmed" &&
+      sLower !== "pending" &&
+      sLower !== "new" &&
+      (sLower === "preparing" ||
+        isAssigned ||
+        isCollected ||
+        isOut ||
+        isDelivered ||
+        Boolean(order.preparingAt));
 
     const customerName =
       order.deliveryCustomerName || order.customer?.name || "Customer";
@@ -2235,16 +2309,29 @@ export default function DeliveryDashboardScreen() {
 
           {/* Step 2: Preparing */}
           <View style={styles.stepperStepCol}>
-            <View style={[styles.stepperDot, styles.stepperDotDone]}>
-              <Text style={styles.stepperCheck}>✓</Text>
+            <View
+              style={[
+                styles.stepperDot,
+                isPrepDone ? styles.stepperDotDone : styles.stepperDotPending,
+              ]}
+            >
+              {isPrepDone ? <Text style={styles.stepperCheck}>✓</Text> : null}
             </View>
-            <Text style={styles.stepperLabelDone}>Prep</Text>
+            <Text
+              style={
+                isPrepDone
+                  ? styles.stepperLabelDone
+                  : styles.stepperLabelPending
+              }
+            >
+              Prep
+            </Text>
           </View>
 
           <View
             style={[
               styles.stepperLine,
-              (isCollected || isOut || isDelivered) && styles.stepperLineDone,
+              isPrepDone && styles.stepperLineDone,
             ]}
           />
 
@@ -2386,18 +2473,34 @@ export default function DeliveryDashboardScreen() {
       sLower === "products collected" ||
       sLower === "orderpickedup" ||
       sLower === "collected";
+    const isAssigned =
+      sLower === "assigned" ||
+      sLower === "accepted" ||
+      isCollected ||
+      isOut ||
+      isDelivered;
+    const isPrepDone =
+      sLower !== "order confirmed" &&
+      sLower !== "pending" &&
+      sLower !== "new" &&
+      (sLower === "preparing" ||
+        isAssigned ||
+        isCollected ||
+        isOut ||
+        isDelivered ||
+        Boolean(order.preparingAt));
 
     const customerName =
       order.deliveryCustomerName || order.customer?.name || "Customer";
     const customerPhone = order.deliveryPhone || order.customer?.phone || "";
     const customerAddress =
-      order.deliveryAddress || order.customer?.address || "123, Main Street, Vaniyambadi";
+      order.deliveryAddress || order.customer?.address || order.customerAddress || "Address not provided";
 
     const firstItem =
       Array.isArray(order.items) && order.items.length > 0 ? order.items[0] : null;
-    const itemName = firstItem?.name || "Kitkat";
+    const itemName = firstItem?.name || "Grocery Package";
     const itemQty = firstItem?.quantity || 1;
-    const itemTotal = Number(order.totalAmount || 138).toFixed(2);
+    const itemTotal = Number(order.totalAmount || 0).toFixed(2);
     const actionInfo = getNextDeliveryAction(order);
 
     const formattedDate = new Date(order.createdAt).toLocaleDateString("en-IN", {
@@ -2408,17 +2511,75 @@ export default function DeliveryDashboardScreen() {
       hour12: true,
     });
 
-    // Real-time Stage Timestamps
-    const timeConfirmed = getStageTimestamp(order, "Order Confirmed") || "1:45 PM";
-    const timePreparing = getStageTimestamp(order, "Preparing") || "1:55 PM";
-    const timeCollected = (isCollected || isOut || isDelivered)
-      ? (getStageTimestamp(order, "Products Collected") || "2:10 PM")
+    // Real-time Stage Timestamps (Strictly from real DB audit records - No dummy fallbacks)
+    const timeConfirmed =
+      getStageTimestamp(order, "Order Confirmed") ||
+      (order.createdAt
+        ? new Date(order.createdAt).toLocaleTimeString("en-IN", {
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+          })
+        : "--:--");
+
+    const rawPrepTime = getStageTimestamp(order, "Preparing");
+    const timePreparing = rawPrepTime
+      ? rawPrepTime
+      : isPrepDone
+      ? timeConfirmed
       : "--:--";
-    const timeOut = (isOut || isDelivered)
-      ? (getStageTimestamp(order, "Out for Delivery") || "2:30 PM")
-      : "--:--";
+
+    const rawCollectedTime =
+      getStageTimestamp(order, "Products Collected") ||
+      getStageTimestamp(order, "OrderPickedUp") ||
+      getStageTimestamp(order, "pickedUpAt") ||
+      getStageTimestamp(order, "collected") ||
+      (order.pickedUpAt
+        ? new Date(order.pickedUpAt).toLocaleTimeString("en-IN", {
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+          })
+        : null);
+    const timeCollected =
+      isCollected || isOut || isDelivered
+        ? rawCollectedTime || timePreparing || timeConfirmed
+        : "--:--";
+
+    const rawOutTime =
+      getStageTimestamp(order, "Out for Delivery") ||
+      getStageTimestamp(order, "out_for_delivery") ||
+      (order.deliveryOutAt
+        ? new Date(order.deliveryOutAt).toLocaleTimeString("en-IN", {
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+          })
+        : null);
+    const timeOut =
+      isOut || isDelivered
+        ? rawOutTime || rawCollectedTime || timePreparing || timeConfirmed
+        : "--:--";
+
+    const rawDeliveredTime =
+      getStageTimestamp(order, "Delivered") ||
+      getStageTimestamp(order, "completed") ||
+      (order.deliveryCompletedAt
+        ? new Date(order.deliveryCompletedAt).toLocaleTimeString("en-IN", {
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+          })
+        : null) ||
+      (order.completedAt
+        ? new Date(order.completedAt).toLocaleTimeString("en-IN", {
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+          })
+        : null);
     const timeDelivered = isDelivered
-      ? (getStageTimestamp(order, "Delivered") || "3:00 PM")
+      ? rawDeliveredTime || rawOutTime || rawCollectedTime || "Delivered"
       : "Pending";
 
     return (
@@ -2514,13 +2675,26 @@ export default function DeliveryDashboardScreen() {
               {/* Stage 2: Preparing */}
               <View style={styles.timelineRow}>
                 <View style={styles.timelineIconCol}>
-                  <View style={[styles.timelineDot, styles.timelineDotDone]}>
-                    <Text style={styles.timelineCheck}>✓</Text>
+                  <View
+                    style={[
+                      styles.timelineDot,
+                      isPrepDone ? styles.timelineDotDone : styles.timelineDotPending,
+                    ]}
+                  >
+                    {isPrepDone ? <Text style={styles.timelineCheck}>✓</Text> : null}
                   </View>
                   <View style={styles.timelineLine} />
                 </View>
                 <View style={styles.timelineTextCol}>
-                  <Text style={styles.timelineStageTitleDone}>Preparing</Text>
+                  <Text
+                    style={
+                      isPrepDone
+                        ? styles.timelineStageTitleDone
+                        : styles.timelineStageTitlePending
+                    }
+                  >
+                    Preparing
+                  </Text>
                   <Text style={styles.timelineStageTime}>{timePreparing}</Text>
                 </View>
               </View>

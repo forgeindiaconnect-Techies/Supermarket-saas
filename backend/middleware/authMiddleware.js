@@ -23,6 +23,40 @@ async function authMiddleware(req, res, next) {
       return next();
     }
 
+    // A. Resolve Customer Token (role === "CUSTOMER")
+    if (decoded.role === "CUSTOMER") {
+      const Customer = require("../models/Customer");
+      const customer = await Customer.findById(decoded.id).select("-password").populate("supermarket");
+
+      if (customer && customer.status === "Active") {
+        req.user = {
+          _id: customer._id,
+          id: customer._id.toString(),
+          customerId: customer.customerId || `CUST-ONL-${customer.phone.slice(-4)}`,
+          name: customer.name,
+          phone: customer.phone,
+          email: customer.email || "",
+          address: customer.address || "",
+          role: "CUSTOMER",
+          registrationType: customer.registrationType || "ONLINE",
+          supermarket: customer.supermarket,
+          supermarketId: customer.supermarket ? customer.supermarket._id.toString() : (customer.supermarket || null),
+          supermarketCode: customer.supermarketCode || "",
+          supermarketName: customer.supermarketName || "",
+          status: customer.status,
+        };
+        req.customer = customer;
+        req.isCustomer = true;
+        if (customer.supermarket) {
+          req.supermarketId = customer.supermarket._id ? customer.supermarket._id.toString() : customer.supermarket.toString();
+          req.supermarket = customer.supermarket;
+          req.supermarketCode = customer.supermarketCode;
+        }
+      }
+      return next();
+    }
+
+    // B. Resolve Staff & Admin Token (User collection)
     const user = await User.findById(decoded.id).select("-password").populate("supermarket");
 
     if (user && user.status === "Active") {
@@ -44,6 +78,17 @@ async function authMiddleware(req, res, next) {
     // If token is invalid or expired, request remains unauthenticated
     next();
   }
+}
+
+// Require authenticated customer strictly
+function requireCustomerAuth(req, res, next) {
+  if (!req.user || req.user.role !== "CUSTOMER") {
+    return res.status(401).json({
+      success: false,
+      message: "Customer authentication required. Please sign in.",
+    });
+  }
+  next();
 }
 
 // Require authenticated user
@@ -94,6 +139,7 @@ function requireStoreAdminOrSuperAdmin(req, res, next) {
 module.exports = {
   authMiddleware,
   requireAuth,
+  requireCustomerAuth,
   requireSuperAdmin,
   requireStoreAdminOrSuperAdmin,
   JWT_SECRET,

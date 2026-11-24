@@ -22,7 +22,7 @@ import ReceiptModal from "../components/ReceiptModal";
 
 export default function MyOrdersScreen() {
   const router = useRouter();
-  const { recentOrders, selectedSupermarket, customerUser } = useCart();
+  const { recentOrders, selectedSupermarket, customerUser, updateRecentOrder } = useCart();
 
   const [orders, setOrders] = useState<OrderRecord[]>([]);
   const [activeFilter, setActiveFilter] = useState<"All" | "Pending" | "Completed">("All");
@@ -38,11 +38,15 @@ export default function MyOrdersScreen() {
         const params = new URLSearchParams();
         if (selectedSupermarket?._id) params.append("supermarketId", selectedSupermarket._id);
         if (customerUser?.phone) params.append("phone", customerUser.phone);
+        const reqHeaders: Record<string, string> = {
+          "x-supermarket-id": selectedSupermarket?._id || "",
+          "x-customer-phone": customerUser?.phone || "",
+        };
+        if (customerUser?.token) {
+          reqHeaders["Authorization"] = `Bearer ${customerUser.token}`;
+        }
         const res = await safeFetch(`${API_URL}/orders?${params.toString()}`, {
-          headers: {
-            "x-supermarket-id": selectedSupermarket?._id || "",
-            "x-customer-phone": customerUser?.phone || "",
-          },
+          headers: reqHeaders,
         }, 12000);
         const contentType = res.headers?.get("content-type") || "";
         if (contentType.includes("application/json")) {
@@ -63,15 +67,30 @@ export default function MyOrdersScreen() {
         });
       }
 
-      // Combine real orders from DB and local context
+      // Live sync dbOrders to CartContext recentOrders
+      if (dbOrders.length > 0) {
+        dbOrders.forEach((dbo) => {
+          if (updateRecentOrder) updateRecentOrder(dbo);
+        });
+      }
+
+      // Combine real orders from DB and local context: dbOrders takes precedence!
       const relevantRecent = selectedSupermarket?._id
         ? recentOrders.filter((o) => !o.supermarket || String(o.supermarket) === String(selectedSupermarket._id))
         : recentOrders;
 
-      const combined = [...relevantRecent, ...dbOrders];
-      const uniqueOrders = Array.from(
-        new Map(combined.map((o) => [o._id || o.orderNumber, o])).values()
-      );
+      const orderMap = new Map<string, OrderRecord>();
+      relevantRecent.forEach((o) => {
+        const key = String(o.orderNumber || o._id || "");
+        if (key) orderMap.set(key, o);
+      });
+      dbOrders.forEach((o) => {
+        const key = String(o.orderNumber || o._id || "");
+        if (key) orderMap.set(key, o);
+      });
+
+      const uniqueOrders = Array.from(orderMap.values());
+      uniqueOrders.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
 
       setOrders(uniqueOrders);
     } catch (_) {
@@ -85,6 +104,14 @@ export default function MyOrdersScreen() {
   useEffect(() => {
     fetchOrders();
   }, [recentOrders]);
+
+  // Real-Time auto-refresh every 4 seconds to sync status changes from website
+  useEffect(() => {
+    const timer = setInterval(() => {
+      fetchOrders();
+    }, 4000);
+    return () => clearInterval(timer);
+  }, []);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -105,10 +132,88 @@ export default function MyOrdersScreen() {
     } catch (_) {}
   };
 
+  const isOrderFullyCompleted = (o: OrderRecord) => {
+    const oType = String(o.orderType || "").toUpperCase();
+    const fChoice = String((o as any).fulfillmentChoice || "").toUpperCase();
+    const hasPickup = Boolean((o as any).pickupStatus && String((o as any).pickupStatus).trim() !== "");
+    const isPickup = oType.includes("PICKUP") || fChoice === "STORE_COLLECTION" || hasPickup;
+
+    if (isPickup) {
+      const pickSt = String((o as any).pickupStatus || "").toLowerCase().trim();
+      return (
+        pickSt === "completed" ||
+        (o as any).customerPickupConfirmed === true ||
+        Boolean((o as any).customerPickupCompletedAt)
+      );
+    }
+
+    const delSt = String((o as any).deliveryStatus || "").toLowerCase().trim();
+    if (delSt) {
+      return (
+        delSt === "delivered" ||
+        Boolean((o as any).deliveryCompletedAt) ||
+        (delSt === "completed" && Boolean((o as any).deliveryCompletedAt))
+      );
+    }
+
+    // Offline in-store purchase
+    const paySt = String(o.paymentStatus || "").toLowerCase().trim();
+    return paySt === "completed" && Boolean(o.completedAt);
+  };
+
+  const getOrderStatusInfo = (ord: OrderRecord) => {
+    const oType = String(ord.orderType || "").toUpperCase();
+    const fChoice = String((ord as any).fulfillmentChoice || "").toUpperCase();
+    const hasPickup = Boolean((ord as any).pickupStatus && String((ord as any).pickupStatus).trim() !== "");
+    const isPickup = oType.includes("PICKUP") || fChoice === "STORE_COLLECTION" || hasPickup;
+
+    if (isPickup) {
+      const pickSt = String((ord as any).pickupStatus || "Pending").toLowerCase().trim();
+      if (pickSt === "completed" || (ord as any).customerPickupConfirmed || (ord as any).customerPickupCompletedAt) {
+        return { text: "Completed", type: "completed" };
+      }
+      if (pickSt === "readyforpickup" || pickSt === "ready") {
+        return { text: "Ready for Pickup", type: "active" };
+      }
+      if (pickSt === "preparing") {
+        return { text: "Preparing", type: "active" };
+      }
+      return { text: "Pending", type: "pending" };
+    }
+
+    const delSt = String((ord as any).deliveryStatus || "").toLowerCase().trim();
+    if (delSt) {
+      if (delSt === "delivered" || (ord as any).deliveryCompletedAt) {
+        return { text: "Delivered", type: "completed" };
+      }
+      if (delSt === "out for delivery" || delSt === "outfordelivery") {
+        return { text: "Out for Delivery", type: "active" };
+      }
+      if (delSt === "products collected" || delSt === "orderpickedup" || delSt === "collected") {
+        return { text: "Products Collected", type: "active" };
+      }
+      if (delSt === "assigned" || delSt === "accepted") {
+        return { text: "Partner Assigned", type: "active" };
+      }
+      if (delSt === "preparing") {
+        return { text: "Preparing", type: "active" };
+      }
+      return { text: "Confirmed", type: "pending" };
+    }
+
+    // Offline In-Store
+    const isComp = isOrderFullyCompleted(ord);
+    return {
+      text: isComp ? "Completed" : ord.paymentStatus || "Pending",
+      type: isComp ? "completed" : "pending",
+    };
+  };
+
   const filteredOrders = orders.filter((o) => {
+    const isCompleted = isOrderFullyCompleted(o);
     if (activeFilter === "All") return true;
-    if (activeFilter === "Completed") return o.paymentStatus === "Completed";
-    if (activeFilter === "Pending") return o.paymentStatus === "Pending" || o.paymentStatus === "Approved";
+    if (activeFilter === "Completed") return isCompleted;
+    if (activeFilter === "Pending") return !isCompleted;
     return true;
   });
 
@@ -204,7 +309,7 @@ export default function MyOrdersScreen() {
           ) : (
             <View style={styles.ordersList}>
               {filteredOrders.map((ord) => {
-                const isCompleted = ord.paymentStatus === "Completed";
+                const isCompleted = isOrderFullyCompleted(ord);
 
                 return (
                   <View key={ord._id || ord.orderNumber} style={styles.orderCard}>
@@ -214,29 +319,34 @@ export default function MyOrdersScreen() {
                         #{ord.orderNumber}
                       </Text>
 
-                      <View
-                        style={[
-                          styles.statusBadge,
-                          ord.paymentStatus === "Completed"
-                            ? styles.statusCompleted
-                            : ord.paymentStatus === "Approved"
-                            ? styles.statusApproved
-                            : styles.statusPending,
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.statusBadgeText,
-                            ord.paymentStatus === "Completed"
-                              ? styles.statusCompletedText
-                              : ord.paymentStatus === "Approved"
-                              ? styles.statusApprovedText
-                              : styles.statusPendingText,
-                          ]}
-                        >
-                          {ord.paymentStatus || "Completed"}
-                        </Text>
-                      </View>
+                      {(() => {
+                        const statusInfo = getOrderStatusInfo(ord);
+                        return (
+                          <View
+                            style={[
+                              styles.statusBadge,
+                              statusInfo.type === "completed"
+                                ? styles.statusCompleted
+                                : statusInfo.type === "active"
+                                ? styles.statusApproved
+                                : styles.statusPending,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.statusBadgeText,
+                                statusInfo.type === "completed"
+                                  ? styles.statusCompletedText
+                                  : statusInfo.type === "active"
+                                  ? styles.statusApprovedText
+                                  : styles.statusPendingText,
+                              ]}
+                            >
+                              {statusInfo.text}
+                            </Text>
+                          </View>
+                        );
+                      })()}
                     </View>
 
                     {/* Price & Items Count matching Screen 8 */}
@@ -259,7 +369,7 @@ export default function MyOrdersScreen() {
                               source={
                                 it.imageUrl
                                   ? { uri: it.imageUrl }
-                                  : require("@/assets/images/react-logo.png")
+                                  : require("../../assets/images/icon.png")
                               }
                               style={styles.thumbMini as any}
                               resizeMode="contain"
@@ -269,7 +379,7 @@ export default function MyOrdersScreen() {
                       ) : (
                         <View style={styles.thumbWrapper}>
                           <Image
-                            source={require("@/assets/images/react-logo.png")}
+                            source={require("../../assets/images/icon.png")}
                             style={styles.thumbMini}
                             resizeMode="contain"
                           />

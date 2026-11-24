@@ -176,6 +176,7 @@ const chatRoutes = require("./routes/chatRoutes");
 const supermarketRoutes = require("./routes/supermarketRoutes");
 const deliveryRoutes = require("./routes/deliveryRoutes");
 const customerRoutes = require("./routes/customerRoutes");
+const cartRoutes = require("./routes/cartRoutes");
 const { authMiddleware } = require("./middleware/authMiddleware");
 const { tenantMiddleware } = require("./middleware/tenantMiddleware");
 const { seedSaaSPlatformData, ensureSuperAdminUser } = require("./utils/saasSeeder");
@@ -427,6 +428,7 @@ app.use("/api/chat", chatRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/customers", customerRoutes);
+app.use("/api/cart", cartRoutes);
 app.use("/api/delivery", deliveryRoutes);
 app.use("/api/upload", uploadRoutes);
 
@@ -438,6 +440,7 @@ app.use("/chat", chatRoutes);
 app.use("/products", productRoutes);
 app.use("/orders", orderRoutes);
 app.use("/customers", customerRoutes);
+app.use("/cart", cartRoutes);
 app.use("/delivery", deliveryRoutes);
 app.use("/upload", uploadRoutes);
 

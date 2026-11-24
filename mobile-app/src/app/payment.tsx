@@ -210,7 +210,7 @@ export default function SecurePaymentScreen() {
         fulfillmentChoice: isOffline ? "" : (fulfillmentType === "SELF_PICKUP" ? "STORE_COLLECTION" : "DOORSTEP_DELIVERY"),
         pickupDate: isOffline ? "" : (pickupDate || ""),
         pickupTimeSlot: isOffline ? "" : (pickupTimeSlot || ""),
-        pickupStatus: "",
+        pickupStatus: isOffline ? "" : (fulfillmentType === "SELF_PICKUP" ? "Pending" : ""),
         deliveryStatus: isOffline ? "" : (fulfillmentType === "SELF_PICKUP" ? "" : "Order Confirmed"),
         customer: {
           customerId: effectiveCustomerId,

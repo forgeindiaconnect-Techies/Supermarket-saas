@@ -27,6 +27,7 @@ export default function CheckoutScreen() {
     totalAmount,
     customerInfo,
     customerUser,
+    isAuthLoading,
     updateCustomerDetails,
     selectedSupermarket,
     setSelectedSupermarket,
@@ -39,6 +40,15 @@ export default function CheckoutScreen() {
   const initialName = (customerUser?.name || customerInfo?.name || "").trim();
   const initialPhone = (customerUser?.phone || customerInfo?.phone || "").replace(/\D/g, "").slice(-10);
   const initialAddress = (customerUser?.address || customerInfo?.address || "").trim();
+
+  // Mandatory Authentication Guard for Online Checkout
+  // Waits for session to finish restoring before evaluating
+  useEffect(() => {
+    if (isAuthLoading) return;
+    if (purchaseMode === "online" && (!customerUser || !customerUser.token)) {
+      router.replace({ pathname: "/auth", params: { tab: "register" } });
+    }
+  }, [isAuthLoading, purchaseMode, customerUser]);
 
   // Live real-time sync of supermarket channel settings from database
   useEffect(() => {

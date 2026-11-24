@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,20 +7,19 @@ import {
   ScrollView,
   StyleSheet,
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useCart, SupermarketInfo } from "../context/CartContext";
 import { API_URL, safeFetch } from "../constants/api";
-import ModeUnavailableModal from "../components/ModeUnavailableModal";
-import SupermarketSearchModal from "../components/SupermarketSearchModal";
 
 export default function CustomerAuthScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ tab?: string; mobile?: string }>();
+
   const {
     setCustomerUser,
     setSelectedSupermarket,
@@ -28,35 +27,80 @@ export default function CustomerAuthScreen() {
     selectedSupermarket,
   } = useCart();
 
-  const [activeTab, setActiveTab] = useState<"register" | "login">("register");
+  // Active Tab: "register" or "login"
+  const [activeTab, setActiveTab] = useState<"register" | "login">(
+    params.tab === "login" ? "login" : "register"
+  );
+
+  useEffect(() => {
+    if (params.tab === "login") {
+      setActiveTab("login");
+    } else if (params.tab === "register") {
+      setActiveTab("register");
+    }
+  }, [params.tab]);
 
   // Form Fields
   const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
+  const [phone, setPhone] = useState(params.mobile ? String(params.mobile) : "");
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
-  // Store Selection State
-  const [chosenStore, setChosenStore] = useState<SupermarketInfo | null>(
-    selectedSupermarket || null
+  // Dynamic Supermarkets for Customer Account Association
+  const [supermarkets, setSupermarkets] = useState<SupermarketInfo[]>([]);
+  const [selectedSupermarketId, setSelectedSupermarketId] = useState<string>(
+    selectedSupermarket?._id ? String(selectedSupermarket._id) : ""
   );
-  const [searchModalVisible, setSearchModalVisible] = useState(false);
-
-  // Unavailable Modal State
-  const [unavailableModal, setUnavailableModal] = useState<{
-    visible: boolean;
-    mode: string;
-    storeName?: string;
-  }>({
-    visible: false,
-    mode: "Online",
-    storeName: "",
-  });
+  const [isSupermarketDropdownOpen, setIsSupermarketDropdownOpen] = useState(false);
+  const [loadingSupermarkets, setLoadingSupermarkets] = useState(false);
+  const [supermarketFetchError, setSupermarketFetchError] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
+
+  // Fetch active registered supermarkets dynamically from backend
+  const fetchActiveSupermarkets = async () => {
+    try {
+      setLoadingSupermarkets(true);
+      setSupermarketFetchError("");
+      if (!API_URL) return;
+
+      let res = await safeFetch(`${API_URL}/supermarkets`, {}, 12000).catch(() => null);
+      if (!res || !res.ok) {
+        res = await safeFetch(`${API_URL}/auth/supermarkets`, {}, 12000).catch(() => null);
+      }
+
+      if (res && res.ok) {
+        const data = await res.json().catch(() => null);
+        if (data?.success && Array.isArray(data.supermarkets)) {
+          setSupermarkets(data.supermarkets);
+          if (data.supermarkets.length === 1 && !selectedSupermarketId) {
+            setSelectedSupermarketId(data.supermarkets[0]._id);
+          } else if (selectedSupermarket?._id) {
+            const match = data.supermarkets.find((s: SupermarketInfo) => s._id === selectedSupermarket._id);
+            if (match) {
+              setSelectedSupermarketId(match._id);
+            }
+          }
+          return;
+        }
+      }
+      setSupermarketFetchError("Unable to load supermarkets. Tap to retry.");
+    } catch (err: any) {
+      setSupermarketFetchError("Failed to fetch supermarkets. Tap to retry.");
+    } finally {
+      setLoadingSupermarkets(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchActiveSupermarkets();
+  }, []);
+
+  const chosenStore = supermarkets.find((s) => s._id === selectedSupermarketId);
 
   const handlePhoneChange = (text: string) => {
     let cleaned = text.replace(/\D/g, "");
@@ -67,231 +111,184 @@ export default function CustomerAuthScreen() {
     setPhone(cleaned);
   };
 
-  const handleSelectStoreFromModal = (store: SupermarketInfo) => {
-    const isOnlineSupported =
-      store.onlineDeliveryAvailable === true ||
-      store.selfPickupAvailable === true ||
-      store.onlineAvailable === true;
-
-    if (!isOnlineSupported) {
-      setSearchModalVisible(false);
-      setUnavailableModal({
-        visible: true,
-        mode: "Online",
-        storeName: store.name,
-      });
-      return;
-    }
-
-    setChosenStore(store);
-    setSelectedSupermarket(store);
-    setSearchModalVisible(false);
-    setErrorMsg("");
-  };
-
-  const handleUnavailableStoreSelected = (store: SupermarketInfo) => {
-    setSearchModalVisible(false);
-    setUnavailableModal({
-      visible: true,
-      mode: "Online",
-      storeName: store.name,
-    });
-  };
-
   const handleSubmit = async () => {
     setErrorMsg("");
+    setSuccessMsg("");
 
-    // Common phone validation
     const cleanPhone = phone.replace(/\D/g, "");
-    if (!cleanPhone || cleanPhone.length !== 10 || !["6", "7", "8", "9"].includes(cleanPhone[0])) {
-      setErrorMsg("Please enter a valid 10-digit mobile number starting with 6, 7, 8, or 9.");
-      return;
-    }
 
     // 1. REGISTRATION FLOW
     if (activeTab === "register") {
-      if (!name.trim() || name.trim().length < 2) {
-        setErrorMsg("Please enter your full name.");
+      // Supermarket validation: Mandatory
+      if (!selectedSupermarketId) {
+        setErrorMsg("Please select a supermarket. Supermarket selection is mandatory to create an account.");
         return;
       }
 
+      // Name validation: compulsory
+      if (!name.trim() || name.trim().length < 2) {
+        setErrorMsg("Please enter your full name (minimum 2 characters).");
+        return;
+      }
+
+      // Mobile validation: compulsory 10-digit starting with 6, 7, 8, 9
+      if (!cleanPhone || cleanPhone.length !== 10 || !["6", "7", "8", "9"].includes(cleanPhone[0])) {
+        setErrorMsg("Mobile number must contain exactly 10 digits and start with 6, 7, 8, or 9.");
+        return;
+      }
+
+      // Email validation: compulsory and valid format
       const emailTrim = email.trim().toLowerCase();
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailTrim || !emailRegex.test(emailTrim)) {
-        setErrorMsg("Please enter a valid email address (e.g., name@example.com).");
+        setErrorMsg("Please enter a valid email address (e.g., yourname@example.com).");
         return;
       }
 
-      if (!chosenStore) {
-        setErrorMsg("Please search and select your preferred supermarket location.");
-        setSearchModalVisible(true);
+      // Delivery Address: compulsory
+      if (!address.trim() || address.trim().length < 5) {
+        setErrorMsg("Please enter your complete delivery address (apartment, street, area).");
         return;
       }
 
-      // Strict validation of Online availability
-      const isOnlineSupported =
-        chosenStore.onlineDeliveryAvailable === true ||
-        chosenStore.selfPickupAvailable === true ||
-        chosenStore.onlineAvailable === true;
-
-      if (!isOnlineSupported) {
-        setUnavailableModal({
-          visible: true,
-          mode: "Online",
-          storeName: chosenStore.name,
-        });
+      // Password: compulsory, minimum 4 characters
+      if (!password || password.trim().length < 4) {
+        setErrorMsg("Please create a password or PIN of at least 4 characters.");
         return;
       }
 
       setLoading(true);
       try {
-        if (!API_URL) throw new Error("API URL missing in configuration.");
+        if (!API_URL) throw new Error("API URL not configured in environment.");
 
-        const res = await safeFetch(`${API_URL}/auth/customer/register`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: name.trim(),
-            phone: cleanPhone,
-            email: email.trim().toLowerCase(),
-            password,
-            address: address.trim(),
-            supermarketId: chosenStore._id,
-            supermarketCode: chosenStore.code,
-            registrationType: "ONLINE",
-          }),
-        }, 25000);
+        const targetStore = supermarkets.find((s) => s._id === selectedSupermarketId);
 
-        const contentType = res.headers?.get("content-type") || "";
-        let data: any = null;
-        if (contentType.includes("application/json")) {
-          data = await res.json();
-        } else {
-          const raw = await res.text();
-          try {
-            data = JSON.parse(raw);
-          } catch (_) {
-            throw new Error("Server is waking up. Please tap Create Account again.");
-          }
-        }
+        const res = await safeFetch(
+          `${API_URL}/auth/customer/register`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: name.trim(),
+              phone: cleanPhone,
+              email: emailTrim,
+              address: address.trim(),
+              password: password.trim(),
+              supermarketId: selectedSupermarketId,
+              supermarketCode: targetStore?.code || "",
+              registrationType: "ONLINE",
+            }),
+          },
+          40000
+        );
+
+        const data = await res.json().catch(() => null);
 
         if (!res.ok || !data?.success) {
-          if (data?.message && data.message.includes("does not currently support Online Purchase")) {
-            setUnavailableModal({
-              visible: true,
-              mode: "Online",
-              storeName: chosenStore.name,
-            });
-            return;
-          }
-          throw new Error(data?.message || "Registration failed.");
+          throw new Error(data?.message || "Registration failed. Please check your details.");
         }
 
-        // Connect customer permanently to selected supermarket
-        setPurchaseMode("online");
-        setSelectedSupermarket(data.supermarket || chosenStore);
-        setCustomerUser({
-          _id: data.customer?._id,
-          name: data.customer?.name || name.trim(),
-          phone: cleanPhone,
-          email: data.customer?.email || email.trim().toLowerCase(),
-          address: address.trim(),
-          supermarketId: chosenStore._id,
-          supermarketCode: chosenStore.code,
-          supermarketName: chosenStore.name,
-          registeredLocation: `${chosenStore.city}, ${chosenStore.state || ""}`.trim(),
-          token: data.token,
-        });
+        // Registration successful: associate selected supermarket in context
+        if (targetStore) {
+          setSelectedSupermarket(targetStore);
+        }
 
-        // Redirect to Online Catalog
-        router.replace("/catalog");
+        // Display success message and switch to Sign-In page
+        setSuccessMsg(`Registration Successful with ${targetStore?.name || "selected supermarket"}! Please sign in to continue.`);
+        setPassword("");
+        setActiveTab("login");
       } catch (err: any) {
-        const msg = err?.message || "";
+        const raw = (err?.message || "") + " " + (err?.cause?.message || "") + " " + String(err || "");
         if (
-          msg.toLowerCase().includes("cancel") ||
-          msg.toLowerCase().includes("abort") ||
-          msg.toLowerCase().includes("timed out")
+          raw.toLowerCase().includes("cancel") ||
+          raw.toLowerCase().includes("abort") ||
+          raw.toLowerCase().includes("timeout") ||
+          raw.toLowerCase().includes("fetch failed") ||
+          raw.toLowerCase().includes("network request failed")
         ) {
-          setErrorMsg("Server is waking up from sleep. Please tap Create Account again.");
+          setErrorMsg("Connection timed out while reaching server. The server is waking up. Please tap Create Account again.");
         } else {
-          setErrorMsg(msg || "Failed to complete registration.");
+          setErrorMsg(err.message || "Failed to create account. Please try again.");
         }
       } finally {
         setLoading(false);
       }
     } else {
       // 2. SIGN IN FLOW
+      if (!cleanPhone || cleanPhone.length !== 10) {
+        setErrorMsg("Please enter your registered 10-digit mobile number.");
+        return;
+      }
+
+      if (!password || !password.trim()) {
+        setErrorMsg("Please enter your registered password or PIN.");
+        return;
+      }
+
       setLoading(true);
       try {
-        if (!API_URL) throw new Error("API URL missing in configuration.");
+        if (!API_URL) throw new Error("API URL not configured in environment.");
 
-        const res = await safeFetch(`${API_URL}/auth/customer/login`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            phone: cleanPhone,
-            password,
-          }),
-        }, 25000);
+        const res = await safeFetch(
+          `${API_URL}/auth/customer/login`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              phone: cleanPhone,
+              password: password.trim(),
+            }),
+          },
+          40000
+        );
 
-        const contentType = res.headers?.get("content-type") || "";
-        let data: any = null;
-        if (contentType.includes("application/json")) {
-          data = await res.json();
-        } else {
-          const raw = await res.text();
-          try {
-            data = JSON.parse(raw);
-          } catch (_) {
-            throw new Error("Server is waking up. Please tap Sign In again.");
-          }
-        }
+        const data = await res.json().catch(() => null);
 
         if (!res.ok || !data?.success) {
-          if (data?.message && data.message.includes("does not currently support Online Purchase")) {
-            setUnavailableModal({
-              visible: true,
-              mode: "Online",
-              storeName: data.supermarket?.name || "Your Supermarket",
-            });
-            return;
-          }
-          throw new Error(data?.message || "Login failed.");
+          throw new Error(
+            data?.message ||
+              "Your account is not registered. Please create an account first and then sign in."
+          );
         }
 
-        const storeInfo: SupermarketInfo = data.supermarket || {
-          _id: data.customer?.supermarketId,
-          name: data.customer?.supermarketName || "Connected Store",
-          code: data.customer?.supermarketCode || "",
-          onlineAvailable: true,
-        };
+        const storeInfo: SupermarketInfo | null = data.supermarket || null;
 
+        // Maintain authenticated session & purchase mode
         setPurchaseMode("online");
-        setSelectedSupermarket(storeInfo);
+        if (storeInfo) {
+          setSelectedSupermarket(storeInfo);
+        }
+
         setCustomerUser({
           _id: data.customer?._id,
           name: data.customer?.name || "Shopper",
           phone: cleanPhone,
           email: data.customer?.email || "",
           address: data.customer?.address || "",
-          supermarketId: storeInfo._id,
-          supermarketCode: storeInfo.code,
-          supermarketName: storeInfo.name,
+          supermarketId: storeInfo?._id || data.customer?.supermarketId,
+          supermarketCode: storeInfo?.code || data.customer?.supermarketCode,
+          supermarketName: storeInfo?.name || data.customer?.supermarketName,
           registeredLocation: data.customer?.registeredLocation || "",
           token: data.token,
         });
 
+        // Open Online shopping dashboard
         router.replace("/catalog");
       } catch (err: any) {
-        const msg = err?.message || "";
+        const raw = (err?.message || "") + " " + (err?.cause?.message || "") + " " + String(err || "");
         if (
-          msg.toLowerCase().includes("cancel") ||
-          msg.toLowerCase().includes("abort") ||
-          msg.toLowerCase().includes("timed out")
+          raw.toLowerCase().includes("cancel") ||
+          raw.toLowerCase().includes("abort") ||
+          raw.toLowerCase().includes("timeout") ||
+          raw.toLowerCase().includes("fetch failed") ||
+          raw.toLowerCase().includes("network request failed")
         ) {
-          setErrorMsg("Server is waking up from sleep. Please tap Sign In again.");
+          setErrorMsg("Connection timed out while reaching server. The server is waking up. Please tap Sign In again.");
         } else {
-          setErrorMsg(msg || "Login failed. Check your number.");
+          setErrorMsg(
+            err.message ||
+              "Your account is not registered. Please create an account first and then sign in."
+          );
         }
       } finally {
         setLoading(false);
@@ -307,8 +304,8 @@ export default function CustomerAuthScreen() {
       <View style={styles.container}>
         <StatusBar style="light" />
 
-        {/* Royal Electric Blue Top Header */}
-        <View style={styles.blueHeader}>
+        {/* Royal Purple Top Header */}
+        <View style={styles.purpleHeader}>
           <SafeAreaView edges={["top"]} style={styles.headerSafe}>
             <View style={styles.headerRow}>
               <TouchableOpacity
@@ -323,9 +320,13 @@ export default function CustomerAuthScreen() {
               </TouchableOpacity>
 
               <View style={styles.headerTitleWrap}>
-                <Text style={styles.headerTitle}>Customer Portal</Text>
+                <Text style={styles.headerTitle}>
+                  {activeTab === "register" ? "Customer Registration" : "Customer Sign In"}
+                </Text>
                 <Text style={styles.headerSub}>
-                  {activeTab === "register" ? "Create Account & Start Shopping" : "Sign In to Your Supermarket"}
+                  {activeTab === "register"
+                    ? "Create Account for Online Shopping"
+                    : "Access Your Online Shopping Account"}
                 </Text>
               </View>
 
@@ -339,47 +340,40 @@ export default function CustomerAuthScreen() {
           <ScrollView
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
           >
-            {/* Segmented Tab Bar: Register vs Sign In */}
-            <View style={styles.tabBar}>
-              <TouchableOpacity
-                style={[styles.tabBtn, activeTab === "register" && styles.tabBtnActive]}
-                onPress={() => {
-                  setActiveTab("register");
-                  setErrorMsg("");
-                }}
-                activeOpacity={0.8}
-              >
-                <Text
-                  style={[
-                    styles.tabBtnText,
-                    activeTab === "register" && styles.tabBtnTextActive,
-                  ]}
-                >
-                  Create Account
+            {/* Page Header Banner */}
+            {activeTab === "register" ? (
+              <View style={styles.pageHeaderBanner}>
+                <View style={styles.pageHeaderBadge}>
+                  <Text style={styles.pageHeaderBadgeText}>ONLINE SHOPPER REGISTRATION</Text>
+                </View>
+                <Text style={styles.pageHeaderTitle}>Create Account</Text>
+                <Text style={styles.pageHeaderSubtitle}>
+                  Registration is compulsory for all online customers. Please select your supermarket and enter your details below.
                 </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.tabBtn, activeTab === "login" && styles.tabBtnActive]}
-                onPress={() => {
-                  setActiveTab("login");
-                  setErrorMsg("");
-                }}
-                activeOpacity={0.8}
-              >
-                <Text
-                  style={[
-                    styles.tabBtnText,
-                    activeTab === "login" && styles.tabBtnTextActive,
-                  ]}
-                >
-                  Sign In
+              </View>
+            ) : (
+              <View style={styles.pageHeaderBanner}>
+                <View style={[styles.pageHeaderBadge, { backgroundColor: "#EDE9FE" }]}>
+                  <Text style={[styles.pageHeaderBadgeText, { color: "#6D28D9" }]}>CUSTOMER SIGN IN</Text>
+                </View>
+                <Text style={styles.pageHeaderTitle}>Customer Sign In</Text>
+                <Text style={styles.pageHeaderSubtitle}>
+                  Enter your registered mobile number and password / PIN to access your account.
                 </Text>
-              </TouchableOpacity>
-            </View>
+              </View>
+            )}
 
-            {/* Error Banner */}
+            {/* Success Message Banner */}
+            {successMsg ? (
+              <View style={styles.successBanner}>
+                <Text style={styles.successBannerIcon}>✓</Text>
+                <Text style={styles.successBannerText}>{successMsg}</Text>
+              </View>
+            ) : null}
+
+            {/* Error Message Banner */}
             {errorMsg ? (
               <View style={styles.errorBanner}>
                 <Text style={styles.errorBannerIcon}>⚠️</Text>
@@ -387,141 +381,303 @@ export default function CustomerAuthScreen() {
               </View>
             ) : null}
 
-            {/* 1. Customer Personal Details: Name, Mobile, Email */}
+            {/* Customer Registration Fields */}
             {activeTab === "register" && (
-              <View style={styles.formGroup}>
-                <Text style={styles.inputLabel}>
-                  Customer Name <Text style={styles.star}>*</Text>
-                </Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Enter your full name"
-                  placeholderTextColor="#94A3B8"
-                  value={name}
-                  onChangeText={setName}
-                />
-              </View>
-            )}
+              <>
+                {/* Mandatory Select Supermarket Dropdown */}
+                <View style={styles.formGroup}>
+                  <Text style={styles.inputLabel}>
+                    Select Supermarket <Text style={styles.star}>*</Text>
+                  </Text>
 
-            {/* Mobile Number (Mandatory for both Register & Login) */}
-            <View style={styles.formGroup}>
-              <Text style={styles.inputLabel}>
-                Mobile Number <Text style={styles.star}>*</Text>
-              </Text>
-              <View style={styles.phoneInputRow}>
-                <View style={styles.countryCodeBox}>
-                  <Text style={styles.countryCodeText}>+91</Text>
-                </View>
-                <TextInput
-                  style={[styles.input, styles.phoneInput]}
-                  placeholder="10-digit mobile number"
-                  placeholderTextColor="#94A3B8"
-                  keyboardType="number-pad"
-                  maxLength={10}
-                  value={phone}
-                  onChangeText={handlePhoneChange}
-                />
-              </View>
-            </View>
-
-            {/* Email Address (Mandatory for Online Registration) */}
-            {activeTab === "register" && (
-              <View style={styles.formGroup}>
-                <Text style={styles.inputLabel}>
-                  Email Address <Text style={styles.star}>*</Text>
-                </Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="e.g. yourname@gmail.com"
-                  placeholderTextColor="#94A3B8"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  value={email}
-                  onChangeText={setEmail}
-                />
-              </View>
-            )}
-
-            {/* 2. Selected Supermarket Display (Search bar completely removed per exact specification) */}
-            {chosenStore && (
-              <View style={styles.sectionWrap}>
-                <Text style={styles.inputLabel}>Selected Supermarket</Text>
-                <View style={styles.selectedStoreCard}>
-                  <View style={styles.selectedStoreTop}>
-                    <View style={styles.selectedStoreIcon}>
-                      <Text style={{ fontSize: 20 }}>🏪</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.selectedStoreName}>{chosenStore.name}</Text>
-                      <Text style={styles.selectedStoreLocation}>
-                        📍 {chosenStore.city || "Bangalore"}, {chosenStore.state || "Karnataka"}
-                      </Text>
-                      <View style={styles.storeVerifiedBadge}>
-                        <Text style={styles.storeVerifiedText}>
-                          ✓ Online Purchase Enabled ({chosenStore.code})
-                        </Text>
+                  {/* Dropdown Box Trigger */}
+                  <TouchableOpacity
+                    style={[
+                      styles.dropdownTrigger,
+                      isSupermarketDropdownOpen && styles.dropdownTriggerActive,
+                      !selectedSupermarketId && errorMsg.includes("supermarket") && styles.inputErrorBorder,
+                    ]}
+                    onPress={() => setIsSupermarketDropdownOpen(!isSupermarketDropdownOpen)}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.dropdownLeftCol}>
+                      <View style={styles.dropdownStoreIconBox}>
+                        <Text style={styles.dropdownStoreIcon}>🏬</Text>
                       </View>
+                      {selectedSupermarketId && chosenStore ? (
+                        <View style={styles.dropdownSelectedTextWrap}>
+                          <Text style={styles.dropdownSelectedName} numberOfLines={1}>
+                            {chosenStore.name}
+                          </Text>
+                          <Text style={styles.dropdownSelectedMeta} numberOfLines={1}>
+                            {[chosenStore.code, chosenStore.city || chosenStore.address].filter(Boolean).join(" • ")}
+                          </Text>
+                        </View>
+                      ) : (
+                        <Text style={styles.dropdownPlaceholderText}>
+                          {loadingSupermarkets ? "Loading active supermarkets..." : "Select your supermarket..."}
+                        </Text>
+                      )}
                     </View>
+
+                    <View style={styles.dropdownRightCol}>
+                      {loadingSupermarkets ? (
+                        <ActivityIndicator size="small" color="#7C3AED" />
+                      ) : (
+                        <Text style={styles.dropdownChevron}>
+                          {isSupermarketDropdownOpen ? "▲" : "▼"}
+                        </Text>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+
+                  {/* Dropdown Options List */}
+                  {isSupermarketDropdownOpen && (
+                    <View style={styles.dropdownOptionsContainer}>
+                      {loadingSupermarkets ? (
+                        <View style={styles.dropdownLoadingBox}>
+                          <ActivityIndicator size="small" color="#7C3AED" />
+                          <Text style={styles.dropdownLoadingText}>Fetching verified supermarkets...</Text>
+                        </View>
+                      ) : supermarketFetchError && supermarkets.length === 0 ? (
+                        <TouchableOpacity
+                          style={styles.dropdownRetryBox}
+                          onPress={fetchActiveSupermarkets}
+                        >
+                          <Text style={styles.dropdownRetryText}>⚠️ {supermarketFetchError}</Text>
+                          <Text style={styles.dropdownRetryBtn}>Tap to Retry</Text>
+                        </TouchableOpacity>
+                      ) : supermarkets.length === 0 ? (
+                        <View style={styles.dropdownEmptyBox}>
+                          <Text style={styles.dropdownEmptyText}>No active supermarkets available.</Text>
+                        </View>
+                      ) : (
+                        supermarkets.map((store) => {
+                          const isSelected = store._id === selectedSupermarketId;
+                          return (
+                            <TouchableOpacity
+                              key={store._id}
+                              style={[
+                                styles.dropdownOptionItem,
+                                isSelected && styles.dropdownOptionItemSelected,
+                              ]}
+                              onPress={() => {
+                                setSelectedSupermarketId(store._id);
+                                setIsSupermarketDropdownOpen(false);
+                                if (errorMsg.includes("supermarket")) setErrorMsg("");
+                              }}
+                              activeOpacity={0.7}
+                            >
+                              <View style={styles.optionContentLeft}>
+                                <View style={[styles.storeIconBox, isSelected && styles.storeIconBoxSelected]}>
+                                  <Text style={[styles.storeIconLetter, isSelected && styles.storeIconLetterSelected]}>
+                                    {(store.name || "S").charAt(0).toUpperCase()}
+                                  </Text>
+                                </View>
+                                <View style={styles.optionDetailsCol}>
+                                  <Text style={[styles.optionStoreName, isSelected && styles.optionStoreNameSelected]}>
+                                    {store.name}
+                                  </Text>
+                                  <View style={styles.optionMetaRow}>
+                                    {store.code ? (
+                                      <View style={styles.optionCodeBadge}>
+                                        <Text style={styles.optionCodeBadgeText}>{store.code}</Text>
+                                      </View>
+                                    ) : null}
+                                    {store.city || store.address ? (
+                                      <Text style={styles.optionLocationText} numberOfLines={1}>
+                                        📍 {[store.city, store.state].filter(Boolean).join(", ")}
+                                      </Text>
+                                    ) : null}
+                                  </View>
+                                </View>
+                              </View>
+
+                              <View style={styles.optionCheckCol}>
+                                {isSelected ? (
+                                  <View style={styles.checkCircleSelected}>
+                                    <Text style={styles.checkIconText}>✓</Text>
+                                  </View>
+                                ) : (
+                                  <View style={styles.checkCircleUnselected} />
+                                )}
+                              </View>
+                            </TouchableOpacity>
+                          );
+                        })
+                      )}
+                    </View>
+                  )}
+
+                  <Text style={styles.fieldHint}>
+                    Compulsory: Your online shopping and orders will be associated with this supermarket
+                  </Text>
+                </View>
+
+                {/* 1. Customer Name */}
+                <View style={styles.formGroup}>
+                  <Text style={styles.inputLabel}>
+                    Customer Name <Text style={styles.star}>*</Text>
+                  </Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Enter your full name"
+                    placeholderTextColor="#94A3B8"
+                    value={name}
+                    onChangeText={setName}
+                  />
+                </View>
+
+                {/* 2. Mobile Number */}
+                <View style={styles.formGroup}>
+                  <Text style={styles.inputLabel}>
+                    Mobile Number <Text style={styles.star}>*</Text>
+                  </Text>
+                  <View style={styles.phoneInputRow}>
+                    <View style={styles.countryCodeBox}>
+                      <Text style={styles.countryCodeText}>+91</Text>
+                    </View>
+                    <TextInput
+                      style={[styles.input, styles.phoneInput]}
+                      placeholder="10-digit mobile number (starts with 6-9)"
+                      placeholderTextColor="#94A3B8"
+                      keyboardType="number-pad"
+                      maxLength={10}
+                      value={phone}
+                      onChangeText={handlePhoneChange}
+                    />
+                  </View>
+                  <Text style={styles.fieldHint}>Must be 10 digits starting with 6, 7, 8, or 9</Text>
+                </View>
+
+                {/* 3. Email Address */}
+                <View style={styles.formGroup}>
+                  <Text style={styles.inputLabel}>
+                    Email Address <Text style={styles.star}>*</Text>
+                  </Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. name@example.com"
+                    placeholderTextColor="#94A3B8"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    value={email}
+                    onChangeText={setEmail}
+                  />
+                  <Text style={styles.fieldHint}>Saved in lowercase for order confirmation</Text>
+                </View>
+
+                {/* 4. Delivery Address */}
+                <View style={styles.formGroup}>
+                  <Text style={styles.inputLabel}>
+                    Delivery Address <Text style={styles.star}>*</Text>
+                  </Text>
+                  <TextInput
+                    style={[styles.input, styles.addressInput]}
+                    placeholder="Flat/House No., Street, Area, Landmark"
+                    placeholderTextColor="#94A3B8"
+                    multiline
+                    numberOfLines={3}
+                    value={address}
+                    onChangeText={setAddress}
+                  />
+                  <Text style={styles.fieldHint}>Compulsory for doorstep delivery of your orders</Text>
+                </View>
+
+                {/* 5. Create Password / PIN */}
+                <View style={styles.formGroup}>
+                  <Text style={styles.inputLabel}>
+                    Create Password / PIN <Text style={styles.star}>*</Text>
+                  </Text>
+                  <View style={styles.passwordInputContainer}>
+                    <TextInput
+                      style={[styles.input, styles.passwordInput]}
+                      placeholder="Set a secure password or PIN (min 4 chars)"
+                      placeholderTextColor="#94A3B8"
+                      secureTextEntry={!showPassword}
+                      value={password}
+                      onChangeText={setPassword}
+                    />
+                    <TouchableOpacity
+                      style={styles.toggleVisibilityBtn}
+                      onPress={() => setShowPassword(!showPassword)}
+                      activeOpacity={0.7}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <Text style={styles.toggleVisibilityText}>
+                        {showPassword ? "👁️ Hide" : "👁️ Show"}
+                      </Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
-              </View>
+              </>
             )}
 
-            {/* Delivery Address (for Online Orders) */}
-            {activeTab === "register" && (
-              <View style={styles.formGroup}>
-                <Text style={styles.inputLabel}>Delivery Address (Optional)</Text>
-                <TextInput
-                  style={[styles.input, styles.addressInput]}
-                  placeholder="Apartment, Street, Area for doorstep delivery"
-                  placeholderTextColor="#94A3B8"
-                  multiline
-                  numberOfLines={2}
-                  value={address}
-                  onChangeText={setAddress}
-                />
-              </View>
-            )}
-
-            {/* Password / PIN */}
-            <View style={styles.formGroup}>
-              <Text style={styles.inputLabel}>
-                {activeTab === "register" ? "Create Password / PIN" : "Account Password / PIN"} <Text style={styles.star}>*</Text>
-              </Text>
-              <View style={styles.passwordInputContainer}>
-                <TextInput
-                  style={[styles.input, styles.passwordInput]}
-                  placeholder={activeTab === "register" ? "Set a secure password" : "Enter your password"}
-                  placeholderTextColor="#94A3B8"
-                  secureTextEntry={!showPassword}
-                  value={password}
-                  onChangeText={setPassword}
-                />
-                <TouchableOpacity
-                  style={styles.toggleVisibilityBtn}
-                  onPress={() => setShowPassword(!showPassword)}
-                  activeOpacity={0.7}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <Text style={styles.toggleVisibilityText}>
-                    {showPassword ? "👁️" : "👁️‍🗨️"}
+            {/* Customer Sign In Fields */}
+            {activeTab === "login" && (
+              <>
+                {/* Registered Mobile Number */}
+                <View style={styles.formGroup}>
+                  <Text style={styles.inputLabel}>
+                    Registered Mobile Number <Text style={styles.star}>*</Text>
                   </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
+                  <View style={styles.phoneInputRow}>
+                    <View style={styles.countryCodeBox}>
+                      <Text style={styles.countryCodeText}>+91</Text>
+                    </View>
+                    <TextInput
+                      style={[styles.input, styles.phoneInput]}
+                      placeholder="10-digit registered mobile number"
+                      placeholderTextColor="#94A3B8"
+                      keyboardType="number-pad"
+                      maxLength={10}
+                      value={phone}
+                      onChangeText={handlePhoneChange}
+                    />
+                  </View>
+                </View>
 
-            {/* Information Note */}
+                {/* Registered Password / PIN */}
+                <View style={styles.formGroup}>
+                  <Text style={styles.inputLabel}>
+                    Registered Password / PIN <Text style={styles.star}>*</Text>
+                  </Text>
+                  <View style={styles.passwordInputContainer}>
+                    <TextInput
+                      style={[styles.input, styles.passwordInput]}
+                      placeholder="Enter your registered password or PIN"
+                      placeholderTextColor="#94A3B8"
+                      secureTextEntry={!showPassword}
+                      value={password}
+                      onChangeText={setPassword}
+                    />
+                    <TouchableOpacity
+                      style={styles.toggleVisibilityBtn}
+                      onPress={() => setShowPassword(!showPassword)}
+                      activeOpacity={0.7}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <Text style={styles.toggleVisibilityText}>
+                        {showPassword ? "👁️ Hide" : "👁️ Show"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </>
+            )}
+
+            {/* Information Notice */}
             <View style={styles.infoBox}>
-              <Text style={styles.infoBoxIcon}>🔒</Text>
+              <Text style={styles.infoBoxIcon}>🛡️</Text>
               <Text style={styles.infoBoxText}>
                 {activeTab === "register"
-                  ? "Your account will be permanently connected to your selected supermarket. You will browse and purchase exclusively from their live stock."
-                  : "Sign in to access your registered supermarket products, saved cart items, and order history."}
+                  ? "Registration is mandatory for all new online customers. Your account credentials will be securely encrypted."
+                  : "Only registered online customer accounts can sign in. Unregistered shoppers must create an account first."}
               </Text>
             </View>
 
-            {/* Primary Action Button */}
+            {/* Action Submit Button */}
             <TouchableOpacity
               style={[styles.submitButton, loading && styles.submitButtonDisabled]}
               onPress={handleSubmit}
@@ -533,65 +689,48 @@ export default function CustomerAuthScreen() {
               ) : (
                 <View style={styles.btnContentRow}>
                   <Text style={styles.submitButtonText}>
-                    {activeTab === "register" ? "Continue to Online Store" : "Sign In & Browse"}
+                    {activeTab === "register" ? "Create Account" : "Sign In"}
                   </Text>
                   <Text style={styles.btnRightArrow}>→</Text>
                 </View>
               )}
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.switchTabLink}
-              onPress={() => {
-                setActiveTab(activeTab === "register" ? "login" : "register");
-                setErrorMsg("");
-              }}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.switchTabText}>
-                {activeTab === "register"
-                  ? "Already have an account? Sign In"
-                  : "Don't have an account? Create One"}
-              </Text>
-            </TouchableOpacity>
+            {/* Switch Tab Link for Register */}
+            {activeTab === "register" && (
+              <TouchableOpacity
+                style={styles.switchTabLink}
+                onPress={() => {
+                  setActiveTab("login");
+                  setErrorMsg("");
+                  setSuccessMsg("");
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.switchTabText}>
+                  Already have an account? <Text style={{ color: "#7C3AED", fontWeight: "800" }}>Sign In here →</Text>
+                </Text>
+              </TouchableOpacity>
+            )}
 
-            {/* Dedicated Delivery Fleet Login Link */}
-            <TouchableOpacity
-              style={styles.deliveryFleetCardLink}
-              onPress={() => router.push("/delivery-login")}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.deliveryFleetLinkText}>
-                🚚 Delivery Personnel? <Text style={styles.deliveryFleetLinkBold}>Access Delivery Dashboard →</Text>
-              </Text>
-            </TouchableOpacity>
+            {/* Switch Tab Link for Sign In */}
+            {activeTab === "login" && (
+              <TouchableOpacity
+                style={styles.switchTabLink}
+                onPress={() => {
+                  setActiveTab("register");
+                  setErrorMsg("");
+                  setSuccessMsg("");
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.switchTabText}>
+                  Don't have an account? <Text style={{ color: "#7C3AED", fontWeight: "800" }}>Create an account / Register here →</Text>
+                </Text>
+              </TouchableOpacity>
+            )}
           </ScrollView>
         </View>
-
-        {/* Supermarket Location Search Modal */}
-        <SupermarketSearchModal
-          visible={searchModalVisible}
-          mode="online"
-          title="Search Supermarket Location"
-          subtitle="Displaying registered supermarkets enabled by Super Admin"
-          onSelect={handleSelectStoreFromModal}
-          onUnavailableSelected={handleUnavailableStoreSelected}
-          onClose={() => setSearchModalVisible(false)}
-        />
-
-        {/* Clear Unavailable Modal Warning required by user */}
-        <ModeUnavailableModal
-          visible={unavailableModal.visible}
-          mode={unavailableModal.mode}
-          supermarketName={unavailableModal.storeName}
-          onClose={() =>
-            setUnavailableModal({ visible: false, mode: "Online", storeName: "" })
-          }
-          onSelectAnother={() => {
-            setUnavailableModal({ visible: false, mode: "Online", storeName: "" });
-            setSearchModalVisible(true);
-          }}
-        />
       </View>
     </KeyboardAvoidingView>
   );
@@ -600,360 +739,517 @@ export default function CustomerAuthScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#4C1D95", // Unified Royal Purple Theme matching Reference Design
+    backgroundColor: "#1E1B4B", // Royal purple dark canvas
   },
-  blueHeader: {
-    backgroundColor: "#4C1D95",
-    paddingBottom: 22,
+  purpleHeader: {
+    backgroundColor: "#2E0854",
+    paddingBottom: 16,
   },
   headerSafe: {
-    backgroundColor: "#4C1D95",
+    backgroundColor: "transparent",
   },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
     paddingTop: 8,
   },
   headerBtn: {
-    alignItems: "center",
-    justifyContent: "center",
+    padding: 4,
   },
   backBtnPill: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.15)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.3)",
+    backgroundColor: "rgba(255, 255, 255, 0.16)",
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 18,
+    borderRadius: 20,
+    gap: 4,
   },
   backArrowText: {
     color: "#FFFFFF",
-    fontSize: 13,
+    fontSize: 16,
     fontWeight: "700",
-    marginRight: 4,
   },
   backLabelText: {
     color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: "700",
+    fontSize: 13,
+    fontWeight: "600",
   },
   headerTitleWrap: {
     alignItems: "center",
+    flex: 1,
   },
   headerTitle: {
     color: "#FFFFFF",
-    fontSize: 19,
+    fontSize: 17,
     fontWeight: "900",
-    letterSpacing: 0.2,
+    letterSpacing: 0.3,
   },
   headerSub: {
-    color: "#BAE6FD",
-    fontSize: 12,
-    fontWeight: "600",
+    color: "#DDD6FE",
+    fontSize: 11,
     marginTop: 2,
+    fontWeight: "600",
   },
   whiteSheet: {
     flex: 1,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: "#F9F8FD",
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    marginTop: -8,
     overflow: "hidden",
   },
   scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
+    padding: 20,
     paddingBottom: 40,
   },
-  tabBar: {
+  tabToggleRow: {
     flexDirection: "row",
-    backgroundColor: "#E2E8F0",
-    borderRadius: 16,
+    backgroundColor: "#EDE9FE",
+    borderRadius: 14,
     padding: 4,
-    marginBottom: 20,
+    marginBottom: 18,
   },
-  tabBtn: {
+  tabToggleBtn: {
     flex: 1,
-    paddingVertical: 11,
-    borderRadius: 12,
+    paddingVertical: 10,
     alignItems: "center",
     justifyContent: "center",
+    borderRadius: 11,
   },
-  tabBtnActive: {
-    backgroundColor: "#FFFFFF",
-    shadowColor: "#000",
+  tabToggleBtnActive: {
+    backgroundColor: "#7C3AED",
+    shadowColor: "#7C3AED",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 3,
   },
-  tabBtnText: {
-    fontSize: 14,
+  tabToggleText: {
+    fontSize: 13.5,
     fontWeight: "700",
-    color: "#64748B",
+    color: "#6D28D9",
   },
-  tabBtnTextActive: {
-    color: "#7C3AED",
+  tabToggleTextActive: {
+    color: "#FFFFFF",
+    fontWeight: "900",
+  },
+  pageHeaderBanner: {
+    marginBottom: 18,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+  },
+  pageHeaderBadge: {
+    alignSelf: "flex-start",
+    backgroundColor: "#DCFCE7",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginBottom: 8,
+  },
+  pageHeaderBadgeText: {
+    color: "#15803D",
+    fontSize: 10.5,
     fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  pageHeaderTitle: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: "#0F172A",
+    letterSpacing: -0.3,
+  },
+  pageHeaderSubtitle: {
+    fontSize: 12.5,
+    color: "#64748B",
+    marginTop: 4,
+    lineHeight: 18,
+    fontWeight: "500",
+  },
+  successBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#ECFDF5",
+    borderWidth: 1.5,
+    borderColor: "#A7F3D0",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+    gap: 8,
+  },
+  successBannerIcon: {
+    fontSize: 16,
+    color: "#059669",
+    fontWeight: "900",
+  },
+  successBannerText: {
+    color: "#065F46",
+    fontSize: 13,
+    fontWeight: "700",
+    flex: 1,
   },
   errorBanner: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#FEF2F2",
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: "#FECACA",
-    borderRadius: 14,
+    borderRadius: 12,
     padding: 12,
     marginBottom: 16,
     gap: 8,
   },
   errorBannerIcon: {
-    fontSize: 16,
+    fontSize: 15,
   },
   errorBannerText: {
-    flex: 1,
-    fontSize: 13,
     color: "#DC2626",
-    fontWeight: "600",
+    fontSize: 12.5,
+    fontWeight: "700",
+    flex: 1,
   },
-  sectionWrap: {
-    marginBottom: 18,
+  formGroup: {
+    marginBottom: 15,
   },
   inputLabel: {
     fontSize: 13,
-    fontWeight: "700",
-    color: "#334155",
+    fontWeight: "800",
+    color: "#1E1B4B",
     marginBottom: 6,
   },
   star: {
     color: "#EF4444",
   },
-  searchLocationTrigger: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1.5,
-    borderColor: "#CBD5E1",
-    borderRadius: 16,
-    padding: 14,
-    gap: 12,
-  },
-  searchLocationIcon: {
-    fontSize: 20,
-  },
-  searchLocationTitle: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#0F172A",
-  },
-  searchLocationSub: {
-    fontSize: 11.5,
-    color: "#64748B",
-    marginTop: 2,
-  },
-  searchLocationArrow: {
-    fontSize: 24,
-    color: "#94A3B8",
-    fontWeight: "300",
-  },
-  selectedStoreCard: {
-    backgroundColor: "#F0FDF4",
-    borderWidth: 1.5,
-    borderColor: "#86EFAC",
-    borderRadius: 16,
-    padding: 14,
-  },
-  selectedStoreTop: {
-    flexDirection: "row",
-    gap: 12,
-    marginBottom: 10,
-  },
-  selectedStoreIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    backgroundColor: "#DCFCE7",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  selectedStoreName: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: "#0F172A",
-  },
-  selectedStoreLocation: {
-    fontSize: 12,
-    color: "#475569",
-    marginTop: 2,
-  },
-  storeVerifiedBadge: {
-    alignSelf: "flex-start",
-    backgroundColor: "#DCFCE7",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-    marginTop: 6,
-  },
-  storeVerifiedText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#15803D",
-  },
-  changeStoreBtn: {
-    alignSelf: "flex-start",
-    paddingVertical: 4,
-  },
-  changeStoreText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#7C3AED",
-    textDecorationLine: "underline",
-  },
-  formGroup: {
-    marginBottom: 16,
-  },
   input: {
     backgroundColor: "#FFFFFF",
     borderWidth: 1.5,
     borderColor: "#E2E8F0",
-    borderRadius: 14,
+    borderRadius: 12,
     paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 14.5,
+    paddingVertical: 11,
+    fontSize: 14,
     color: "#0F172A",
-    fontWeight: "600",
-  },
-  passwordInputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1.5,
-    borderColor: "#E2E8F0",
-    borderRadius: 14,
-    paddingRight: 10,
-  },
-  passwordInput: {
-    flex: 1,
-    borderWidth: 0,
-    backgroundColor: "transparent",
-  },
-  toggleVisibilityBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-  },
-  toggleVisibilityText: {
-    fontSize: 16,
-    color: "#64748B",
   },
   phoneInputRow: {
     flexDirection: "row",
     gap: 8,
   },
   countryCodeBox: {
-    backgroundColor: "#F8FAFC",
+    backgroundColor: "#F1F5F9",
     borderWidth: 1.5,
     borderColor: "#E2E8F0",
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    alignItems: "center",
+    borderRadius: 12,
+    paddingHorizontal: 12,
     justifyContent: "center",
+    alignItems: "center",
   },
   countryCodeText: {
+    color: "#334155",
     fontSize: 14,
     fontWeight: "800",
-    color: "#334155",
   },
   phoneInput: {
     flex: 1,
   },
+  fieldHint: {
+    fontSize: 11,
+    color: "#64748B",
+    marginTop: 3,
+    marginLeft: 2,
+  },
   addressInput: {
-    height: 64,
+    minHeight: 65,
     textAlignVertical: "top",
+  },
+  passwordInputContainer: {
+    position: "relative",
+  },
+  passwordInput: {
+    paddingRight: 80,
+  },
+  toggleVisibilityBtn: {
+    position: "absolute",
+    right: 12,
+    top: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  toggleVisibilityText: {
+    color: "#7C3AED",
+    fontSize: 12,
+    fontWeight: "800",
   },
   infoBox: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    backgroundColor: "#FAF5FF",
-    borderWidth: 1,
-    borderColor: "#DDD6FE",
-    borderRadius: 14,
+    backgroundColor: "#F3E8FF",
+    borderRadius: 12,
     padding: 12,
-    marginBottom: 22,
+    marginVertical: 12,
+    alignItems: "flex-start",
     gap: 8,
   },
   infoBoxIcon: {
     fontSize: 16,
-    marginTop: 1,
   },
   infoBoxText: {
-    flex: 1,
+    color: "#5B21B6",
     fontSize: 12,
     lineHeight: 17,
-    color: "#5B21B6",
+    flex: 1,
+    fontWeight: "600",
   },
   submitButton: {
-    backgroundColor: "#7C3AED",
-    paddingVertical: 15,
-    borderRadius: 18,
+    backgroundColor: "#2E0854",
+    paddingVertical: 14,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#7C3AED",
+    shadowColor: "#2E0854",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
     shadowRadius: 8,
-    elevation: 5,
-    marginBottom: 14,
+    elevation: 4,
+    marginTop: 4,
   },
   submitButtonDisabled: {
-    opacity: 0.7,
+    opacity: 0.6,
   },
   btnContentRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  submitButtonText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  btnRightArrow: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  switchTabLink: {
+    marginTop: 18,
+    alignItems: "center",
+    paddingVertical: 6,
+  },
+  switchTabText: {
+    color: "#6D28D9",
+    fontSize: 13,
+    fontWeight: "800",
+    textDecorationLine: "underline",
+  },
+  // Supermarket Dropdown Styles
+  dropdownTrigger: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  dropdownTriggerActive: {
+    borderColor: "#7C3AED",
+    backgroundColor: "#FDFCFF",
+    borderBottomLeftRadius: 4,
+    borderBottomRightRadius: 4,
+  },
+  inputErrorBorder: {
+    borderColor: "#EF4444",
+  },
+  dropdownLeftCol: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    gap: 10,
+  },
+  dropdownStoreIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: "#F3E8FF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dropdownStoreIcon: {
+    fontSize: 16,
+  },
+  dropdownSelectedTextWrap: {
+    flex: 1,
+  },
+  dropdownSelectedName: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  dropdownSelectedMeta: {
+    fontSize: 11,
+    color: "#6D28D9",
+    fontWeight: "600",
+    marginTop: 1,
+  },
+  dropdownPlaceholderText: {
+    fontSize: 13.5,
+    color: "#94A3B8",
+    fontWeight: "500",
+  },
+  dropdownRightCol: {
+    marginLeft: 8,
+    paddingRight: 4,
+  },
+  dropdownChevron: {
+    fontSize: 11,
+    color: "#64748B",
+    fontWeight: "800",
+  },
+  dropdownOptionsContainer: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
+    borderColor: "#DDD6FE",
+    borderTopWidth: 0,
+    borderBottomLeftRadius: 14,
+    borderBottomRightRadius: 14,
+    overflow: "hidden",
+    shadowColor: "#2E0854",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  dropdownOptionItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
+  },
+  dropdownOptionItemSelected: {
+    backgroundColor: "#F5F3FF",
+  },
+  optionContentLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    gap: 10,
+  },
+  storeIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: "#EDE9FE",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  storeIconBoxSelected: {
+    backgroundColor: "#7C3AED",
+  },
+  storeIconLetter: {
+    fontSize: 14,
+    fontWeight: "900",
+    color: "#6D28D9",
+  },
+  storeIconLetterSelected: {
+    color: "#FFFFFF",
+  },
+  optionDetailsCol: {
+    flex: 1,
+  },
+  optionStoreName: {
+    fontSize: 13.5,
+    fontWeight: "800",
+    color: "#1E293B",
+  },
+  optionStoreNameSelected: {
+    color: "#6D28D9",
+  },
+  optionMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 2,
+  },
+  optionCodeBadge: {
+    backgroundColor: "#EDE9FE",
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  optionCodeBadgeText: {
+    fontSize: 9.5,
+    fontWeight: "800",
+    color: "#6D28D9",
+  },
+  optionLocationText: {
+    fontSize: 11,
+    color: "#64748B",
+    flex: 1,
+  },
+  optionCheckCol: {
+    marginLeft: 8,
+  },
+  checkCircleSelected: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#059669",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  checkIconText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  checkCircleUnselected: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.5,
+    borderColor: "#CBD5E1",
+  },
+  dropdownLoadingBox: {
+    padding: 16,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
   },
-  submitButtonText: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "800",
-    letterSpacing: 0.2,
-  },
-  btnRightArrow: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "800",
-  },
-  switchTabLink: {
-    alignItems: "center",
-    paddingVertical: 8,
-  },
-  switchTabText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#64748B",
-  },
-  deliveryFleetCardLink: {
-    marginTop: 20,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    alignItems: "center",
-    backgroundColor: "#FAF5FF",
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#DDD6FE",
-  },
-  deliveryFleetLinkText: {
-    fontSize: 13,
-    color: "#5B21B6",
+  dropdownLoadingText: {
+    fontSize: 12.5,
+    color: "#6D28D9",
     fontWeight: "600",
   },
-  deliveryFleetLinkBold: {
-    color: "#7C3AED",
+  dropdownRetryBox: {
+    padding: 14,
+    alignItems: "center",
+  },
+  dropdownRetryText: {
+    fontSize: 12,
+    color: "#DC2626",
+    fontWeight: "600",
+  },
+  dropdownRetryBtn: {
+    fontSize: 12,
+    color: "#2563EB",
     fontWeight: "800",
+    marginTop: 4,
+    textDecorationLine: "underline",
+  },
+  dropdownEmptyBox: {
+    padding: 14,
+    alignItems: "center",
+  },
+  dropdownEmptyText: {
+    fontSize: 12,
+    color: "#64748B",
+    fontWeight: "500",
   },
 });

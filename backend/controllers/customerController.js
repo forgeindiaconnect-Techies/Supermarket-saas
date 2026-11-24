@@ -449,14 +449,21 @@ exports.registerOfflineCustomerPublic = async (req, res) => {
 
     // Notify store admin
     try {
-      const { emitTenantNotification } = require("../utils/notificationEmitter");
-      emitTenantNotification(store._id.toString(), {
-        type: "NEW_CUSTOMER",
-        title: "New Offline Customer Registered",
-        message: `${customer.name} (${customer.phone}) registered for offline shopping.`,
-        data: { customerId: customer._id, registrationType: "OFFLINE" },
-      });
-    } catch (_) {}
+      const io = req.app && req.app.get ? req.app.get("io") : null;
+      if (io) {
+        const { emitTenantNotification } = require("../utils/notificationEmitter");
+        emitTenantNotification(io, "notification", {
+          type: "NEW_CUSTOMER",
+          title: "New Offline Customer Registered",
+          message: `${customer.name} (${customer.phone}) registered for offline shopping.`,
+          data: { customerId: customer._id, registrationType: "OFFLINE" },
+          supermarketId: store._id.toString(),
+          supermarketCode: store.code,
+        });
+      }
+    } catch (emitterErr) {
+      console.warn("Notification emitter warning:", emitterErr ? emitterErr.message : emitterErr);
+    }
 
     return res.status(200).json({
       success: true,

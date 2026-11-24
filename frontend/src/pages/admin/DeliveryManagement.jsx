@@ -27,6 +27,10 @@ import {
   Eye,
   Copy,
   Check,
+  ChevronDown,
+  ChevronUp,
+  ShoppingBag,
+  ArrowRight,
 } from "lucide-react";
 import { io } from "socket.io-client";
 import API, { SOCKET_URL } from "../../services/api";
@@ -49,6 +53,21 @@ export default function DeliveryManagement() {
   const [copiedOrderId, setCopiedOrderId] = useState(null);
   const [selectedOrderForView, setSelectedOrderForView] = useState(null);
   const [viewOrderModalOpen, setViewOrderModalOpen] = useState(false);
+  const [inlineStaffId, setInlineStaffId] = useState("");
+  const [showModalTimeline, setShowModalTimeline] = useState(false);
+
+  // Canonical Normalized Status helper
+  const getNormStatus = (status) => {
+    const s = String(status || "").toLowerCase().trim();
+    if (s === "delivered" || s === "completed") return "Delivered";
+    if (s === "out for delivery" || s === "outfordelivery") return "Out for Delivery";
+    if (s === "products collected" || s === "productscollected" || s === "orderpickedup" || s === "collected" || s === "picked up") return "Products Collected";
+    if (s === "assigned" || s === "accepted" || s === "delivery partner assigned") return "Assigned";
+    if (s === "preparing") return "Preparing";
+    if (s === "order confirmed" || s === "confirmed" || s === "new" || s === "pending") return "Order Confirmed";
+    if (s.includes("fail") || s.includes("cancel")) return "Failed Delivery";
+    return "Order Confirmed";
+  };
 
   // Quick Copy Order ID
   const handleCopyOrderId = (orderNumber, e) => {
@@ -212,11 +231,55 @@ export default function DeliveryManagement() {
         showToast(`✓ Order status updated to "${newStatus}"!`);
         fetchOrders();
         fetchStaff();
+        // Keep View Details modal synchronized live without closing!
+        if (selectedOrderForView && (selectedOrderForView._id === orderId || selectedOrderForView.orderNumber === orderId)) {
+          setSelectedOrderForView((prev) => ({
+            ...prev,
+            ...(res.data.order || {}),
+            deliveryStatus: newStatus,
+          }));
+        }
       } else {
         showToast(`⚠️ ${res.data?.message || "Failed to update status."}`);
       }
     } catch (err) {
       showToast(`⚠️ ${err.response?.data?.message || err.message}`);
+    }
+  };
+
+  // Direct Inline Driver Assignment inside the Order Details Modal
+  const handleInlineAssignStaff = async (orderId, staffId) => {
+    if (!staffId) {
+      showToast("⚠️ Please select a delivery staff member from the list.");
+      return;
+    }
+    try {
+      setIsAssigning(true);
+      const res = await API.post(`/delivery/orders/${orderId}/assign`, {
+        staffId,
+      });
+      if (res.data?.success) {
+        showToast("✓ Delivery driver assigned successfully!");
+        fetchOrders();
+        fetchStaff();
+        const assignedStaffObj = staffList.find((s) => s._id === staffId);
+        if (selectedOrderForView && (selectedOrderForView._id === orderId || selectedOrderForView.orderNumber === orderId)) {
+          setSelectedOrderForView((prev) => ({
+            ...prev,
+            deliveryStatus: "Assigned",
+            assignedStaff: assignedStaffObj || prev.assignedStaff,
+            assignedStaffName: assignedStaffObj?.name || prev.assignedStaffName,
+            assignedStaffPhone: assignedStaffObj?.phone || prev.assignedStaffPhone,
+            assignedAt: new Date(),
+          }));
+        }
+      } else {
+        showToast(`⚠️ ${res.data?.message || "Failed to assign driver."}`);
+      }
+    } catch (err) {
+      showToast(`⚠️ ${err.response?.data?.message || err.message}`);
+    } finally {
+      setIsAssigning(false);
     }
   };
 
@@ -337,15 +400,15 @@ export default function DeliveryManagement() {
     }
   };
 
-  // Filter Orders
+  // Filter Orders using normalized canonical status
   const filteredOrders = orders.filter((o) => {
-    const s = o.deliveryStatus || "New";
-    if (orderStatusFilter === "new" && s !== "New" && s !== "Pending") return false;
-    if (orderStatusFilter === "preparing" && s !== "Preparing") return false;
-    if (orderStatusFilter === "assigned" && s !== "Assigned" && s !== "Accepted" && s !== "OrderPickedUp") return false;
-    if (orderStatusFilter === "out_for_delivery" && s !== "OutForDelivery") return false;
-    if (orderStatusFilter === "delivered" && s !== "Delivered") return false;
-    if (orderStatusFilter === "history" && s !== "Delivered" && s !== "Cancelled") return false;
+    const norm = getNormStatus(o.deliveryStatus);
+    if (orderStatusFilter === "new" && norm !== "Order Confirmed") return false;
+    if (orderStatusFilter === "preparing" && norm !== "Preparing") return false;
+    if (orderStatusFilter === "assigned" && norm !== "Assigned" && norm !== "Products Collected") return false;
+    if (orderStatusFilter === "out_for_delivery" && norm !== "Out for Delivery") return false;
+    if (orderStatusFilter === "delivered" && norm !== "Delivered") return false;
+    if (orderStatusFilter === "history" && norm !== "Delivered" && norm !== "Failed Delivery") return false;
 
     if (orderSearch.trim()) {
       const q = orderSearch.toLowerCase();
@@ -372,12 +435,12 @@ export default function DeliveryManagement() {
     return true;
   });
 
-  // Counts for Badges
-  const countNewOrders = orders.filter((o) => ["New", "Pending"].includes(o.deliveryStatus || "New")).length;
-  const countPreparingOrders = orders.filter((o) => o.deliveryStatus === "Preparing").length;
-  const countAssignedOrders = orders.filter((o) => ["Assigned", "Accepted", "OrderPickedUp"].includes(o.deliveryStatus)).length;
-  const countOutOrders = orders.filter((o) => o.deliveryStatus === "OutForDelivery").length;
-  const countDeliveredOrders = orders.filter((o) => o.deliveryStatus === "Delivered").length;
+  // Counts for Badges with canonical status mapping
+  const countNewOrders = orders.filter((o) => getNormStatus(o.deliveryStatus) === "Order Confirmed").length;
+  const countPreparingOrders = orders.filter((o) => getNormStatus(o.deliveryStatus) === "Preparing").length;
+  const countAssignedOrders = orders.filter((o) => ["Assigned", "Products Collected"].includes(getNormStatus(o.deliveryStatus))).length;
+  const countOutOrders = orders.filter((o) => getNormStatus(o.deliveryStatus) === "Out for Delivery").length;
+  const countDeliveredOrders = orders.filter((o) => getNormStatus(o.deliveryStatus) === "Delivered").length;
 
   return (
     <div className="grocer-page-container">
@@ -775,37 +838,55 @@ export default function DeliveryManagement() {
                             </span>
                           </td>
                           <td className="td-status">
-                            {isDelivered ? (
-                              <span className="order-status-pill status-completed">
-                                <CheckCircle2 size={13} color="#15803D" strokeWidth={2.4} />
-                                <span>Delivered</span>
-                              </span>
-                            ) : s === "Out for Delivery" || s === "OutForDelivery" ? (
-                              <span className="order-status-pill status-outfordelivery">
-                                <Navigation size={13} color="#0284C7" strokeWidth={2.4} />
-                                <span>Out for Delivery</span>
-                              </span>
-                            ) : s === "OrderPickedUp" || s === "Products Collected" ? (
-                              <span className="order-status-pill status-orderpickedup">
-                                <Package size={13} color="#7E22CE" strokeWidth={2.4} />
-                                <span>Picked Up</span>
-                              </span>
-                            ) : s === "Assigned" || s === "Accepted" ? (
-                              <span className="order-status-pill status-assigned">
-                                <UserCheck size={13} color="#6B21A8" strokeWidth={2.4} />
-                                <span>Assigned</span>
-                              </span>
-                            ) : s === "Preparing" ? (
-                              <span className="order-status-pill status-preparing">
-                                <Package size={13} color="#1D4ED8" strokeWidth={2.4} />
-                                <span>Preparing</span>
-                              </span>
-                            ) : (
-                              <span className="order-status-pill status-pending">
-                                <Clock size={13} color="#C2410C" strokeWidth={2.4} />
-                                <span>Pending</span>
-                              </span>
-                            )}
+                            {(() => {
+                              const norm = getNormStatus(ord.deliveryStatus);
+                              if (norm === "Delivered") {
+                                return (
+                                  <span className="order-status-pill status-completed">
+                                    <CheckCircle2 size={13} color="#15803D" strokeWidth={2.4} />
+                                    <span>Delivered</span>
+                                  </span>
+                                );
+                              }
+                              if (norm === "Out for Delivery") {
+                                return (
+                                  <span className="order-status-pill status-outfordelivery">
+                                    <Navigation size={13} color="#0284C7" strokeWidth={2.4} />
+                                    <span>Out for Delivery</span>
+                                  </span>
+                                );
+                              }
+                              if (norm === "Products Collected") {
+                                return (
+                                  <span className="order-status-pill status-orderpickedup">
+                                    <Package size={13} color="#7E22CE" strokeWidth={2.4} />
+                                    <span>Products Collected</span>
+                                  </span>
+                                );
+                              }
+                              if (norm === "Assigned") {
+                                return (
+                                  <span className="order-status-pill status-assigned">
+                                    <UserCheck size={13} color="#6B21A8" strokeWidth={2.4} />
+                                    <span>Assigned</span>
+                                  </span>
+                                );
+                              }
+                              if (norm === "Preparing") {
+                                return (
+                                  <span className="order-status-pill status-preparing">
+                                    <Package size={13} color="#1D4ED8" strokeWidth={2.4} />
+                                    <span>Preparing</span>
+                                  </span>
+                                );
+                              }
+                              return (
+                                <span className="order-status-pill status-confirmed">
+                                  <CheckCircle2 size={13} color="#1D4ED8" strokeWidth={2.4} />
+                                  <span>Order Confirmed</span>
+                                </span>
+                              );
+                            })()}
                           </td>
                           <td className="td-action">
                             <button
@@ -993,332 +1074,588 @@ export default function DeliveryManagement() {
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL: VIEW DELIVERY ORDER DETAILS (Matching Reference Mockup Action View)*/}
+      {/* MODAL: VIEW DELIVERY ORDER DETAILS (Modern Interactive Action Modal)      */}
       {/* ========================================================================= */}
-      {viewOrderModalOpen && selectedOrderForView && (
-        <div
-          className="del-modal-overlay"
-          onClick={() => setViewOrderModalOpen(false)}
-        >
+      {viewOrderModalOpen && selectedOrderForView && (() => {
+        const normStatus = getNormStatus(selectedOrderForView.deliveryStatus);
+        const isDelivered = normStatus === "Delivered";
+
+        // 6 Sequential Delivery Stages
+        const stagesList = [
+          { id: "Order Confirmed", step: 1, label: "Order Confirmed", time: selectedOrderForView.orderConfirmedAt || selectedOrderForView.createdAt },
+          { id: "Preparing", step: 2, label: "Preparing", time: selectedOrderForView.preparingAt },
+          { id: "Assigned", step: 3, label: "Driver Assigned", time: selectedOrderForView.assignedAt || selectedOrderForView.deliveryAcceptedAt },
+          { id: "Products Collected", step: 4, label: "Products Collected", time: selectedOrderForView.productsCollectedAt || selectedOrderForView.pickedUpAt },
+          { id: "Out for Delivery", step: 5, label: "Out for Delivery", time: selectedOrderForView.deliveryOutAt },
+          { id: "Delivered", step: 6, label: "Delivered", time: selectedOrderForView.deliveryCompletedAt || selectedOrderForView.completedAt },
+        ];
+
+        const currentStepIndex =
+          normStatus === "Delivered" ? 6 :
+          normStatus === "Out for Delivery" ? 5 :
+          normStatus === "Products Collected" ? 4 :
+          normStatus === "Assigned" ? 3 :
+          normStatus === "Preparing" ? 2 : 1;
+
+        const customerPhone = selectedOrderForView.customer?.phone || selectedOrderForView.customerPhone || "";
+        const assignedStaffObj = selectedOrderForView.assignedStaff || (selectedOrderForView.assignedStaffName ? { name: selectedOrderForView.assignedStaffName, phone: selectedOrderForView.assignedStaffPhone } : null);
+
+        return (
           <div
-            className="del-modal-card"
-            style={{ maxWidth: "660px" }}
-            onClick={(e) => e.stopPropagation()}
+            className="del-modal-overlay"
+            onClick={() => setViewOrderModalOpen(false)}
           >
-            {/* Modal Header */}
-            <div className="del-modal-header">
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div
-                  style={{
-                    width: "40px",
-                    height: "40px",
-                    borderRadius: "12px",
-                    background: "#F5F3FF",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "#2E0854",
-                  }}
-                >
-                  <Eye size={20} />
-                </div>
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "#0F172A" }}>
-                      {selectedOrderForView.orderNumber}
-                    </h3>
-                    <button
-                      type="button"
-                      className="order-id-copy-btn"
-                      onClick={(e) => handleCopyOrderId(selectedOrderForView.orderNumber, e)}
-                      title="Copy Order ID"
-                    >
-                      {copiedOrderId === selectedOrderForView.orderNumber ? (
-                        <Check size={14} color="#16A34A" />
-                      ) : (
-                        <Copy size={14} />
-                      )}
-                    </button>
-                  </div>
-                  <span style={{ fontSize: 12, color: "#64748B" }}>
-                    Placed on{" "}
-                    {selectedOrderForView.createdAt
-                      ? new Date(selectedOrderForView.createdAt).toLocaleString("en-IN", {
-                          day: "numeric",
-                          month: "short",
-                          year: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          hour12: true,
-                        })
-                      : "Recent"}
-                  </span>
-                </div>
-              </div>
-
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                {selectedOrderForView.deliveryStatus === "Delivered" ||
-                selectedOrderForView.deliveryStatus === "Completed" ? (
-                  <span className="order-status-pill status-completed">
-                    <CheckCircle2 size={13} color="#15803D" strokeWidth={2.4} />
-                    <span>Delivered</span>
-                  </span>
-                ) : selectedOrderForView.deliveryStatus === "Out for Delivery" ||
-                  selectedOrderForView.deliveryStatus === "OutForDelivery" ? (
-                  <span className="order-status-pill status-outfordelivery">
-                    <Navigation size={13} color="#0284C7" strokeWidth={2.4} />
-                    <span>Out for Delivery</span>
-                  </span>
-                ) : selectedOrderForView.deliveryStatus === "OrderPickedUp" ||
-                  selectedOrderForView.deliveryStatus === "Products Collected" ? (
-                  <span className="order-status-pill status-orderpickedup">
-                    <Package size={13} color="#7E22CE" strokeWidth={2.4} />
-                    <span>Picked Up</span>
-                  </span>
-                ) : selectedOrderForView.deliveryStatus === "Assigned" ||
-                  selectedOrderForView.deliveryStatus === "Accepted" ? (
-                  <span className="order-status-pill status-assigned">
-                    <UserCheck size={13} color="#6B21A8" strokeWidth={2.4} />
-                    <span>Assigned</span>
-                  </span>
-                ) : selectedOrderForView.deliveryStatus === "Preparing" ? (
-                  <span className="order-status-pill status-preparing">
-                    <Package size={13} color="#1D4ED8" strokeWidth={2.4} />
-                    <span>Preparing</span>
-                  </span>
-                ) : (
-                  <span className="order-status-pill status-pending">
-                    <Clock size={13} color="#C2410C" strokeWidth={2.4} />
-                    <span>Pending</span>
-                  </span>
-                )}
-                <button
-                  type="button"
-                  className="del-modal-close"
-                  onClick={() => setViewOrderModalOpen(false)}
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-
-            {/* Modal Body */}
-            <div className="del-modal-body" style={{ padding: "18px 22px", maxHeight: "72vh", overflowY: "auto" }}>
-              {/* Customer & Address Strip */}
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: "12px",
-                  background: "#F8FAFC",
-                  padding: "14px 16px",
-                  borderRadius: "12px",
-                  border: "1px solid #E2E8F0",
-                  marginBottom: "16px",
-                }}
-              >
-                <div>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase" }}>
-                    Customer Details
-                  </span>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: "#0F172A", marginTop: 2 }}>
-                    {selectedOrderForView.customer?.name || selectedOrderForView.customerName || "Customer"}
-                  </div>
-                  <div style={{ fontSize: 13, color: "#334155", marginTop: 2, display: "flex", alignItems: "center", gap: 5 }}>
-                    <Phone size={12} color="#059669" />
-                    <span>{selectedOrderForView.customer?.phone || selectedOrderForView.customerPhone || "Not provided"}</span>
-                  </div>
-                </div>
-
-                <div>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase" }}>
-                    Delivery Destination
-                  </span>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "#0F172A", marginTop: 2, display: "flex", alignItems: "flex-start", gap: 5 }}>
-                    <MapPin size={13} color="#059669" style={{ flexShrink: 0, marginTop: 2 }} />
-                    <span>{selectedOrderForView.deliveryAddress || selectedOrderForView.customer?.address || "Address not provided"}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Delivery Partner Strip */}
-              <div
-                style={{
-                  background: "#F0FDF4",
-                  border: "1.5px solid #BBF7D0",
-                  borderRadius: "12px",
-                  padding: "12px 16px",
-                  marginBottom: "16px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{ width: 34, height: 34, borderRadius: "50%", background: "#DCFCE7", display: "flex", alignItems: "center", justifyContent: "center", color: "#059669" }}>
-                    <UserCheck size={18} />
+            <div
+              className="del-modal-card del-modal-view-card"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <div className="del-modal-view-header">
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div
+                    style={{
+                      width: "44px",
+                      height: "44px",
+                      borderRadius: "14px",
+                      background: "linear-gradient(135deg, #F3E8FF, #EDE9FE)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "#6D28D9",
+                      boxShadow: "0 2px 8px rgba(109, 40, 217, 0.15)",
+                    }}
+                  >
+                    <ShoppingBag size={22} />
                   </div>
                   <div>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: "#166534", textTransform: "uppercase" }}>
-                      Assigned Delivery Partner
-                    </span>
-                    <div style={{ fontSize: 14, fontWeight: 800, color: "#064E3B", marginTop: 1 }}>
-                      {selectedOrderForView.assignedStaff?.name || selectedOrderForView.assignedStaffName || selectedOrderForView.deliveryStaff?.name || "Unassigned (No Driver Assigned Yet)"}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#0F172A" }}>
+                        {selectedOrderForView.orderNumber}
+                      </h3>
+                      <button
+                        type="button"
+                        className="order-id-copy-btn"
+                        onClick={(e) => handleCopyOrderId(selectedOrderForView.orderNumber, e)}
+                        title="Copy Order ID"
+                      >
+                        {copiedOrderId === selectedOrderForView.orderNumber ? (
+                          <Check size={14} color="#16A34A" />
+                        ) : (
+                          <Copy size={14} />
+                        )}
+                      </button>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 3 }}>
+                      <span style={{ fontSize: 12, color: "#64748B" }}>
+                        Placed on{" "}
+                        {selectedOrderForView.createdAt
+                          ? new Date(selectedOrderForView.createdAt).toLocaleString("en-IN", {
+                              day: "numeric",
+                              month: "short",
+                              year: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              hour12: true,
+                            })
+                          : "Recent"}
+                      </span>
+                      <span style={{ color: "#CBD5E1" }}>•</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#059669" }}>
+                        💳 Paid Online (₹{Number(selectedOrderForView.totalAmount || 0).toFixed(2)})
+                      </span>
                     </div>
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  className="del-assign-btn"
-                  style={{ padding: "6px 14px", fontSize: "12px" }}
-                  onClick={() => {
-                    setViewOrderModalOpen(false);
-                    handleOpenAssignModal(selectedOrderForView);
-                  }}
-                >
-                  <UserCheck size={13} />
-                  <span>{selectedOrderForView.assignedStaff ? "Change Driver" : "Assign Driver"}</span>
-                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {normStatus === "Delivered" ? (
+                    <span className="order-status-pill status-completed">
+                      <CheckCircle2 size={13} color="#15803D" strokeWidth={2.4} />
+                      <span>Delivered</span>
+                    </span>
+                  ) : normStatus === "Out for Delivery" ? (
+                    <span className="order-status-pill status-outfordelivery">
+                      <Navigation size={13} color="#0284C7" strokeWidth={2.4} />
+                      <span>Out for Delivery</span>
+                    </span>
+                  ) : normStatus === "Products Collected" ? (
+                    <span className="order-status-pill status-collected">
+                      <Package size={13} color="#6D28D9" strokeWidth={2.4} />
+                      <span>Products Collected</span>
+                    </span>
+                  ) : normStatus === "Assigned" ? (
+                    <span className="order-status-pill status-assigned">
+                      <UserCheck size={13} color="#6B21A8" strokeWidth={2.4} />
+                      <span>Driver Assigned</span>
+                    </span>
+                  ) : normStatus === "Preparing" ? (
+                    <span className="order-status-pill status-preparing">
+                      <Package size={13} color="#1D4ED8" strokeWidth={2.4} />
+                      <span>Preparing</span>
+                    </span>
+                  ) : (
+                    <span className="order-status-pill status-confirmed">
+                      <CheckCircle2 size={13} color="#1D4ED8" strokeWidth={2.4} />
+                      <span>Order Confirmed</span>
+                    </span>
+                  )}
+
+                  <button
+                    type="button"
+                    className="del-modal-close"
+                    onClick={() => setViewOrderModalOpen(false)}
+                    title="Close"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
 
-              {/* Order Items Table */}
-              <div style={{ marginBottom: "16px" }}>
-                <span style={{ fontSize: 12, fontWeight: 800, color: "#0F172A", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                  Items Purchased ({selectedOrderForView.items?.length || selectedOrderForView.totalItems || 1})
-                </span>
-                <div
-                  style={{
-                    border: "1px solid #E2E8F0",
-                    borderRadius: "10px",
-                    overflow: "hidden",
-                    marginTop: 8,
-                  }}
-                >
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                    <thead>
-                      <tr style={{ background: "#F1F5F9", textAlign: "left" }}>
-                        <th style={{ padding: "8px 12px", fontWeight: 750, color: "#334155" }}>Item</th>
-                        <th style={{ padding: "8px 12px", textAlign: "center", fontWeight: 750, color: "#334155" }}>Qty</th>
-                        <th style={{ padding: "8px 12px", textAlign: "right", fontWeight: 750, color: "#334155" }}>Price</th>
-                        <th style={{ padding: "8px 12px", textAlign: "right", fontWeight: 750, color: "#334155" }}>Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(selectedOrderForView.items || []).map((it, idx) => (
-                        <tr key={idx} style={{ borderBottom: "1px solid #F1F5F9" }}>
-                          <td style={{ padding: "9px 12px" }}>
-                            <strong style={{ color: "#0F172A", display: "block" }}>{it.name}</strong>
-                            {it.barcode && (
-                              <span style={{ fontSize: 11, color: "#64748B" }}>#{it.barcode}</span>
-                            )}
+              {/* Modal Body */}
+              <div className="del-modal-view-body">
+                {/* 1. Interactive 6-Stage Progress Stepper */}
+                <div className="del-stepper-container">
+                  <div className="del-stepper-title-row">
+                    <span className="del-stepper-heading">Fulfillment Progress (Stage {currentStepIndex} of 6)</span>
+                    <span className="del-stepper-current-badge">Current: {normStatus}</span>
+                  </div>
+
+                  <div className="del-stepper-track">
+                    {stagesList.map((stg, idx) => {
+                      const isCompleted = currentStepIndex > stg.step || isDelivered;
+                      const isActive = currentStepIndex === stg.step && !isDelivered;
+                      const isPending = currentStepIndex < stg.step && !isDelivered;
+                      const isLast = idx === stagesList.length - 1;
+
+                      return (
+                        <div key={stg.id} className="del-step-item">
+                          <div
+                            className={`del-step-node ${isCompleted ? "completed" : isActive ? "active" : "pending"}`}
+                          >
+                            {isCompleted ? "✓" : stg.step}
+                          </div>
+
+                          {!isLast && (
+                            <div
+                              className={`del-step-line ${isCompleted ? "completed" : "pending"}`}
+                            />
+                          )}
+
+                          <span className={`del-step-label ${isCompleted ? "completed" : isActive ? "active" : ""}`}>
+                            {stg.label}
+                          </span>
+
+                          {isCompleted && stg.time ? (
+                            <span className="del-step-time">
+                              {new Date(stg.time).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true })}
+                            </span>
+                          ) : isActive ? (
+                            <span className="del-step-time" style={{ color: "#2563EB" }}>
+                              In Progress
+                            </span>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 2. Direct Stage Action Bar */}
+                <div className="del-action-control-card">
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: "#166534", textTransform: "uppercase" }}>
+                      Next Action:
+                    </span>
+                    {normStatus === "Order Confirmed" ? (
+                      <button
+                        type="button"
+                        className="del-action-cta-btn"
+                        style={{ background: "#7C3AED" }}
+                        onClick={() => handleUpdateOrderStatus(selectedOrderForView._id, "Preparing")}
+                      >
+                        <Package size={15} />
+                        <span>Start Preparing Order</span>
+                        <ArrowRight size={14} />
+                      </button>
+                    ) : normStatus === "Preparing" ? (
+                      <button
+                        type="button"
+                        className="del-action-cta-btn"
+                        style={{ background: "#2563EB" }}
+                        onClick={() => handleUpdateOrderStatus(selectedOrderForView._id, "Products Collected")}
+                      >
+                        <Package size={15} />
+                        <span>Mark Products Collected</span>
+                        <ArrowRight size={14} />
+                      </button>
+                    ) : normStatus === "Assigned" ? (
+                      <button
+                        type="button"
+                        className="del-action-cta-btn"
+                        style={{ background: "#2563EB" }}
+                        onClick={() => handleUpdateOrderStatus(selectedOrderForView._id, "Products Collected")}
+                      >
+                        <Package size={15} />
+                        <span>Confirm Products Collected</span>
+                        <ArrowRight size={14} />
+                      </button>
+                    ) : normStatus === "Products Collected" ? (
+                      <button
+                        type="button"
+                        className="del-action-cta-btn"
+                        style={{ background: "#0284C7" }}
+                        onClick={() => handleUpdateOrderStatus(selectedOrderForView._id, "Out for Delivery")}
+                      >
+                        <Navigation size={15} />
+                        <span>Dispatch: Out for Delivery</span>
+                        <ArrowRight size={14} />
+                      </button>
+                    ) : normStatus === "Out for Delivery" ? (
+                      <button
+                        type="button"
+                        className="del-action-cta-btn"
+                        style={{ background: "#16A34A" }}
+                        onClick={() => handleUpdateOrderStatus(selectedOrderForView._id, "Delivered")}
+                      >
+                        <CheckCircle2 size={15} />
+                        <span>Confirm Order Delivered</span>
+                        <ArrowRight size={14} />
+                      </button>
+                    ) : (
+                      <span style={{ fontSize: 13, fontWeight: 800, color: "#15803D", display: "flex", alignItems: "center", gap: 5 }}>
+                        <CheckCircle2 size={16} />
+                        Order Fully Delivered &amp; Completed!
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: 11.5, fontWeight: 700, color: "#64748B" }}>
+                      Jump Stage:
+                    </span>
+                    <select
+                      className="del-quick-stage-select"
+                      value={normStatus}
+                      onChange={(e) => handleUpdateOrderStatus(selectedOrderForView._id, e.target.value)}
+                    >
+                      <option value="Order Confirmed">1. Order Confirmed</option>
+                      <option value="Preparing">2. Preparing</option>
+                      <option value="Assigned">3. Driver Assigned</option>
+                      <option value="Products Collected">4. Products Collected</option>
+                      <option value="Out for Delivery">5. Out for Delivery</option>
+                      <option value="Delivered">6. Delivered</option>
+                      <option value="Failed Delivery">Failed Delivery</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* 3. Customer & Delivery Destination Grid */}
+                <div className="del-info-grid">
+                  <div className="del-info-card">
+                    <span className="del-info-header">Customer Information</span>
+                    <div className="del-info-primary">
+                      {selectedOrderForView.customer?.name || selectedOrderForView.customerName || "Customer"}
+                    </div>
+                    <div style={{ fontSize: 13, color: "#334155", marginTop: 4, display: "flex", alignItems: "center", gap: 5 }}>
+                      <Phone size={13} color="#059669" />
+                      <strong>{customerPhone || "Not provided"}</strong>
+                    </div>
+                    {customerPhone && (
+                      <div className="del-info-actions">
+                        <a href={`tel:${customerPhone}`} className="del-small-action-btn">
+                          <Phone size={11} /> Call
+                        </a>
+                        <button
+                          type="button"
+                          className="del-small-action-btn"
+                          onClick={() => {
+                            navigator.clipboard.writeText(customerPhone);
+                            showToast(`✓ Phone copied: ${customerPhone}`);
+                          }}
+                        >
+                          <Copy size={11} /> Copy
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="del-info-card">
+                    <span className="del-info-header">Delivery Destination</span>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: "#0F172A", marginTop: 2, display: "flex", alignItems: "flex-start", gap: 6 }}>
+                      <MapPin size={15} color="#059669" style={{ flexShrink: 0, marginTop: 2 }} />
+                      <span style={{ lineHeight: 1.4 }}>
+                        {selectedOrderForView.deliveryAddress || selectedOrderForView.customer?.address || "Address not provided"}
+                      </span>
+                    </div>
+                    {selectedOrderForView.deliveryNotes && (
+                      <div style={{ fontSize: 12, color: "#64748B", marginTop: 6, fontStyle: "italic" }}>
+                        Note: {selectedOrderForView.deliveryNotes}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 4. Assigned Delivery Partner Card */}
+                <div className={`del-driver-section-card ${assignedStaffObj ? "assigned" : "unassigned"}`}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div
+                        style={{
+                          width: 38,
+                          height: 38,
+                          borderRadius: "10px",
+                          background: assignedStaffObj ? "#DCFCE7" : "#FEF3C7",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          color: assignedStaffObj ? "#059669" : "#D97706",
+                        }}
+                      >
+                        <Truck size={20} />
+                      </div>
+                      <div>
+                        <span style={{ fontSize: 11, fontWeight: 800, color: assignedStaffObj ? "#166534" : "#92400E", textTransform: "uppercase" }}>
+                          Assigned Delivery Driver
+                        </span>
+                        <div style={{ fontSize: 14.5, fontWeight: 800, color: assignedStaffObj ? "#064E3B" : "#B45309", marginTop: 1 }}>
+                          {assignedStaffObj?.name || "Unassigned (No Driver Assigned Yet)"}
+                        </div>
+                        {assignedStaffObj?.phone && (
+                          <span style={{ fontSize: 12, color: "#047857", fontWeight: 600 }}>
+                            📞 {assignedStaffObj.phone}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {/* Inline Driver Selection for instant 1-click assignment */}
+                      <select
+                        className="del-quick-stage-select"
+                        style={{ maxWidth: 220 }}
+                        value={inlineStaffId}
+                        onChange={(e) => setInlineStaffId(e.target.value)}
+                      >
+                        <option value="">-- Select Driver --</option>
+                        {staffList
+                          .filter((st) => st.status !== "Inactive")
+                          .map((st) => (
+                            <option key={st._id} value={st._id}>
+                              {st.name} ({st.phone || "No phone"})
+                            </option>
+                          ))}
+                      </select>
+
+                      <button
+                        type="button"
+                        className="del-assign-btn"
+                        style={{ padding: "7px 14px", fontSize: "12px", background: "#059669", color: "#fff", border: "none" }}
+                        onClick={() => {
+                          if (inlineStaffId) {
+                            handleInlineAssignStaff(selectedOrderForView._id, inlineStaffId);
+                          } else {
+                            setViewOrderModalOpen(false);
+                            handleOpenAssignModal(selectedOrderForView);
+                          }
+                        }}
+                      >
+                        <UserCheck size={13} />
+                        <span>{assignedStaffObj ? "Reassign" : "Assign Driver"}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 5. Items Purchased Table */}
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: "#0F172A", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                      Items Purchased ({selectedOrderForView.items?.length || selectedOrderForView.totalItems || 1})
+                    </span>
+                    <span style={{ fontSize: 12, color: "#64748B", fontWeight: 600 }}>
+                      Payment: <strong style={{ color: "#059669" }}>{selectedOrderForView.paymentStatus || "Completed"} ({selectedOrderForView.paymentMethod || "UPI"})</strong>
+                    </span>
+                  </div>
+
+                  <div
+                    style={{
+                      border: "1px solid #E2E8F0",
+                      borderRadius: "12px",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ background: "#F8FAFC", textAlign: "left", borderBottom: "1px solid #E2E8F0" }}>
+                          <th style={{ padding: "10px 14px", fontWeight: 800, color: "#334155" }}>Item</th>
+                          <th style={{ padding: "10px 14px", textAlign: "center", fontWeight: 800, color: "#334155" }}>Qty</th>
+                          <th style={{ padding: "10px 14px", textAlign: "right", fontWeight: 800, color: "#334155" }}>Price</th>
+                          <th style={{ padding: "10px 14px", textAlign: "right", fontWeight: 800, color: "#334155" }}>Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(selectedOrderForView.items || []).map((it, idx) => (
+                          <tr key={idx} style={{ borderBottom: "1px solid #F1F5F9" }}>
+                            <td style={{ padding: "10px 14px" }}>
+                              <strong style={{ color: "#0F172A", display: "block" }}>{it.name}</strong>
+                              {it.barcode && (
+                                <span style={{ fontSize: 11, color: "#64748B", fontFamily: "monospace" }}>#{it.barcode}</span>
+                              )}
+                            </td>
+                            <td style={{ padding: "10px 14px", textAlign: "center", fontWeight: 800 }}>
+                              <span style={{ background: "#F1F5F9", padding: "2px 8px", borderRadius: "6px" }}>
+                                {it.quantity}
+                              </span>
+                            </td>
+                            <td style={{ padding: "10px 14px", textAlign: "right", color: "#64748B", fontWeight: 600 }}>
+                              ₹{Number(it.price || 0).toFixed(2)}
+                            </td>
+                            <td style={{ padding: "10px 14px", textAlign: "right", fontWeight: 800, color: "#0F172A" }}>
+                              ₹{Number((it.price || 0) * (it.quantity || 1)).toFixed(2)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr style={{ background: "#F8FAFC", borderTop: "1.5px solid #E2E8F0" }}>
+                          <td colSpan="3" style={{ padding: "12px 14px", fontWeight: 800, textAlign: "right", color: "#0F172A" }}>
+                            Grand Total (Online Paid):
                           </td>
-                          <td style={{ padding: "9px 12px", textAlign: "center", fontWeight: 700 }}>
-                            {it.quantity}
-                          </td>
-                          <td style={{ padding: "9px 12px", textAlign: "right", color: "#64748B" }}>
-                            ₹{Number(it.price || 0).toFixed(2)}
-                          </td>
-                          <td style={{ padding: "9px 12px", textAlign: "right", fontWeight: 800, color: "#0F172A" }}>
-                            ₹{Number((it.price || 0) * (it.quantity || 1)).toFixed(2)}
+                          <td style={{ padding: "12px 14px", fontWeight: 900, textAlign: "right", color: "#059669", fontSize: 16 }}>
+                            ₹{Number(selectedOrderForView.totalAmount || 0).toFixed(2)}
                           </td>
                         </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr style={{ background: "#F8FAFC" }}>
-                        <td colSpan="3" style={{ padding: "10px 12px", fontWeight: 800, textAlign: "right", color: "#0F172A" }}>
-                          Grand Total (Online Paid):
-                        </td>
-                        <td style={{ padding: "10px 12px", fontWeight: 900, textAlign: "right", color: "#059669", fontSize: 15 }}>
-                          ₹{Number(selectedOrderForView.totalAmount || 0).toFixed(2)}
-                        </td>
-                      </tr>
-                    </tfoot>
-                  </table>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+
+                {/* 6. Collapsible Full Timeline & Audit History */}
+                <div>
+                  <button
+                    type="button"
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      color: "#2563EB",
+                      fontSize: 12.5,
+                      fontWeight: 750,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "4px 0",
+                    }}
+                    onClick={() => setShowModalTimeline((prev) => !prev)}
+                  >
+                    <Clock size={13} />
+                    <span>{showModalTimeline ? "Hide Audit History & Timestamps" : "View Full Timeline & Audit Log"}</span>
+                    {showModalTimeline ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  </button>
+
+                  {showModalTimeline && (
+                    <div style={{ marginTop: 10, background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 12, padding: "12px 16px" }}>
+                      {Array.isArray(selectedOrderForView.trackingTimeline) && selectedOrderForView.trackingTimeline.length > 0 ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                          {selectedOrderForView.trackingTimeline.map((tl, i) => (
+                            <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, borderBottom: i < selectedOrderForView.trackingTimeline.length - 1 ? "1px solid #E2E8F0" : "none", paddingBottom: 8 }}>
+                              <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#10B981", marginTop: 5 }} />
+                              <div style={{ flex: 1 }}>
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                                  <strong style={{ fontSize: 13, color: "#0F172A" }}>{tl.title || tl.stage}</strong>
+                                  <span style={{ fontSize: 11, color: "#64748B", fontWeight: 600 }}>
+                                    {tl.timestamp ? new Date(tl.timestamp).toLocaleString("en-IN") : ""}
+                                  </span>
+                                </div>
+                                <p style={{ margin: "2px 0 0 0", fontSize: 12, color: "#475569" }}>{tl.description}</p>
+                                <span style={{ fontSize: 11, color: "#94A3B8" }}>Updated by: {tl.updatedBy || "System"} ({tl.role || "SYSTEM"})</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: 12, color: "#64748B" }}>Order Confirmed at {new Date(selectedOrderForView.createdAt).toLocaleString("en-IN")}</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Modal Actions Footer */}
+              <div className="del-modal-view-footer">
+                <button
+                  type="button"
+                  className="del-secondary-btn"
+                  style={{ padding: "8px 14px", fontSize: "12.5px" }}
+                  onClick={() => {
+                    setViewOrderModalOpen(false);
+                    handleOpenTimelineModal(selectedOrderForView);
+                  }}
+                >
+                  <Clock size={13} />
+                  <span>Open Full Screen Timeline</span>
+                </button>
+
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    type="button"
+                    className="del-btn-secondary"
+                    onClick={() => setViewOrderModalOpen(false)}
+                  >
+                    Close
+                  </button>
+
+                  {normStatus === "Order Confirmed" ? (
+                    <button
+                      type="button"
+                      className="del-advance-btn"
+                      style={{ background: "#7C3AED", color: "#fff" }}
+                      onClick={() => handleUpdateOrderStatus(selectedOrderForView._id, "Preparing")}
+                    >
+                      Start Preparing
+                    </button>
+                  ) : normStatus === "Preparing" ? (
+                    <button
+                      type="button"
+                      className="del-advance-btn"
+                      style={{ background: "#2563EB", color: "#fff" }}
+                      onClick={() => handleUpdateOrderStatus(selectedOrderForView._id, "Products Collected")}
+                    >
+                      Mark Products Collected
+                    </button>
+                  ) : normStatus === "Assigned" ? (
+                    <button
+                      type="button"
+                      className="del-advance-btn"
+                      style={{ background: "#2563EB", color: "#fff" }}
+                      onClick={() => handleUpdateOrderStatus(selectedOrderForView._id, "Products Collected")}
+                    >
+                      Mark Products Collected
+                    </button>
+                  ) : normStatus === "Products Collected" ? (
+                    <button
+                      type="button"
+                      className="del-advance-btn"
+                      style={{ background: "#0284C7", color: "#fff" }}
+                      onClick={() => handleUpdateOrderStatus(selectedOrderForView._id, "Out for Delivery")}
+                    >
+                      Mark Out for Delivery
+                    </button>
+                  ) : normStatus === "Out for Delivery" ? (
+                    <button
+                      type="button"
+                      className="del-delivered-btn"
+                      onClick={() => handleUpdateOrderStatus(selectedOrderForView._id, "Delivered")}
+                    >
+                      Mark Delivered
+                    </button>
+                  ) : null}
                 </div>
               </div>
             </div>
-
-            {/* Modal Actions Footer */}
-            <div className="del-modal-footer" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-              <button
-                type="button"
-                className="del-secondary-btn"
-                style={{ padding: "8px 14px", fontSize: "12.5px" }}
-                onClick={() => {
-                  setViewOrderModalOpen(false);
-                  handleOpenTimelineModal(selectedOrderForView);
-                }}
-              >
-                <Clock size={13} />
-                <span>View Timeline</span>
-              </button>
-
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  type="button"
-                  className="del-btn-secondary"
-                  onClick={() => setViewOrderModalOpen(false)}
-                >
-                  Close
-                </button>
-
-                {selectedOrderForView.deliveryStatus === "New" ||
-                selectedOrderForView.deliveryStatus === "Pending" ? (
-                  <button
-                    type="button"
-                    className="del-advance-btn"
-                    style={{ background: "#7C3AED", color: "#fff" }}
-                    onClick={() => {
-                      handleUpdateOrderStatus(selectedOrderForView._id, "Preparing");
-                      setViewOrderModalOpen(false);
-                    }}
-                  >
-                    Mark Preparing
-                  </button>
-                ) : selectedOrderForView.deliveryStatus === "Preparing" ? (
-                  <button
-                    type="button"
-                    className="del-advance-btn"
-                    style={{ background: "#2563EB", color: "#fff" }}
-                    onClick={() => {
-                      handleUpdateOrderStatus(selectedOrderForView._id, "Products Collected");
-                      setViewOrderModalOpen(false);
-                    }}
-                  >
-                    Mark Products Collected
-                  </button>
-                ) : selectedOrderForView.deliveryStatus === "Products Collected" ? (
-                  <button
-                    type="button"
-                    className="del-advance-btn"
-                    style={{ background: "#D97706", color: "#fff" }}
-                    onClick={() => {
-                      handleUpdateOrderStatus(selectedOrderForView._id, "Out for Delivery");
-                      setViewOrderModalOpen(false);
-                    }}
-                  >
-                    Mark Out for Delivery
-                  </button>
-                ) : selectedOrderForView.deliveryStatus === "Out for Delivery" ||
-                  selectedOrderForView.deliveryStatus === "OutForDelivery" ? (
-                  <button
-                    type="button"
-                    className="del-delivered-btn"
-                    onClick={() => {
-                      handleUpdateOrderStatus(selectedOrderForView._id, "Delivered");
-                      setViewOrderModalOpen(false);
-                    }}
-                  >
-                    Mark Delivered
-                  </button>
-                ) : null}
-              </div>
-            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ========================================================================= */}
       {/* MODAL 1: ASSIGN ORDER TO STAFF                                            */}

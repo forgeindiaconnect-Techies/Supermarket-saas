@@ -23,7 +23,7 @@ import ReceiptModal from "../components/ReceiptModal";
 
 const { width } = Dimensions.get("window");
 
-const PENDING_IMG = require("@/assets/images/payment-pending.jpg");
+const PENDING_IMG = require("../../assets/images/payment-pending.jpg");
 
 // =========================================================================
 // 3D HIGH-FIDELITY CELEBRATION ILLUSTRATION MATCHING REFERENCE IMAGE 2
@@ -267,7 +267,8 @@ export default function PaymentSuccessScreen() {
       isFetching = true;
 
       try {
-        const res = await safeFetch(`${API_URL}/orders/${targetId}?_t=${Date.now()}`, {}, 8000);
+        const cleanTargetId = encodeURIComponent(String(targetId).replace(/^#/, "").trim());
+        const res = await safeFetch(`${API_URL}/orders/${cleanTargetId}?_t=${Date.now()}`, {}, 8000);
         const contentType = res.headers?.get("content-type") || "";
         if (contentType.includes("application/json")) {
           const data = await res.json();

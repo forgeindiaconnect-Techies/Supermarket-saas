@@ -512,8 +512,15 @@ export default function AdminDashboard() {
         const phone = formatPhone(ord.customer?.phone || ord.user?.phone || ord.shippingAddress?.phone || ord.customerPhone || "");
         const email = (ord.customer?.email || ord.user?.email || "").trim();
         const address = (ord.customer?.address || ord.shippingAddress?.address || "").trim();
-        const dateStr = ord.createdAt
-          ? new Date(ord.createdAt).toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "numeric" }) + " • " + new Date(ord.createdAt).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })
+        const dateObj = ord.createdAt ? new Date(ord.createdAt) : null;
+        const dateDay = dateObj
+          ? dateObj.toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "numeric" })
+          : "Recent";
+        const dateTime = dateObj
+          ? dateObj.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })
+          : "";
+        const dateStr = dateObj
+          ? `${dateDay} • ${dateTime}`
           : "Recent";
         return {
           orderId: String(orderNum).replace(/^#/, ""),
@@ -527,6 +534,8 @@ export default function AdminDashboard() {
           status: ord.paymentStatus || ord.orderStatus || ord.status || "Completed",
           purchaseMode: ord.purchaseMode || (ord.fulfillmentChoice === "IN_STORE" || ord.orderType === "IN_STORE" ? "OFFLINE" : "ONLINE"),
           date: dateStr,
+          dateDay,
+          dateTime,
           items: items,
           rawOrder: ord,
         };
@@ -870,102 +879,124 @@ export default function AdminDashboard() {
 
             <div className="db-orders-table-wrap">
               <table className="db-orders-table">
-                <thead>
+                <thead className="db-orders-thead">
                   <tr>
-                    <th>#</th>
-                    <th>Customer Name & Mobile</th>
-                    <th>Items</th>
-                    <th>Amount</th>
-                    <th>Payment</th>
-                    <th>Status</th>
-                    <th>Date</th>
-                    <th>Action</th>
+                    <th className="th-order-id">ORDER ID</th>
+                    <th className="th-customer">CUSTOMER</th>
+                    <th className="th-items">ITEMS</th>
+                    <th className="th-amount">AMOUNT</th>
+                    <th className="th-status">STATUS</th>
+                    <th className="th-date">DATE &amp; TIME</th>
+                    <th className="th-action">ACTION</th>
                   </tr>
                 </thead>
                 <tbody>
                   {displayOrders.length === 0 ? (
                     <tr>
-                      <td colSpan="8" style={{ textAlign: "center", padding: "26px", color: "#64748B", fontWeight: 600 }}>
+                      <td colSpan="7" className="db-orders-empty">
                         No orders recorded yet. Real-time orders will display here automatically.
                       </td>
                     </tr>
                   ) : displayOrders.map((ord, idx) => {
                     const statusClass = (ord.status || "").toLowerCase();
                     const paymentClass = (ord.payment || "").toLowerCase();
+                    const initial = (ord.customerName || "C").trim().charAt(0).toUpperCase();
                     return (
                       <tr key={ord.orderId || idx}>
-                        <td>
-                          <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                        {/* 1. ORDER ID & CHANNEL */}
+                        <td className="td-order-id">
+                          <div className="db-order-col">
                             <span
                               className="db-order-id-link"
                               onClick={() => setSelectedOrder(ord)}
+                              title="Click to view order details"
                             >
                               #{ord.orderId}
                             </span>
                             <span
-                              style={{
-                                fontSize: "10px",
-                                fontWeight: "700",
-                                padding: "2px 6px",
-                                borderRadius: "4px",
-                                width: "fit-content",
-                                background: ord.purchaseMode === "OFFLINE" ? "#FEF3C7" : "#EFF6FF",
-                                color: ord.purchaseMode === "OFFLINE" ? "#B45309" : "#1D4ED8",
-                                border: `1px solid ${ord.purchaseMode === "OFFLINE" ? "#FCD34D" : "#BFDBFE"}`,
-                              }}
+                              className={`db-channel-badge ${ord.purchaseMode === "OFFLINE" ? "offline" : "online"}`}
                             >
                               {ord.purchaseMode === "OFFLINE" ? "⚡ In-Store Scan" : "🌐 Online"}
                             </span>
                           </div>
                         </td>
-                        <td>
-                          <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                            <span className="db-customer-name" style={{ fontWeight: 700, color: "#14213D", fontSize: "13px" }}>
-                              👤 {ord.customerName}
+
+                        {/* 2. CUSTOMER (Sleek uniform 2-line layout) */}
+                        <td className="td-customer">
+                          <div className="db-customer-col">
+                            <div className="db-customer-main-row">
+                              <span className="db-customer-avatar">{initial}</span>
+                              <span className="db-customer-name" title={ord.customerName}>
+                                {ord.customerName}
+                              </span>
+                            </div>
+                            <div
+                              className="db-customer-sub-row"
+                              title={[ord.customerPhone, ord.customerEmail, ord.customerAddress].filter(Boolean).join(" • ")}
+                            >
+                              {ord.customerPhone ? (
+                                <span className="db-customer-phone">{ord.customerPhone}</span>
+                              ) : (
+                                <span className="db-customer-phone-none">No mobile</span>
+                              )}
+                              {ord.customerAddress ? (
+                                <>
+                                  <span className="db-customer-dot">•</span>
+                                  <span className="db-customer-meta">📍 {ord.customerAddress}</span>
+                                </>
+                              ) : ord.customerEmail ? (
+                                <>
+                                  <span className="db-customer-dot">•</span>
+                                  <span className="db-customer-meta">✉️ {ord.customerEmail}</span>
+                                </>
+                              ) : null}
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* 3. ITEMS (Centered Count Pill) */}
+                        <td className="td-items">
+                          <span className="db-items-count-badge">
+                            {ord.itemsCount}
+                          </span>
+                        </td>
+
+                        {/* 4. AMOUNT (Bold Value + Payment Subtitle) */}
+                        <td className="td-amount">
+                          <div className="db-amount-col">
+                            <span className="db-amount-val">
+                              ₹{Number(ord.amount).toFixed(2)}
                             </span>
-                            {ord.customerPhone ? (
-                              <span style={{ fontSize: "11px", color: "#2563EB", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "3px" }}>
-                                📱 {formatPhone(ord.customerPhone)}
-                              </span>
-                            ) : (
-                              <span style={{ fontSize: "10.5px", color: "#94A3B8" }}>No mobile</span>
-                            )}
-                            {ord.customerEmail ? (
-                              <span style={{ fontSize: "10.5px", color: "#2563EB", fontWeight: 600 }}>
-                                ✉️ {ord.customerEmail}
-                              </span>
-                            ) : null}
-                            {ord.customerAddress ? (
-                              <span style={{ fontSize: "10px", color: "#64748B" }} title={ord.customerAddress}>
-                                📍 {ord.customerAddress}
-                              </span>
+                            <span className={`db-payment-mini-tag ${paymentClass}`}>
+                              {ord.payment || "UPI"}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* 5. STATUS (Centered Status Pill Badge) */}
+                        <td className="td-status">
+                          <span className={`db-status-badge ${statusClass}`}>
+                            {statusClass === "completed" ? "✓ Completed" : ord.status}
+                          </span>
+                        </td>
+
+                        {/* 6. DATE & TIME (Clean centered display) */}
+                        <td className="td-date">
+                          <div className="db-date-col">
+                            <span className="db-date-day">{ord.dateDay || ord.date}</span>
+                            {ord.dateTime ? (
+                              <span className="db-date-time">{ord.dateTime}</span>
                             ) : null}
                           </div>
                         </td>
-                        <td>
-                          <span>{ord.itemsCount}</span>
-                        </td>
-                        <td>
-                          <span className="db-amount-cell">₹{Number(ord.amount).toFixed(2)}</span>
-                        </td>
-                        <td>
-                          <span className={`db-payment-badge ${paymentClass}`}>
-                            {ord.payment}
-                          </span>
-                        </td>
-                        <td>
-                          <span className={`db-status-badge ${statusClass}`}>
-                            {ord.status}
-                          </span>
-                        </td>
-                        <td>
-                          <span style={{ fontSize: "11px", color: "#64748B" }}>{ord.date}</span>
-                        </td>
-                        <td>
+
+                        {/* 7. ACTION (View button) */}
+                        <td className="td-action">
                           <button
                             type="button"
-                            className="db-view-link"
+                            className="db-view-btn"
                             onClick={() => setSelectedOrder(ord)}
+                            title="View full order details"
                           >
                             View
                           </button>

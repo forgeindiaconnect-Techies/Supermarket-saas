@@ -1,5 +1,15 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { API_URL, safeFetch } from "../constants/api";
+import {
+  saveCustomerSession,
+  loadCustomerSession,
+  clearCustomerSession,
+  getCustomerSessionSync,
+  getCartSync,
+  saveCartStorage,
+  loadCartStorage,
+  clearCartStorage,
+} from "../utils/storage";
 
 export type SupermarketInfo = {
   _id: string;
@@ -84,6 +94,14 @@ export type OrderRecord = {
   pickupDate?: string;
   pickupTimeSlot?: string;
   pickupStatus?: string;
+  customerPickupConfirmed?: boolean;
+  customerPickupCompletedAt?: string;
+  pickupOtp?: string;
+  scheduledPickupTime?: string;
+  estimatedReadyTime?: string;
+  estimatedReadyDate?: string;
+  pickupInstructions?: string;
+  completedAt?: string;
   deliveryStatus?: string;
   deliveryAddress?: string;
   deliveryPhone?: string;
@@ -104,6 +122,12 @@ export type OrderRecord = {
   failedReason?: string;
   estimatedDeliveryTime?: string;
   estimatedDeliveryDate?: string;
+  review?: {
+    rating?: number;
+    comment?: string;
+    submittedAt?: string;
+    customerName?: string;
+  };
   trackingTimeline?: Array<{
     status?: string;
     title?: string;
@@ -122,7 +146,9 @@ export type OrderRecord = {
     email?: string;
     address?: string;
   };
-  createdAt: string;
+  createdAt?: string;
+  updatedAt?: string;
+  [key: string]: any;
 };
 
 export type CustomerInfo = {
@@ -137,6 +163,7 @@ type CartContextType = {
   updateQuantity: (id: string, delta: number) => void;
   removeFromCart: (id: string) => void;
   clearCart: () => void;
+  refreshCart: () => Promise<void>;
   totalCount: number;
   grossAmount: number;
   totalSavings: number;
@@ -156,7 +183,8 @@ type CartContextType = {
   setSelectedSupermarket: (store: SupermarketInfo | null) => void;
   customerUser: CustomerUser | null;
   setCustomerUser: (user: CustomerUser | null) => void;
-  updateCustomerDetails: (details: { name?: string; phone?: string; address?: string }) => Promise<void>;
+  isAuthLoading: boolean;
+  updateCustomerDetails: (details: { name?: string; phone?: string; address?: string; email?: string }) => Promise<void>;
   logoutCustomer: () => void;
   verifySupermarketMode: (store: SupermarketInfo, mode: "online" | "offline") => Promise<{ allowed: boolean; message: string }>;
 
@@ -195,16 +223,175 @@ const notifyAdminCartActivity = (data: {
 };
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cart, setCart] = useState<CartItem[]>(() => {
+    try {
+      const sync = getCartSync();
+      return Array.isArray(sync) ? sync : [];
+    } catch (_) {
+      return [];
+    }
+  });
   const [recentOrders, setRecentOrders] = useState<OrderRecord[]>([]);
   const [customerInfo, setCustomerInfo] = useState<CustomerInfo | null>(null);
 
-  // New states for Online vs Offline Purchase Workflows
-  const [purchaseMode, setPurchaseMode] = useState<"online" | "offline" | null>(null);
+  // Synchronous initial session rehydration to prevent screen guards tripping during mount
+  const initialSession = getCustomerSessionSync();
+  const [purchaseMode, setPurchaseMode] = useState<"online" | "offline" | null>(
+    initialSession ? "online" : null
+  );
   const [fulfillmentType, setFulfillmentType] = useState<FulfillmentType>("DELIVERY");
-  const [selectedSupermarket, setSelectedSupermarketState] = useState<SupermarketInfo | null>(null);
-  const [customerUser, setCustomerUserState] = useState<CustomerUser | null>(null);
+  const [selectedSupermarket, setSelectedSupermarketState] = useState<SupermarketInfo | null>(
+    initialSession?.supermarketId
+      ? {
+          _id: String(initialSession.supermarketId),
+          name: initialSession.supermarketName || "Supermarket",
+          code: initialSession.supermarketCode || "",
+          onlineAvailable: true,
+          offlineAvailable: true,
+        }
+      : null
+  );
+  const [customerUser, setCustomerUserState] = useState<CustomerUser | null>(initialSession);
   const [deliveryUser, setDeliveryUserState] = useState<DeliveryUser | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(!initialSession);
+
+  // Load and sync cart from backend MongoDB Atlas whenever customer session is active
+  const refreshCart = useCallback(async () => {
+    if (API_URL && customerUser?.token) {
+      try {
+        const res = await safeFetch(`${API_URL}/cart`, {
+          headers: {
+            Authorization: `Bearer ${customerUser.token}`,
+          },
+        }, 5000);
+        const ct = res.headers?.get("content-type") || "";
+        if (ct.includes("application/json")) {
+          const data = await res.json();
+          if (data?.success && data?.cart) {
+            const dbItems: CartItem[] = (data.cart.items || []).map((it: any) => ({
+              _id: String(it.product?._id || it.product || it._id),
+              name: it.name,
+              brand: it.brand || "",
+              category: it.category || "General",
+              barcode: it.barcode || "",
+              imageUrl: it.imageUrl || "",
+              price: Number(it.price || it.effectivePrice || 0),
+              discount: Number(it.discount || 0),
+              effectivePrice: Number(it.effectivePrice || it.price || 0),
+              quantity: Number(it.quantity || 1),
+              stock: Number(it.stock || 99),
+              supermarket: String(data.cart.supermarket || ""),
+            }));
+            setCart(dbItems);
+            saveCartStorage(dbItems);
+            return;
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Fallback: restore from local disk storage
+    try {
+      const stored = await loadCartStorage();
+      if (stored && stored.length > 0) {
+        setCart(stored);
+      }
+    } catch (_) {}
+  }, [customerUser?.token]);
+
+  useEffect(() => {
+    refreshCart();
+  }, [customerUser?.token, customerUser?._id, refreshCart]);
+
+  // Restore authenticated customer session on app startup & verify token against database
+  useEffect(() => {
+    let isMounted = true;
+    const initSession = async () => {
+      try {
+        const saved = await loadCustomerSession();
+        if (saved && saved.token) {
+          // Verify with database to ensure session is genuinely active
+          if (API_URL) {
+            try {
+              const res = await safeFetch(`${API_URL}/auth/customer/me`, {
+                headers: {
+                  Authorization: `Bearer ${saved.token}`,
+                },
+              }, 6000);
+              const contentType = res.headers?.get("content-type") || "";
+              if (contentType.includes("application/json")) {
+                const data = await res.json();
+                if (data?.success && data?.customer) {
+                  const verifiedCust = data.customer;
+                  const finalUser: CustomerUser = {
+                    ...saved,
+                    _id: String(verifiedCust._id || saved._id),
+                    name: verifiedCust.name || saved.name,
+                    phone: verifiedCust.phone || saved.phone,
+                    email: verifiedCust.email || saved.email,
+                    address: verifiedCust.address || saved.address,
+                    supermarketId: verifiedCust.supermarketId || saved.supermarketId,
+                    supermarketCode: verifiedCust.supermarketCode || saved.supermarketCode,
+                    supermarketName: verifiedCust.supermarketName || saved.supermarketName,
+                    registeredLocation: verifiedCust.registeredLocation || saved.registeredLocation,
+                    token: saved.token,
+                  };
+                  if (isMounted) {
+                    setCustomerUserState(finalUser);
+                    setCustomerInfo({
+                      name: finalUser.name,
+                      phone: finalUser.phone,
+                      address: finalUser.address,
+                    });
+                    if (data.supermarket) {
+                      setSelectedSupermarketState(data.supermarket);
+                    } else if (finalUser.supermarketId) {
+                      setSelectedSupermarketState({
+                        _id: finalUser.supermarketId,
+                        name: finalUser.supermarketName || "Supermarket",
+                        code: finalUser.supermarketCode || "",
+                        onlineAvailable: true,
+                        offlineAvailable: true,
+                      });
+                    }
+                  }
+                  return;
+                }
+              }
+            } catch (_) {}
+          }
+          // Fallback to saved local session if network check could not complete
+          if (isMounted) {
+            setCustomerUserState(saved);
+            setCustomerInfo({
+              name: saved.name || "",
+              phone: saved.phone || "",
+              address: saved.address || "",
+            });
+          }
+        } else {
+          if (isMounted) {
+            setCustomerUserState(null);
+            setCustomerInfo(null);
+          }
+        }
+      } catch (_) {
+        if (isMounted) {
+          setCustomerUserState(null);
+          setCustomerInfo(null);
+        }
+      } finally {
+        if (isMounted) {
+          setIsAuthLoading(false);
+        }
+      }
+    };
+
+    initSession();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const setDeliveryUser = (user: DeliveryUser | null) => {
     setDeliveryUserState(user);
@@ -215,6 +402,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   };
 
   const setSelectedSupermarket = (store: SupermarketInfo | null) => {
+    // Strict customer supermarket restriction: Authenticated customers are permanently linked to their registered supermarket
+    if (customerUser && customerUser.supermarketId && store) {
+      if (String(store._id) !== String(customerUser.supermarketId)) {
+        // Enforce lock to registered supermarket
+        return;
+      }
+    }
     // If switching to a different supermarket, clear cart to maintain absolute supermarket data isolation
     if (store && selectedSupermarket && store._id !== selectedSupermarket._id) {
       setCart([]);
@@ -225,6 +419,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const setCustomerUser = (user: CustomerUser | null) => {
     setCustomerUserState(user);
     if (user) {
+      setPurchaseMode("online");
+      saveCustomerSession(user);
       setCustomerInfo({
         name: user.name,
         phone: user.phone,
@@ -274,20 +470,28 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             .catch(() => {});
         }
       }
+    } else {
+      clearCustomerSession();
     }
   };
 
   const logoutCustomer = () => {
     setCustomerUserState(null);
     setCustomerInfo(null);
+    setSelectedSupermarketState(null);
+    clearCustomerSession();
+    clearCartStorage();
     setCart([]);
+    setRecentOrders([]);
+    setPurchaseMode(null);
   };
 
-  const updateCustomerDetails = async (details: { name?: string; phone?: string; address?: string }) => {
+  const updateCustomerDetails = async (details: { name?: string; phone?: string; address?: string; email?: string }) => {
     const updatedName = details.name !== undefined ? details.name.trim() : (customerUser?.name || customerInfo?.name || "");
     const rawP = details.phone !== undefined ? details.phone : (customerUser?.phone || customerInfo?.phone || "");
     const updatedPhone = String(rawP).replace(/\D/g, "").slice(-10);
     const updatedAddress = details.address !== undefined ? details.address.trim() : (customerUser?.address || customerInfo?.address || "");
+    const updatedEmail = details.email !== undefined ? details.email.trim().toLowerCase() : (customerUser?.email || "");
 
     setCustomerInfo({
       name: updatedName,
@@ -296,29 +500,35 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     });
 
     if (customerUser) {
-      setCustomerUserState({
+      const updatedUser: CustomerUser = {
         ...customerUser,
         name: updatedName,
         phone: updatedPhone,
         address: updatedAddress,
-      });
+        email: updatedEmail,
+      };
+      setCustomerUserState(updatedUser);
+      saveCustomerSession(updatedUser);
     }
 
     if (API_URL && (customerUser?._id || updatedPhone)) {
       try {
+        const reqHeaders: Record<string, string> = { "Content-Type": "application/json" };
+        if (customerUser?.token) reqHeaders["Authorization"] = `Bearer ${customerUser.token}`;
         await safeFetch(
           `${API_URL}/auth/customer/profile`,
           {
             method: "PUT",
-            headers: { "Content-Type": "application/json" },
+            headers: reqHeaders,
             body: JSON.stringify({
               customerId: customerUser?._id,
               phone: updatedPhone,
               name: updatedName,
+              email: updatedEmail,
               address: updatedAddress,
             }),
           },
-          5000
+          8000
         );
       } catch (_) {}
     }
@@ -390,6 +600,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           : `This supermarket does not currently support ${mode === "online" ? "Online Ordering" : "In-Store Shopping"}. Please choose an available option.`,
       };
     }
+    return { allowed: true, message: "" };
   };
 
   const addToCart = (product: any, qty: number = 1): boolean => {
@@ -418,20 +629,17 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }
 
     const effectivePrice = finalPrice;
+    const prodStoreId = typeof product.supermarket === "object" ? product.supermarket?._id : product.supermarket;
+    const activeStoreId = selectedSupermarket?._id || customerUser?.supermarketId;
+
+    // Strict Multi-Tenant Isolation: Ensure cart only accepts products from the active registered supermarket
+    if (activeStoreId && prodStoreId && String(prodStoreId) !== String(activeStoreId)) {
+      console.warn("Rejected product belonging to another store:", prodStoreId, "!=", activeStoreId);
+      return false;
+    }
 
     setCart((current) => {
-      // Strict Multi-Tenant Isolation: Ensure cart only accepts products from the active supermarket
-      if (selectedSupermarket && product.supermarket) {
-        const prodStoreId = typeof product.supermarket === "object" ? product.supermarket._id : product.supermarket;
-        if (prodStoreId && String(prodStoreId) !== String(selectedSupermarket._id)) {
-          console.warn("Rejected product belonging to another store:", prodStoreId, "!=", selectedSupermarket._id);
-          success = false;
-          updatedCart = current;
-          return current;
-        }
-      }
-
-      const existing = current.find((item) => item._id === product._id);
+      const existing = current.find((item) => String(item._id) === String(product._id));
 
       if (existing) {
         if (existing.quantity + addQty > product.stock) {
@@ -441,7 +649,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         }
 
         updatedCart = current.map((item) =>
-          item._id === product._id
+          String(item._id) === String(product._id)
             ? {
                 ...item,
                 quantity: item.quantity + addQty,
@@ -459,25 +667,26 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         }
 
         const newItem: CartItem = {
-          _id: product._id,
+          _id: String(product._id),
           name: product.name,
-          brand: product.brand,
-          category: product.category,
-          barcode: product.barcode,
+          brand: product.brand || "",
+          category: product.category || "General",
+          barcode: product.barcode || "",
           price: originalMrp,
           discount: discountAmount,
           effectivePrice: effectivePrice,
           stock: product.stock,
-          imageUrl: product.imageUrl,
-          description: product.description,
+          imageUrl: product.imageUrl || "",
+          description: product.description || "",
           quantity: addQty,
-          supermarket: selectedSupermarket?._id || product.supermarket,
-          supermarketCode: selectedSupermarket?.code || product.supermarketCode,
-          supermarketName: selectedSupermarket?.name || product.supermarketName,
+          supermarket: String(activeStoreId || prodStoreId || ""),
+          supermarketCode: selectedSupermarket?.code || customerUser?.supermarketCode || "",
+          supermarketName: selectedSupermarket?.name || customerUser?.supermarketName || "",
         };
         updatedCart = [...current, newItem];
       }
 
+      saveCartStorage(updatedCart);
       return updatedCart;
     });
 
@@ -492,43 +701,58 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         action: "added",
         totalCartItems: newTotalCount,
         totalCartAmount: newTotalAmount,
-        customerName: customerInfo?.name,
-        customerPhone: customerInfo?.phone,
-        supermarketId: product.supermarket || selectedSupermarket?._id,
-        supermarketCode: product.supermarketCode || selectedSupermarket?.code,
+        customerName: customerInfo?.name || customerUser?.name,
+        customerPhone: customerInfo?.phone || customerUser?.phone,
+        supermarketId: String(activeStoreId || product.supermarket || ""),
+        supermarketCode: selectedSupermarket?.code || customerUser?.supermarketCode || "",
       });
+
+      // Synchronize immediately to backend MongoDB cart
+      if (API_URL && customerUser?.token) {
+        safeFetch(`${API_URL}/cart/add`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${customerUser.token}`,
+          },
+          body: JSON.stringify({
+            productId: product._id,
+            quantity: addQty,
+          }),
+        }, 5000).catch(() => {});
+      }
     }
 
     return success;
   };
 
   const updateQuantity = (id: string, delta: number) => {
+    let updatedCart: CartItem[] = [];
     setCart((current) => {
-      const item = current.find((it) => it._id === id);
+      const item = current.find((it) => String(it._id) === String(id));
       if (!item) return current;
 
       const newQty = item.quantity + delta;
 
-      let updated: CartItem[];
       if (newQty <= 0) {
-        updated = current.filter((it) => it._id !== id);
+        updatedCart = current.filter((it) => String(it._id) !== String(id));
         notifyAdminCartActivity({
           productName: item.name,
           productId: item._id,
           quantity: 0,
           price: item.effectivePrice,
           action: "removed",
-          totalCartItems: updated.reduce((s, it) => s + it.quantity, 0),
-          totalCartAmount: updated.reduce((s, it) => s + it.effectivePrice * it.quantity, 0),
-          customerName: customerInfo?.name,
-          customerPhone: customerInfo?.phone,
+          totalCartItems: updatedCart.reduce((s, it) => s + it.quantity, 0),
+          totalCartAmount: updatedCart.reduce((s, it) => s + it.effectivePrice * it.quantity, 0),
+          customerName: customerInfo?.name || customerUser?.name,
+          customerPhone: customerInfo?.phone || customerUser?.phone,
           supermarketId: item.supermarket || selectedSupermarket?._id,
           supermarketCode: item.supermarketCode || selectedSupermarket?.code,
         });
       } else {
         if (newQty > item.stock) return current;
-        updated = current.map((it) =>
-          it._id === id ? { ...it, quantity: newQty } : it
+        updatedCart = current.map((it) =>
+          String(it._id) === String(id) ? { ...it, quantity: newQty } : it
         );
         notifyAdminCartActivity({
           productName: item.name,
@@ -536,23 +760,40 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           quantity: newQty,
           price: item.effectivePrice,
           action: "updated",
-          totalCartItems: updated.reduce((s, it) => s + it.quantity, 0),
-          totalCartAmount: updated.reduce((s, it) => s + it.effectivePrice * it.quantity, 0),
-          customerName: customerInfo?.name,
-          customerPhone: customerInfo?.phone,
+          totalCartItems: updatedCart.reduce((s, it) => s + it.quantity, 0),
+          totalCartAmount: updatedCart.reduce((s, it) => s + it.effectivePrice * it.quantity, 0),
+          customerName: customerInfo?.name || customerUser?.name,
+          customerPhone: customerInfo?.phone || customerUser?.phone,
           supermarketId: item.supermarket || selectedSupermarket?._id,
           supermarketCode: item.supermarketCode || selectedSupermarket?.code,
         });
       }
 
-      return updated;
+      saveCartStorage(updatedCart);
+      return updatedCart;
     });
+
+    // Synchronize to backend MongoDB cart
+    if (API_URL && customerUser?.token) {
+      safeFetch(`${API_URL}/cart/update-quantity`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${customerUser.token}`,
+        },
+        body: JSON.stringify({
+          productId: id,
+          delta,
+        }),
+      }, 5000).catch(() => {});
+    }
   };
 
   const removeFromCart = (id: string) => {
+    let updatedCart: CartItem[] = [];
     setCart((current) => {
-      const item = current.find((it) => it._id === id);
-      const updated = current.filter((it) => it._id !== id);
+      const item = current.find((it) => String(it._id) === String(id));
+      updatedCart = current.filter((it) => String(it._id) !== String(id));
       if (item) {
         notifyAdminCartActivity({
           productName: item.name,
@@ -560,21 +801,43 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           quantity: 0,
           price: item.effectivePrice,
           action: "removed",
-          totalCartItems: updated.reduce((s, it) => s + it.quantity, 0),
-          totalCartAmount: updated.reduce((s, it) => s + it.effectivePrice * it.quantity, 0),
-          customerName: customerInfo?.name,
-          customerPhone: customerInfo?.phone,
+          totalCartItems: updatedCart.reduce((s, it) => s + it.quantity, 0),
+          totalCartAmount: updatedCart.reduce((s, it) => s + it.effectivePrice * it.quantity, 0),
+          customerName: customerInfo?.name || customerUser?.name,
+          customerPhone: customerInfo?.phone || customerUser?.phone,
           supermarketId: item.supermarket || selectedSupermarket?._id,
           supermarketCode: item.supermarketCode || selectedSupermarket?.code,
         });
       }
-      return updated;
+      saveCartStorage(updatedCart);
+      return updatedCart;
     });
+
+    // Synchronize to backend MongoDB cart
+    if (API_URL && customerUser?.token) {
+      safeFetch(`${API_URL}/cart/items/${id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${customerUser.token}`,
+        },
+      }, 5000).catch(() => {});
+    }
   };
 
   const clearCart = () => {
     setCart([]);
+    clearCartStorage();
     setCustomerInfo(null);
+
+    // Synchronize to backend MongoDB cart
+    if (API_URL && customerUser?.token) {
+      safeFetch(`${API_URL}/cart/clear`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${customerUser.token}`,
+        },
+      }, 5000).catch(() => {});
+    }
   };
 
   const addRecentOrder = (order: OrderRecord) => {
@@ -583,7 +846,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const updateRecentOrder = (updated: OrderRecord) => {
     setRecentOrders((prev) => {
-      const idx = prev.findIndex((o) => o._id === updated._id);
+      const cleanUpdatedNum = String(updated.orderNumber || "").replace(/^#/, "").trim();
+      const idx = prev.findIndex((o) => {
+        const cleanPrevNum = String(o.orderNumber || "").replace(/^#/, "").trim();
+        return (
+          (o._id && updated._id && String(o._id) === String(updated._id)) ||
+          (cleanPrevNum && cleanUpdatedNum && cleanPrevNum === cleanUpdatedNum)
+        );
+      });
       if (idx >= 0) {
         const next = [...prev];
         next[idx] = { ...next[idx], ...updated };
@@ -609,6 +879,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         updateQuantity,
         removeFromCart,
         clearCart,
+        refreshCart,
         totalCount,
         grossAmount,
         totalSavings,
@@ -627,6 +898,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         setSelectedSupermarket,
         customerUser,
         setCustomerUser,
+        isAuthLoading,
         updateCustomerDetails,
         logoutCustomer,
         verifySupermarketMode,

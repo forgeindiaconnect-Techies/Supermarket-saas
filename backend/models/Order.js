@@ -152,6 +152,9 @@ const orderSchema = new mongoose.Schema(
     customerPickupCompletedAt: {
       type: Date,
     },
+    pickupReadyAt: {
+      type: Date,
+    },
     pickupStatus: {
       type: String,
       enum: ["New", "Pending", "Preparing", "ReadyForPickup", "Completed", "Cancelled", ""],
@@ -222,6 +225,16 @@ const orderSchema = new mongoose.Schema(
         updatedBy: { type: String, default: "" },
         updatedById: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
         role: { type: String, default: "" },
+      },
+    ],
+    statusHistory: [
+      {
+        previousStatus: { type: String, default: "" },
+        newStatus: { type: String, default: "" },
+        timestamp: { type: Date, default: Date.now },
+        updatedBy: { type: String, default: "System" },
+        updatedById: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+        role: { type: String, default: "SYSTEM" },
       },
     ],
     deliveryAddress: {

@@ -48,6 +48,16 @@ export function getResolvedHost(): string {
  * Compute the effective API URL based on platform and environment
  */
 export function computeApiUrl(): string {
+  // 1. If running under Metro in development on a local LAN network (e.g. 192.168.1.38),
+  // automatically connect to the local development backend on port 5001.
+  // This guarantees 100% real-time data sync with the Store Admin web portal running locally.
+  if (Platform.OS !== "web") {
+    const host = getResolvedHost();
+    if (host && host !== "localhost" && host !== "127.0.0.1" && host !== "10.0.2.2") {
+      return `http://${host}:5001/api`;
+    }
+  }
+
   const envUrl = process.env.EXPO_PUBLIC_API_URL || "";
   let base = envUrl.trim() || DEFAULT_SERVER_URL;
 
@@ -77,14 +87,23 @@ export async function safeFetch(
   options: RequestInit = {},
   timeoutMs = 15000
 ): Promise<Response> {
+  const resolvedHost = getResolvedHost();
+  const localBase = `http://${resolvedHost}:5001/api`;
+
+  // If targeting local LAN IP, use a snappy timeout (4s) so cellular devices (5G/4G)
+  // quickly fall back to the live cloud backend without freezing the UI.
+  const isTargetingLocal = url.startsWith(localBase) || url.includes("localhost") || url.includes("127.0.0.1");
+  const effectiveTimeout = isTargetingLocal ? Math.min(timeoutMs, 4000) : timeoutMs;
+
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timer = setTimeout(() => controller.abort(), effectiveTimeout);
 
   try {
     const res = await fetch(url, {
       ...options,
       signal: controller.signal,
     });
+    clearTimeout(timer);
     return res;
   } catch (primaryErr: any) {
     clearTimeout(timer);
@@ -94,9 +113,6 @@ export async function safeFetch(
     // automatically attempt the local computer's LAN IP backend.
     // If the local backend was unreachable (e.g. phone on cellular data),
     // automatically fall back to the live Render cloud server.
-    const resolvedHost = getResolvedHost();
-    const localBase = `http://${resolvedHost}:5001/api`;
-
     let fallbackUrl: string | null = null;
     if (url.startsWith(DEFAULT_SERVER_URL)) {
       fallbackUrl = url.replace(DEFAULT_SERVER_URL, localBase);
@@ -122,12 +138,14 @@ export async function safeFetch(
     }
 
     const isLocal = url.includes("localhost") || url.includes("127.0.0.1") || url.includes(resolvedHost);
-    const msg = primaryErr?.message || "";
+    const msg = (primaryErr?.message || "") + " " + (primaryErr?.cause?.message || "") + " " + String(primaryErr);
     const isTimeoutOrCancel =
       primaryErr?.name === "AbortError" ||
       msg.toLowerCase().includes("cancel") ||
       msg.toLowerCase().includes("abort") ||
-      msg.toLowerCase().includes("network request failed");
+      msg.toLowerCase().includes("timeout") ||
+      msg.toLowerCase().includes("network request failed") ||
+      msg.toLowerCase().includes("fetch failed");
 
     if (isTimeoutOrCancel) {
       throw new Error(

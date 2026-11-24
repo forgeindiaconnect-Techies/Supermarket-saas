@@ -20,6 +20,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useCart, OrderRecord } from "../context/CartContext";
 import { API_URL, safeFetch } from "../constants/api";
+import CustomerBottomNav from "../components/CustomerBottomNav";
 
 const { width } = Dimensions.get("window");
 
@@ -45,7 +46,7 @@ interface DeliveryPartner {
 export default function OrderTrackingScreen() {
   const router = useRouter();
   const { orderId } = useLocalSearchParams<{ orderId?: string }>();
-  const { recentOrders, selectedSupermarket, customerUser } = useCart();
+  const { recentOrders, selectedSupermarket, customerUser, updateRecentOrder } = useCart();
 
   const [selectedActiveOrderId, setSelectedActiveOrderId] = useState<string>(orderId || "");
   const [order, setOrder] = useState<OrderRecord | null>(null);
@@ -90,77 +91,216 @@ export default function OrderTrackingScreen() {
     ).start();
   }, [pulseAnim]);
 
-  // Compute 6 Amazon-Style Tracking Stages locally or from API
+  // Compute Real-Time Tracking Stages (Both Store Pickup & Doorstep Delivery)
   const computeStages = useCallback((ord: OrderRecord): {
     stages: TrackingStage[];
     partner: DeliveryPartner | null;
     estimatedTime: string;
     estimatedDate: string;
   } => {
+    const oType = String(ord.orderType || "").toUpperCase();
+    const fChoice = String(ord.fulfillmentChoice || "").toUpperCase();
+    const hasPickup = Boolean(ord.pickupStatus && String(ord.pickupStatus).trim() !== "");
+    const isPickup = oType.includes("PICKUP") || fChoice === "STORE_COLLECTION" || hasPickup;
+
+    if (isPickup) {
+      const pStatus = String(ord.pickupStatus || "Pending").toLowerCase().trim();
+
+      // STRICT LIFECYCLE: Pickup is ONLY completed when counter collection is confirmed by staff or customer.
+      // NEVER automatically mark completed on payment or order placement!
+      const isPickupCompleted =
+        pStatus === "completed" ||
+        Boolean((ord as any).customerPickupConfirmed) ||
+        Boolean((ord as any).customerPickupCompletedAt);
+      const isPickupReady = (pStatus === "readyforpickup" || pStatus === "ready") && !isPickupCompleted;
+      const isPickupPreparing = pStatus === "preparing" && !isPickupReady && !isPickupCompleted;
+
+      // Stage 1: Order Placed & Confirmed
+      const s1Completed = true;
+      const s1Active = !isPickupPreparing && !isPickupReady && !isPickupCompleted;
+
+      // Stage 2: Preparing at Store
+      const s2Completed = isPickupReady || isPickupCompleted;
+      const s2Active = isPickupPreparing;
+
+      // Stage 3: Ready for Pickup
+      const s3Completed = isPickupCompleted;
+      const s3Active = isPickupReady;
+
+      // Stage 4: Order Completed & Collected
+      const s4Completed = isPickupCompleted;
+      const s4Active = false;
+
+      const timeline: TrackingStage[] = [
+        {
+          step: 1,
+          id: "ORDER_CONFIRMED",
+          title: "Order Placed & Confirmed",
+          description: "Your store pickup order has been placed and received by the supermarket.",
+          isCompleted: s1Completed,
+          isActive: s1Active,
+          isPending: false,
+          timestamp: ord.orderConfirmedAt || ord.createdAt,
+        },
+        {
+          step: 2,
+          id: "PREPARING",
+          title: "Preparing at Store",
+          description: "Supermarket store staff is packing and inspecting your items fresh from the shelves.",
+          isCompleted: s2Completed,
+          isActive: s2Active,
+          isPending: !s2Completed && !s2Active,
+          timestamp: (s2Completed || s2Active) ? ((ord as any).preparingAt || undefined) : undefined,
+        },
+        {
+          step: 3,
+          id: "READY_FOR_PICKUP",
+          title: "Ready for Pickup",
+          description: (ord as any).estimatedReadyTime
+            ? `Your items are packaged! Please collect at the store pickup counter (Scheduled: ${(ord as any).estimatedReadyTime}).`
+            : "Your items are packaged and ready for collection at the store pickup counter.",
+          isCompleted: s3Completed,
+          isActive: s3Active,
+          isPending: !s3Completed && !s3Active,
+          timestamp: (s3Completed || s3Active) ? ((ord as any).pickupReadyAt || undefined) : undefined,
+        },
+        {
+          step: 4,
+          id: "PICKUP_COMPLETED",
+          title: "Order Completed & Collected",
+          description: "Items verified and successfully collected by customer at the supermarket counter. Thank you!",
+          isCompleted: s4Completed,
+          isActive: false,
+          isPending: !s4Completed,
+          timestamp: s4Completed ? ((ord as any).customerPickupCompletedAt || undefined) : undefined,
+        },
+      ];
+
+      return {
+        stages: timeline,
+        partner: null,
+        estimatedTime: (ord as any).estimatedReadyTime || ord.pickupTimeSlot || "Today",
+        estimatedDate: (ord as any).estimatedReadyDate || ord.pickupDate || "Today",
+      };
+    }
+
+    // Doorstep Delivery
     const rawStatus = (ord.deliveryStatus || "New").toLowerCase().trim();
+    const payStatus = String(ord.paymentStatus || "").toLowerCase().trim();
+    const isFailed = rawStatus.includes("fail") || rawStatus.includes("cancel");
+
+    // CRITICAL: isDelivered is strictly when delivery is completed by delivery partner, NEVER automatically on payment!
+    const isDelivered =
+      rawStatus === "delivered" ||
+      (rawStatus === "completed" && Boolean((ord as any).deliveryCompletedAt)) ||
+      Boolean((ord as any).deliveryCompletedAt);
 
     // Stage 1: Order Confirmed
     const s1Completed = true;
-    const s1Active = rawStatus === "new" || rawStatus === "pending" || rawStatus === "order confirmed";
+    const s1Active =
+      (rawStatus === "new" || rawStatus === "pending" || rawStatus === "order confirmed" || rawStatus === "confirmed") &&
+      !isDelivered &&
+      !isFailed;
     const s1Time = ord.orderConfirmedAt || ord.createdAt;
 
     // Stage 2: Preparing Your Order
-    const isPrepOrPast = [
-      "preparing",
-      "assigned",
-      "accepted",
-      "products collected",
-      "orderpickedup",
-      "collected",
-      "out for delivery",
-      "outfordelivery",
-      "delivered",
-    ].includes(rawStatus);
-    const s2Completed = isPrepOrPast && rawStatus !== "preparing";
-    const s2Active = rawStatus === "preparing";
-    const s2Time = ord.preparingAt || (isPrepOrPast ? (ord as any).updatedAt : undefined);
+    const isPrepOrPast =
+      isDelivered ||
+      [
+        "preparing",
+        "assigned",
+        "accepted",
+        "delivery partner assigned",
+        "products collected",
+        "productscollected",
+        "orderpickedup",
+        "collected",
+        "picked up",
+        "out for delivery",
+        "outfordelivery",
+        "delivered",
+      ].includes(rawStatus);
+    const s2Active = rawStatus === "preparing" && !isDelivered && !isFailed;
+    const s2Completed =
+      (isPrepOrPast &&
+        !s2Active &&
+        rawStatus !== "order confirmed" &&
+        rawStatus !== "confirmed" &&
+        rawStatus !== "new" &&
+        rawStatus !== "pending") ||
+      isDelivered;
+    const s2Time = s2Completed ? (ord.preparingAt || undefined) : undefined;
 
     // Stage 3: Delivery Partner Assigned
-    const isAssignedOrPast = [
-      "assigned",
-      "accepted",
-      "products collected",
-      "orderpickedup",
-      "collected",
-      "out for delivery",
-      "outfordelivery",
-      "delivered",
-    ].includes(rawStatus);
+    const isAssignedOrPast =
+      isDelivered ||
+      [
+        "assigned",
+        "accepted",
+        "delivery partner assigned",
+        "products collected",
+        "productscollected",
+        "orderpickedup",
+        "collected",
+        "picked up",
+        "out for delivery",
+        "outfordelivery",
+        "delivered",
+      ].includes(rawStatus);
+    const s3Active =
+      (rawStatus === "assigned" || rawStatus === "accepted" || rawStatus === "delivery partner assigned") &&
+      !isDelivered &&
+      !isFailed;
     const s3Completed =
-      isAssignedOrPast &&
-      rawStatus !== "assigned" &&
-      rawStatus !== "accepted";
-    const s3Active = rawStatus === "assigned" || rawStatus === "accepted";
-    const s3Time = ord.assignedAt || ord.deliveryAcceptedAt || undefined;
+      (isAssignedOrPast &&
+        !s3Active &&
+        !s2Active &&
+        rawStatus !== "order confirmed" &&
+        rawStatus !== "confirmed" &&
+        rawStatus !== "new" &&
+        rawStatus !== "pending") ||
+      isDelivered;
+    const s3Time = s3Completed ? (ord.assignedAt || ord.deliveryAcceptedAt || undefined) : undefined;
 
     // Stage 4: Products Collected
-    const isCollectedOrPast = [
-      "products collected",
-      "orderpickedup",
-      "collected",
-      "out for delivery",
-      "outfordelivery",
-      "delivered",
-    ].includes(rawStatus);
-    const s4Completed = isCollectedOrPast && !["products collected", "orderpickedup", "collected"].includes(rawStatus);
-    const s4Active = ["products collected", "orderpickedup", "collected"].includes(rawStatus);
-    const s4Time = (ord as any).productsCollectedAt || ord.pickedUpAt || undefined;
+    const isCollectedOrPast =
+      isDelivered ||
+      [
+        "products collected",
+        "productscollected",
+        "orderpickedup",
+        "collected",
+        "picked up",
+        "out for delivery",
+        "outfordelivery",
+        "delivered",
+      ].includes(rawStatus);
+    const s4Active =
+      ["products collected", "productscollected", "orderpickedup", "collected", "picked up"].includes(rawStatus) &&
+      !isDelivered &&
+      !isFailed;
+    const s4Completed =
+      (isCollectedOrPast &&
+        !s4Active &&
+        !s3Active &&
+        !s2Active &&
+        rawStatus !== "order confirmed" &&
+        rawStatus !== "confirmed" &&
+        rawStatus !== "new" &&
+        rawStatus !== "pending") ||
+      isDelivered;
+    const s4Time = s4Completed ? ((ord as any).productsCollectedAt || ord.pickedUpAt || undefined) : undefined;
 
     // Stage 5: Out for Delivery
-    const isOutOrDelivered = ["out for delivery", "outfordelivery", "delivered"].includes(rawStatus);
-    const s5Completed = rawStatus === "delivered";
-    const s5Active = rawStatus === "out for delivery" || rawStatus === "outfordelivery";
-    const s5Time = ord.deliveryOutAt || undefined;
+    const isOutOrDelivered = isDelivered || ["out for delivery", "outfordelivery", "delivered"].includes(rawStatus);
+    const s5Active = (rawStatus === "out for delivery" || rawStatus === "outfordelivery") && !isDelivered && !isFailed;
+    const s5Completed = isDelivered;
+    const s5Time = s5Completed ? (ord.deliveryOutAt || undefined) : undefined;
 
     // Stage 6: Delivered
-    const s6Completed = rawStatus === "delivered";
+    const s6Completed = isDelivered;
     const s6Active = false;
-    const s6Time = ord.deliveryCompletedAt || (ord as any).completedAt || undefined;
+    const s6Time = s6Completed ? (ord.deliveryCompletedAt || undefined) : undefined;
 
     const timeline: TrackingStage[] = [
       {
@@ -176,11 +316,11 @@ export default function OrderTrackingScreen() {
       {
         step: 2,
         id: "PREPARING",
-        title: "Preparing Your Order",
-        description: "The store is picking, packing, and quality-checking your groceries.",
+        title: "Preparing",
+        description: "Supermarket store staff is packing and inspecting your items fresh from the shelves.",
         isCompleted: s2Completed,
         isActive: s2Active,
-        isPending: !isPrepOrPast,
+        isPending: !s2Completed && !s2Active && !isFailed,
         timestamp: s2Time,
       },
       {
@@ -192,7 +332,7 @@ export default function OrderTrackingScreen() {
           : "A dedicated delivery partner will be assigned shortly.",
         isCompleted: s3Completed,
         isActive: s3Active,
-        isPending: !isAssignedOrPast,
+        isPending: !s3Completed && !s3Active && !isFailed,
         timestamp: s3Time,
       },
       {
@@ -204,7 +344,7 @@ export default function OrderTrackingScreen() {
           : "Delivery partner has collected packaged items from the supermarket.",
         isCompleted: s4Completed,
         isActive: s4Active,
-        isPending: !isCollectedOrPast,
+        isPending: !s4Completed && !s4Active && !isFailed,
         timestamp: s4Time,
       },
       {
@@ -214,17 +354,17 @@ export default function OrderTrackingScreen() {
         description: "Your delivery partner is on route to your delivery address.",
         isCompleted: s5Completed,
         isActive: s5Active,
-        isPending: !isOutOrDelivered,
+        isPending: !s5Completed && !s5Active && !isFailed,
         timestamp: s5Time,
       },
       {
         step: 6,
         id: "DELIVERED",
         title: "Delivered",
-        description: "Package safely delivered to your doorstep. Enjoy your items!",
+        description: "Package safely delivered to your doorstep. Thank you for shopping with us!",
         isCompleted: s6Completed,
         isActive: s6Active,
-        isPending: !s6Completed,
+        isPending: !s6Completed && !isFailed,
         timestamp: s6Time,
       },
     ];
@@ -232,7 +372,7 @@ export default function OrderTrackingScreen() {
     // Delivery Partner Details (Strictly displayed when assigned)
     let partner: DeliveryPartner | null = null;
     const hasAssignedStaff = Boolean(ord.assignedStaff || ord.assignedStaffName);
-    if (isAssignedOrPast && hasAssignedStaff) {
+    if ((s3Completed || s3Active || isDelivered) && hasAssignedStaff) {
       const staffObj = typeof ord.assignedStaff === "object" ? ord.assignedStaff : null;
       partner = {
         _id: staffObj?._id || (typeof ord.assignedStaff === "string" ? ord.assignedStaff : undefined),
@@ -240,7 +380,7 @@ export default function OrderTrackingScreen() {
         phone: ord.assignedStaffPhone || staffObj?.phone || "",
         photoUrl: staffObj?.photoUrl || "",
         status:
-          rawStatus === "delivered"
+          isDelivered
             ? "Delivered"
             : rawStatus === "out for delivery" || rawStatus === "outfordelivery"
             ? "Out for Delivery"
@@ -276,27 +416,23 @@ export default function OrderTrackingScreen() {
     if (!isSilent) setLoading(true);
 
     try {
-      // If no explicit orderId is specified, attempt to locate the customer's active delivery order
+      // If no explicit orderId is specified, locate customer's active order (Pickup or Delivery)
       if (!targetId) {
-        const isDeliveryOrd = (o: OrderRecord) => {
+        const isOnlineOrd = (o: OrderRecord) => {
+          const mode = (o.purchaseMode || "").toUpperCase();
           const type = (o.orderType || "").toUpperCase();
-          const choice = (o.fulfillmentChoice || "").toUpperCase();
-          return (
-            type === "DELIVERY" ||
-            type === "ONLINE_DELIVERY" ||
-            type === "SELF_PICKUP_DOORSTEP" ||
-            choice === "DOORSTEP_DELIVERY" ||
-            Boolean(o.deliveryStatus)
-          );
+          return mode === "ONLINE" || type !== "OFFLINE" || Boolean(o.deliveryStatus) || Boolean(o.pickupStatus);
+        };
+
+        const isStillActive = (o: any) => {
+          const dStat = String(o.deliveryStatus || "").toLowerCase();
+          const pStat = String(o.pickupStatus || "").toLowerCase();
+          return dStat !== "delivered" && pStat !== "completed" && pStat !== "pickup_completed";
         };
 
         const activeInCache =
-          recentOrders.find(
-            (o) =>
-              isDeliveryOrd(o) &&
-              o.deliveryStatus !== "Delivered" &&
-              o.deliveryStatus !== "Failed Delivery"
-          ) || recentOrders.find(isDeliveryOrd);
+          recentOrders.find((o) => isOnlineOrd(o) && isStillActive(o)) ||
+          recentOrders.find(isOnlineOrd);
 
         if (activeInCache) {
           targetId = activeInCache._id || activeInCache.orderNumber;
@@ -304,18 +440,18 @@ export default function OrderTrackingScreen() {
         } else if (API_URL && customerUser?.phone) {
           // Query backend for this customer's orders
           const phoneParam = encodeURIComponent(customerUser.phone);
-          const res = await safeFetch(`${API_URL}/orders?phone=${phoneParam}`, {}, 12000);
+          const reqHeaders: Record<string, string> = {};
+          if (customerUser?.token) reqHeaders["Authorization"] = `Bearer ${customerUser.token}`;
+          const res = await safeFetch(`${API_URL}/orders?phone=${phoneParam}`, { headers: reqHeaders }, 12000);
           const contentType = res.headers?.get("content-type") || "";
           if (contentType.includes("application/json")) {
             const ordData = await res.json();
             if (ordData.success && Array.isArray(ordData.orders)) {
-              const customerDeliveries = ordData.orders.filter(isDeliveryOrd);
-              setCustomerOrdersList(customerDeliveries);
+              const customerOnlineOrders = ordData.orders.filter(isOnlineOrd);
+              setCustomerOrdersList(customerOnlineOrders);
               const activeOrder =
-                customerDeliveries.find(
-                  (o: any) =>
-                    o.deliveryStatus !== "Delivered" && o.deliveryStatus !== "Failed Delivery"
-                ) || customerDeliveries[0];
+                customerOnlineOrders.find((o: any) => isStillActive(o)) ||
+                customerOnlineOrders[0];
               if (activeOrder) {
                 targetId = activeOrder._id || activeOrder.orderNumber;
                 if (targetId) setSelectedActiveOrderId(String(targetId));
@@ -332,34 +468,87 @@ export default function OrderTrackingScreen() {
       }
 
       if (API_URL) {
-        const res = await safeFetch(`${API_URL}/orders/${targetId}/tracking`, {}, 12000);
-        const contentType = res.headers?.get("content-type") || "";
-        if (contentType.includes("application/json")) {
-          const data = await res.json();
+        const reqHeaders: Record<string, string> = {};
+        if (customerUser?.token) reqHeaders["Authorization"] = `Bearer ${customerUser.token}`;
+        const cleanTargetId = encodeURIComponent(String(targetId).replace(/^#/, "").trim());
 
-          if (data.success && data.order) {
-            const fetchedOrder: any = data.order;
-            setOrder(fetchedOrder);
+        let data: any = null;
 
-            if (fetchedOrder?.review?.rating) {
-              setExistingReview(fetchedOrder.review);
+        // 1. Primary: Fetch from dedicated tracking endpoint
+        try {
+          const res = await safeFetch(`${API_URL}/orders/${cleanTargetId}/tracking`, { headers: reqHeaders }, 8000);
+          const contentType = res.headers?.get("content-type") || "";
+          if (contentType.includes("application/json")) {
+            const jsonRes = await res.json();
+            if (jsonRes?.success && jsonRes?.order) {
+              data = jsonRes;
             }
-
-            if (Array.isArray(data.stages) && data.stages.length >= 6) {
-              setStages(data.stages);
-              setDeliveryPartner(data.deliveryPartner || null);
-              setEtaTime(data.estimatedDeliveryTime || "");
-              setEtaDate(data.estimatedDeliveryDate || "");
-            } else {
-              const calculated = computeStages(fetchedOrder);
-              setStages(calculated.stages);
-              setDeliveryPartner(calculated.partner);
-              setEtaTime(calculated.estimatedTime);
-              setEtaDate(calculated.estimatedDate);
-            }
-            setLastUpdated(new Date());
-            return;
           }
+        } catch (_) {}
+
+        // 2. Fallback: Fetch directly from order details endpoint
+        if (!data || !data.order) {
+          try {
+            const resFallback = await safeFetch(`${API_URL}/orders/${cleanTargetId}`, { headers: reqHeaders }, 8000);
+            const ct = resFallback.headers?.get("content-type") || "";
+            if (ct.includes("application/json")) {
+              const jsonFallback = await resFallback.json();
+              if (jsonFallback?.success && jsonFallback?.order) {
+                data = {
+                  success: true,
+                  order: jsonFallback.order,
+                  stages: jsonFallback.tracking?.stages,
+                  deliveryPartner: jsonFallback.tracking?.deliveryPartner,
+                  isPickup: jsonFallback.tracking?.isPickup,
+                  fulfillmentType: jsonFallback.tracking?.fulfillmentType,
+                  fulfillmentBadge: jsonFallback.tracking?.fulfillmentBadge,
+                  statusTitle: jsonFallback.tracking?.statusTitle,
+                  isCompleted: jsonFallback.tracking?.isCompleted,
+                  estimatedDeliveryTime: jsonFallback.tracking?.estimatedDeliveryTime,
+                  estimatedDeliveryDate: jsonFallback.tracking?.estimatedDeliveryDate,
+                };
+              }
+            }
+          } catch (_) {}
+        }
+
+        if (data && data.order) {
+          const ord = data.order;
+          const oType = String(ord.orderType || "").toUpperCase();
+          const fChoice = String(ord.fulfillmentChoice || "").toUpperCase();
+          const hasPickup = Boolean(ord.pickupStatus && String(ord.pickupStatus).trim() !== "");
+          const isPickupResolved =
+            data.isPickup !== undefined
+              ? data.isPickup
+              : (oType.includes("PICKUP") || fChoice === "STORE_COLLECTION" || hasPickup);
+
+          const fetchedOrder: any = {
+            ...ord,
+            isPickup: isPickupResolved,
+            fulfillmentType: data.fulfillmentType || ord.fulfillmentType || (isPickupResolved ? "SELF_PICKUP" : "DELIVERY"),
+            fulfillmentBadge: data.fulfillmentBadge || (isPickupResolved ? "Store Pickup" : "Doorstep Delivery"),
+          };
+          setOrder(fetchedOrder);
+          updateRecentOrder(fetchedOrder); // Live sync to app CartContext!
+
+          if (fetchedOrder?.review?.rating) {
+            setExistingReview(fetchedOrder.review);
+          }
+
+          if (Array.isArray(data.stages) && data.stages.length >= 4) {
+            setStages(data.stages);
+            setDeliveryPartner(data.deliveryPartner || null);
+            setEtaTime(data.estimatedDeliveryTime || "");
+            setEtaDate(data.estimatedDeliveryDate || "");
+          } else {
+            const calculated = computeStages(fetchedOrder);
+            setStages(calculated.stages);
+            setDeliveryPartner(calculated.partner);
+            setEtaTime(calculated.estimatedTime);
+            setEtaDate(calculated.estimatedDate);
+          }
+          setLastUpdated(new Date());
+          return;
         }
       }
 
@@ -383,7 +572,6 @@ export default function OrderTrackingScreen() {
         msg.toLowerCase().includes("cancel") ||
         msg.toLowerCase().includes("abort");
 
-      // Silently fall back to cache when request was canceled or timed out
       if (!isCanceled) {
         console.log("Order tracking sync notice:", msg);
       }
@@ -406,18 +594,18 @@ export default function OrderTrackingScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [orderId, selectedActiveOrderId, recentOrders, customerUser, computeStages]);
+  }, [orderId, selectedActiveOrderId, recentOrders, customerUser, computeStages, updateRecentOrder]);
 
   // Initial load
   useEffect(() => {
     fetchOrderTracking(false);
   }, [fetchOrderTracking]);
 
-  // Real-Time Auto-Polling: Refreshes every 4s for live updates without overlapping requests
+  // Real-Time Auto-Polling: Refreshes every 3s for live updates without overlapping requests
   useEffect(() => {
     const timer = setInterval(() => {
       fetchOrderTracking(true);
-    }, 4000);
+    }, 3000);
 
     return () => clearInterval(timer);
   }, [fetchOrderTracking]);
@@ -525,19 +713,72 @@ export default function OrderTrackingScreen() {
     }
   };
 
+  const isPickupOrder = () => {
+    if (!order) return false;
+    if ((order as any)?.isPickup === true || (order as any)?.fulfillmentType === "SELF_PICKUP") return true;
+    const oType = String((order as any)?.orderType || (order as any)?.fulfillmentType || "").toUpperCase();
+    const fChoice = String((order as any)?.fulfillmentChoice || "").toUpperCase();
+    const hasPickupStatus = Boolean((order as any)?.pickupStatus && String((order as any)?.pickupStatus).trim() !== "");
+    return (
+      oType.includes("PICKUP") ||
+      fChoice === "STORE_COLLECTION" ||
+      hasPickupStatus ||
+      Boolean((order as any)?.pickupOtp) ||
+      Boolean((order as any)?.scheduledPickupTime)
+    );
+  };
+
+  const isOrderCompleted = () => {
+    if (!order) return false;
+    if (isPickupOrder()) {
+      const pickSt = String((order as any)?.pickupStatus || "").toLowerCase().trim();
+      return (
+        pickSt === "completed" ||
+        (order as any)?.customerPickupConfirmed === true ||
+        Boolean((order as any)?.customerPickupCompletedAt)
+      );
+    }
+    const delSt = String(order.deliveryStatus || "").toLowerCase().trim();
+    return (
+      delSt === "delivered" ||
+      Boolean((order as any)?.deliveryCompletedAt) ||
+      (delSt === "completed" && Boolean((order as any)?.deliveryCompletedAt))
+    );
+  };
+
   // Calculate Progress percentage for progress bar
   const getProgressPercentage = () => {
-    if (!stages || stages.length === 0) return 15;
-    const completedCount = stages.filter((s) => s.isCompleted).length;
-    const activeCount = stages.filter((s) => s.isActive).length;
-    if (completedCount >= 6) return 100;
-    return Math.min(95, Math.max(16, Math.round((completedCount / 6) * 100) + (activeCount ? 8 : 0)));
+    if (!order) return 15;
+    if (isOrderCompleted()) return 100;
+    if (isPickupOrder()) {
+      const pickSt = String((order as any)?.pickupStatus || "").toLowerCase().trim();
+      if (pickSt === "readyforpickup" || pickSt === "ready") return 75;
+      if (pickSt === "preparing") return 50;
+      return 25; // Pending / Order Confirmed
+    }
+    // Doorstep Delivery
+    const dSt = String(order.deliveryStatus || "New").toLowerCase().trim();
+    if (dSt === "delivered") return 100;
+    if (dSt === "out for delivery" || dSt === "outfordelivery") return 80;
+    if (["orderpickedup", "products collected", "productscollected", "collected", "picked up"].includes(dSt)) return 65;
+    if (["assigned", "accepted", "delivery partner assigned"].includes(dSt)) return 50;
+    if (dSt === "preparing") return 35;
+    return 20; // Order Confirmed
   };
 
   const currentStatusTitle = () => {
     if (!order) return "Processing Order";
-    const st = (order.deliveryStatus || "New").toLowerCase();
-    if (st === "delivered") return "Delivered to Your Doorstep";
+    if (isOrderCompleted()) {
+      return isPickupOrder() ? "Order Completed & Collected!" : "Delivered to Your Doorstep";
+    }
+    if (isPickupOrder()) {
+      const pickSt = String((order as any)?.pickupStatus || "").toLowerCase().trim();
+      if (pickSt === "readyforpickup" || pickSt === "ready") return "Ready for Pickup at Store Counter";
+      if (pickSt === "preparing") return "Preparing at Store";
+      return "Order Placed & Confirmed";
+    }
+    const st = (order.deliveryStatus || "New").toLowerCase().trim();
+    if (st === "delivered" || st === "completed") return "Delivered to Your Doorstep";
     if (st === "out for delivery" || st === "outfordelivery") return "Out for Delivery";
     if (st === "products collected" || st === "orderpickedup" || st === "collected") return "Products Collected";
     if (st === "assigned" || st === "accepted") return "Delivery Partner Assigned";
@@ -630,9 +871,11 @@ export default function OrderTrackingScreen() {
             {/* ========================================================= */}
             <View style={styles.etaHeroCard}>
               <View style={styles.etaTopRow}>
-                <View style={styles.etaBadge}>
-                  <Text style={styles.etaBadgeEmoji}>🚚</Text>
-                  <Text style={styles.etaBadgeText}>Doorstep Delivery</Text>
+                <View style={[styles.etaBadge, isPickupOrder() && { backgroundColor: "#F0FDF4", borderColor: "#86EFAC" }]}>
+                  <Text style={styles.etaBadgeEmoji}>{isPickupOrder() ? "🏪" : "🚚"}</Text>
+                  <Text style={[styles.etaBadgeText, isPickupOrder() && { color: "#166534" }]}>
+                    {isPickupOrder() ? "Store Pickup" : "Doorstep Delivery"}
+                  </Text>
                 </View>
 
                 <Text style={styles.orderNumberPill}>
@@ -644,11 +887,24 @@ export default function OrderTrackingScreen() {
                 {currentStatusTitle()}
               </Text>
 
-              {order.deliveryStatus === "Delivered" ? (
+              {isOrderCompleted() ? (
                 <View style={styles.deliveredHighlight}>
                   <Text style={styles.deliveredHighlightEmoji}>✅</Text>
                   <Text style={styles.deliveredHighlightText}>
-                    Successfully Delivered on {formatTimestamp(order.deliveryCompletedAt || order.createdAt)}
+                    {isPickupOrder()
+                      ? `Successfully Collected & Completed on ${formatTimestamp((order as any).customerPickupCompletedAt || (order as any).completedAt || (order as any).updatedAt || order.createdAt)}`
+                      : `Successfully Delivered on ${formatTimestamp(order.deliveryCompletedAt || (order as any).completedAt || (order as any).updatedAt || order.createdAt)}`}
+                  </Text>
+                </View>
+              ) : isPickupOrder() ? (
+                <View style={styles.etaTimeBox}>
+                  <Text style={styles.etaLabel}>Store Pickup Status:</Text>
+                  <Text style={styles.etaTimeVal}>
+                    {(order as any).estimatedReadyTime
+                      ? `Ready at ${(order as any).estimatedReadyTime} (${(order as any).estimatedReadyDate || "Today"})`
+                      : String((order as any)?.pickupStatus || "").toLowerCase() === "preparing"
+                      ? "Store staff is packing and inspecting your items"
+                      : "Awaiting store staff packing & preparation"}
                   </Text>
                 </View>
               ) : (
@@ -668,7 +924,7 @@ export default function OrderTrackingScreen() {
                     {
                       width: `${getProgressPercentage()}%`,
                       backgroundColor:
-                        order.deliveryStatus === "Delivered" ? "#16A34A" : "#3B0764",
+                        isOrderCompleted() ? "#16A34A" : "#3B0764",
                     },
                   ]}
                 />
@@ -676,9 +932,9 @@ export default function OrderTrackingScreen() {
 
               <View style={styles.etaFooterRow}>
                 <Text style={styles.etaFooterHint}>
-                  {order.deliveryStatus === "Delivered"
-                    ? "Order completed and verified."
-                    : "Real-time updates synced with store delivery fleet"}
+                  {isOrderCompleted()
+                    ? (isPickupOrder() ? "Store pickup verified and completed." : "Order completed and verified.")
+                    : (isPickupOrder() ? "Real-time updates synced with store pickup desk" : "Real-time updates synced with store delivery fleet")}
                 </Text>
                 <Text style={styles.etaSyncTime}>
                   Updated {lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
@@ -748,12 +1004,16 @@ export default function OrderTrackingScreen() {
             ) : null}
 
             {/* ========================================================= */}
-            {/* 3. AMAZON-STYLE 5-STAGE VERTICAL TIMELINE                 */}
+            {/* 3. MULTI-STAGE VERTICAL TIMELINE                          */}
             {/* ========================================================= */}
             <View style={styles.timelineCard}>
-              <Text style={styles.sectionTitle}>Delivery Progress</Text>
+              <Text style={styles.sectionTitle}>
+                {isPickupOrder() ? "Store Pickup Progress" : "Delivery Progress"}
+              </Text>
               <Text style={styles.sectionSubtitle}>
-                Step-by-step fulfillment timeline for your order
+                {isPickupOrder()
+                  ? "Step-by-step counter pickup fulfillment timeline"
+                  : "Step-by-step fulfillment timeline for your order"}
               </Text>
 
               <View style={styles.timelineList}>
@@ -827,7 +1087,7 @@ export default function OrderTrackingScreen() {
                           {stage.description}
                         </Text>
 
-                        {stage.timestamp ? (
+                        {stage.isCompleted && stage.timestamp ? (
                           <Text style={styles.stageTimestamp}>
                             ⏱ {formatTimestamp(stage.timestamp)}
                           </Text>
@@ -841,34 +1101,98 @@ export default function OrderTrackingScreen() {
               </View>
             </View>
 
+            {/* Store Collection Notification Banner & Action for Customer */}
+            {isPickupOrder() && (order as any).pickupStatus === "ReadyForPickup" && !(order as any).customerPickupConfirmed && (
+              <View style={[styles.detailCard, { backgroundColor: "#F0FDF4", borderColor: "#86EFAC", borderWidth: 1.5 }]}>
+                <Text style={{ fontSize: 16, fontWeight: "700", color: "#166534", marginBottom: 6 }}>
+                  🔔 Ready for Store Collection!
+                </Text>
+                <Text style={{ fontSize: 13, color: "#15803D", lineHeight: 18, marginBottom: 12 }}>
+                  Your items are packaged and waiting at the customer pickup counter. Once you collect your products, tap below to confirm.
+                </Text>
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: "#16A34A",
+                    paddingVertical: 12,
+                    paddingHorizontal: 16,
+                    borderRadius: 10,
+                    alignItems: "center",
+                  }}
+                  onPress={async () => {
+                    try {
+                      const res = await safeFetch(`${API_URL}/orders/${order._id || order.orderNumber}/customer-complete-pickup`, {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                      });
+                      const d = await res.json();
+                      if (d?.success) {
+                        fetchOrderTracking(true);
+                      }
+                    } catch (_) {}
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Text style={{ color: "#FFFFFF", fontWeight: "700", fontSize: 14 }}>
+                    ✓ I Have Collected My Order
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             {/* ========================================================= */}
-            {/* 4. DELIVERY ADDRESS CARD                                  */}
+            {/* 4. ADDRESS / STORE PICKUP LOCATION CARD                   */}
             {/* ========================================================= */}
             <View style={styles.detailCard}>
               <View style={styles.detailCardHeader}>
-                <Text style={styles.detailHeaderIcon}>📍</Text>
-                <Text style={styles.detailCardTitle}>Delivery Address</Text>
+                <Text style={styles.detailHeaderIcon}>{isPickupOrder() ? "🏪" : "📍"}</Text>
+                <Text style={styles.detailCardTitle}>
+                  {isPickupOrder() ? "Store Pickup Location" : "Delivery Address"}
+                </Text>
               </View>
 
-              <Text style={styles.recipientName}>
-                {order.deliveryCustomerName || order.customer?.name || "Customer"}
-              </Text>
-              {order.deliveryPhone || order.customer?.phone ? (
-                <Text style={styles.recipientPhone}>
-                  Phone: {order.deliveryPhone || order.customer?.phone}
-                </Text>
-              ) : null}
+              {isPickupOrder() ? (
+                <>
+                  <Text style={styles.recipientName}>
+                    {order.supermarketName || selectedSupermarket?.name || "GrocerEase Supermarket"}
+                  </Text>
+                  <Text style={styles.recipientAddress}>
+                    {selectedSupermarket?.address || "Main Store Customer Service & Pickup Counter"}
+                  </Text>
+                  <View style={[styles.notesBox, { backgroundColor: "#F8FAFC", borderColor: "#E2E8F0" }]}>
+                    <Text style={styles.notesLabel}>Customer Details:</Text>
+                    <Text style={styles.notesText}>
+                      {order.deliveryCustomerName || order.customer?.name || "Customer"} • {order.deliveryPhone || order.customer?.phone || ""}
+                    </Text>
+                    {(order as any).pickupOtp ? (
+                      <Text style={{ marginTop: 4, fontWeight: "bold", color: "#15803D", fontSize: 14 }}>
+                        Pickup Verification OTP: {(order as any).pickupOtp}
+                      </Text>
+                    ) : null}
+                  </View>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.recipientName}>
+                    {order.deliveryCustomerName || order.customer?.name || "Customer"}
+                  </Text>
+                  {order.deliveryPhone || order.customer?.phone ? (
+                    <Text style={styles.recipientPhone}>
+                      Phone: {order.deliveryPhone || order.customer?.phone}
+                    </Text>
+                  ) : null}
 
-              <Text style={styles.recipientAddress}>
-                {order.deliveryAddress || order.customer?.address || "Address provided at checkout"}
-              </Text>
+                  <Text style={styles.recipientAddress}>
+                    {order.deliveryAddress || order.customer?.address || "Address provided at checkout"}
+                  </Text>
 
-              {order.deliveryNotes ? (
-                <View style={styles.notesBox}>
-                  <Text style={styles.notesLabel}>Delivery Instructions:</Text>
-                  <Text style={styles.notesText}>{order.deliveryNotes}</Text>
-                </View>
-              ) : null}
+                  {order.deliveryNotes ? (
+                    <View style={styles.notesBox}>
+                      <Text style={styles.notesLabel}>Delivery Instructions:</Text>
+                      <Text style={styles.notesText}>{order.deliveryNotes}</Text>
+                    </View>
+                  ) : null}
+                </>
+              )}
             </View>
 
             {/* ========================================================= */}
@@ -891,7 +1215,7 @@ export default function OrderTrackingScreen() {
                           source={
                             it.imageUrl
                               ? { uri: it.imageUrl }
-                              : require("@/assets/images/react-logo.png")
+                              : require("../../assets/images/icon.png")
                           }
                           style={styles.itemThumb}
                           resizeMode="contain"
@@ -940,7 +1264,9 @@ export default function OrderTrackingScreen() {
               ) : null}
 
               <View style={styles.priceRow}>
-                <Text style={styles.priceRowLabel}>Delivery Fee</Text>
+                <Text style={styles.priceRowLabel}>
+                  {isPickupOrder() ? "Pickup Counter Fee" : "Delivery Fee"}
+                </Text>
                 <Text style={[styles.priceRowVal, { color: "#16A34A" }]}>FREE</Text>
               </View>
 
@@ -957,16 +1283,20 @@ export default function OrderTrackingScreen() {
             </View>
 
             {/* ========================================================= */}
-            {/* 5.5 REVIEW & RATING (DELIVERED WORKFLOW)                  */}
+            {/* 5.5 REVIEW & RATING (DELIVERED / PICKUP WORKFLOW)          */}
             {/* ========================================================= */}
             <View style={styles.reviewCard}>
               <View style={styles.reviewHeader}>
                 <Text style={styles.reviewEmoji}>⭐</Text>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.reviewTitle}>Rate Your Delivery Experience</Text>
+                  <Text style={styles.reviewTitle}>
+                    {isPickupOrder() ? "Rate Your Store Pickup Experience" : "Rate Your Delivery Experience"}
+                  </Text>
                   <Text style={styles.reviewSubtitle}>
-                    {order.deliveryStatus === "Delivered"
-                      ? "Share feedback about your groceries and delivery service"
+                    {isOrderCompleted()
+                      ? "Share feedback about your packaged groceries and service"
+                      : isPickupOrder()
+                      ? "Review will be enabled once your order has been collected"
                       : "Review will be enabled once your order has been delivered"}
                   </Text>
                 </View>
@@ -1000,7 +1330,7 @@ export default function OrderTrackingScreen() {
                     </Text>
                   </View>
                 </View>
-              ) : order.deliveryStatus === "Delivered" ? (
+              ) : isOrderCompleted() ? (
                 <View style={styles.reviewFormBox}>
                   <Text style={styles.reviewRatingLabel}>Your Overall Rating:</Text>
                   <View style={styles.reviewInteractiveStarsRow}>
@@ -1025,7 +1355,7 @@ export default function OrderTrackingScreen() {
 
                   <TextInput
                     style={styles.reviewTextInput}
-                    placeholder="Write a brief review (e.g. fast delivery, fresh items, courteous delivery partner)..."
+                    placeholder="Write a brief review (e.g. quick packaging, fresh items, courteous service)..."
                     placeholderTextColor="#94A3B8"
                     value={reviewComment}
                     onChangeText={setReviewComment}
@@ -1053,7 +1383,7 @@ export default function OrderTrackingScreen() {
               ) : (
                 <View style={styles.reviewDisabledNotice}>
                   <Text style={styles.reviewDisabledText}>
-                    🔒 Reviews unlock once order status reaches Delivered.
+                    🔒 Reviews unlock once order status reaches Completed.
                   </Text>
                 </View>
               )}
@@ -1084,6 +1414,9 @@ export default function OrderTrackingScreen() {
           </>
         )}
       </ScrollView>
+
+      {/* Customer Bottom Navigation */}
+      <CustomerBottomNav activeTab="tracking" />
     </View>
   );
 }

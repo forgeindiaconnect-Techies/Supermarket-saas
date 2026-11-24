@@ -16,8 +16,6 @@ import { StatusBar } from "expo-status-bar";
 import { useCart, SupermarketInfo } from "../context/CartContext";
 import { API_URL, safeFetch } from "../constants/api";
 import CustomerBottomNav from "../components/CustomerBottomNav";
-import SupermarketSearchModal from "../components/SupermarketSearchModal";
-import ModeUnavailableModal from "../components/ModeUnavailableModal";
 
 const { width } = Dimensions.get("window");
 
@@ -42,53 +40,67 @@ export default function OnlineCatalogScreen() {
     updateQuantity,
     totalCount,
     totalAmount,
+    customerUser,
+    isAuthLoading,
   } = useCart();
 
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
 
-  const [searchModalVisible, setSearchModalVisible] = useState(false);
-  const [unavailableModal, setUnavailableModal] = useState({
-    visible: false,
-    storeName: "",
-  });
+  // Guard: Mandatory Registration & Authentication for Online Shopping
+  // Waits for session to finish loading before evaluating guard
+  useEffect(() => {
+    if (isAuthLoading) return;
+    if (!customerUser || !customerUser.token) {
+      router.replace({ pathname: "/auth", params: { tab: "register" } });
+    }
+  }, [isAuthLoading, customerUser]);
 
-  // Guard: If no supermarket is selected, open search modal immediately
+  // Permanently bind to the customer's registered supermarket
   useEffect(() => {
     setPurchaseMode("online");
-    if (!selectedSupermarket) {
-      setSearchModalVisible(true);
+    if (!selectedSupermarket && customerUser?.supermarketId) {
+      setSelectedSupermarket({
+        _id: String(customerUser.supermarketId),
+        name: customerUser.supermarketName || "Supermarket",
+        code: customerUser.supermarketCode || "",
+        onlineAvailable: true,
+        offlineAvailable: true,
+      });
     }
-  }, [selectedSupermarket]);
+  }, [selectedSupermarket, customerUser]);
 
   const fetchStoreProducts = useCallback(async () => {
-    if (!selectedSupermarket?._id) return;
+    const targetStoreId = customerUser?.supermarketId || selectedSupermarket?._id;
+    const targetStoreCode = customerUser?.supermarketCode || selectedSupermarket?.code;
+    if (!targetStoreId) return;
 
     try {
       setLoading(true);
       if (!API_URL) throw new Error("API URL not configured");
 
       const params = new URLSearchParams();
-      params.append("supermarketId", selectedSupermarket._id);
-      if (selectedSupermarket.code) {
-        params.append("supermarketCode", selectedSupermarket.code);
+      params.append("supermarketId", String(targetStoreId));
+      if (targetStoreCode) {
+        params.append("supermarketCode", String(targetStoreCode));
       }
       if (selectedCategory !== "All") {
         params.append("category", selectedCategory);
       }
-      if (search.trim()) {
-        params.append("search", search.trim());
-      }
       params.append("_t", Date.now().toString());
 
+      const reqHeaders: Record<string, string> = {
+        "x-supermarket-id": String(targetStoreId),
+        "x-supermarket-code": String(targetStoreCode || ""),
+      };
+      if (customerUser?.token) {
+        reqHeaders["Authorization"] = `Bearer ${customerUser.token}`;
+      }
+
       const res = await safeFetch(`${API_URL}/products?${params.toString()}`, {
-        headers: {
-          "x-supermarket-id": selectedSupermarket._id,
-          "x-supermarket-code": selectedSupermarket.code || "",
-        },
+        headers: reqHeaders,
       }, 15000);
 
       const contentType = res.headers?.get("content-type") || "";
@@ -108,7 +120,7 @@ export default function OnlineCatalogScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [selectedSupermarket, selectedCategory, search]);
+  }, [selectedSupermarket, customerUser, selectedCategory]);
 
   useEffect(() => {
     fetchStoreProducts();
@@ -117,21 +129,6 @@ export default function OnlineCatalogScreen() {
   const handleRefresh = () => {
     setRefreshing(true);
     fetchStoreProducts();
-  };
-
-  const handleSelectStore = (store: SupermarketInfo) => {
-    const isOnlineSupported =
-      store.onlineDeliveryAvailable === true ||
-      store.selfPickupAvailable === true ||
-      store.onlineAvailable === true;
-
-    if (!isOnlineSupported) {
-      setSearchModalVisible(false);
-      setUnavailableModal({ visible: true, storeName: store.name });
-      return;
-    }
-    setSelectedSupermarket(store);
-    setSearchModalVisible(false);
   };
 
   return (
@@ -151,19 +148,14 @@ export default function OnlineCatalogScreen() {
             </TouchableOpacity>
 
             <View style={styles.headerStoreBlock}>
-              <TouchableOpacity
-                style={styles.storePickerPill}
-                onPress={() => setSearchModalVisible(true)}
-                activeOpacity={0.8}
-              >
+              <View style={styles.storePickerPill}>
                 <Text style={styles.storePickerIcon}>🏪</Text>
                 <Text style={styles.storePickerName} numberOfLines={1}>
-                  {selectedSupermarket?.name || "Select Supermarket"}
+                  {customerUser?.supermarketName || selectedSupermarket?.name || "SuperMart Store"}
                 </Text>
-                <Text style={styles.storePickerArrow}>▼</Text>
-              </TouchableOpacity>
+              </View>
               <Text style={styles.storeLocationSub}>
-                {selectedSupermarket?.city ? `📍 ${selectedSupermarket.city}` : "Tap to choose store location"} • Online Store
+                {selectedSupermarket?.city ? `📍 ${selectedSupermarket.city}` : "Registered Store"} • Online Store
               </Text>
             </View>
 
@@ -179,23 +171,6 @@ export default function OnlineCatalogScreen() {
                 </View>
               )}
             </TouchableOpacity>
-          </View>
-
-          {/* Search Bar */}
-          <View style={styles.searchBar}>
-            <Text style={styles.searchIcon}>🔍</Text>
-            <TextInput
-              style={styles.searchInput}
-              placeholder={`Search in ${selectedSupermarket?.name || "store"}...`}
-              placeholderTextColor="#94A3B8"
-              value={search}
-              onChangeText={setSearch}
-            />
-            {search.length > 0 && (
-              <TouchableOpacity onPress={() => setSearch("")} style={{ padding: 4 }}>
-                <Text style={{ color: "#94A3B8", fontWeight: "700" }}>✕</Text>
-              </TouchableOpacity>
-            )}
           </View>
         </SafeAreaView>
       </View>
@@ -246,9 +221,7 @@ export default function OnlineCatalogScreen() {
           <Text style={styles.emptyIcon}>📦</Text>
           <Text style={styles.emptyTitle}>No Products Found</Text>
           <Text style={styles.emptySub}>
-            {search
-              ? `No products match "${search}" in this supermarket.`
-              : `There are currently no catalog products listed under ${selectedSupermarket?.name || "this supermarket"}.`}
+            There are currently no catalog products listed under {customerUser?.supermarketName || selectedSupermarket?.name || "this supermarket"}.
           </Text>
           <TouchableOpacity style={styles.refreshBtn} onPress={handleRefresh}>
             <Text style={styles.refreshBtnText}>Refresh Catalog</Text>
@@ -395,30 +368,6 @@ export default function OnlineCatalogScreen() {
 
       {/* Bottom Nav */}
       <CustomerBottomNav activeTab="home" />
-
-      {/* Supermarket Search / Location Switcher Modal */}
-      <SupermarketSearchModal
-        visible={searchModalVisible}
-        mode="online"
-        onSelect={handleSelectStore}
-        onUnavailableSelected={(store) => {
-          setSearchModalVisible(false);
-          setUnavailableModal({ visible: true, storeName: store.name });
-        }}
-        onClose={() => setSearchModalVisible(false)}
-      />
-
-      {/* Mode Unavailable Modal */}
-      <ModeUnavailableModal
-        visible={unavailableModal.visible}
-        mode="Online"
-        supermarketName={unavailableModal.storeName}
-        onClose={() => setUnavailableModal({ visible: false, storeName: "" })}
-        onSelectAnother={() => {
-          setUnavailableModal({ visible: false, storeName: "" });
-          setSearchModalVisible(true);
-        }}
-      />
     </View>
   );
 }
@@ -476,10 +425,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "800",
   },
-  storePickerArrow: {
-    color: "#FDE68A",
-    fontSize: 10,
-  },
   storeLocationSub: {
     color: "#CBB2FE",
     fontSize: 11,
@@ -512,26 +457,6 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 10,
     fontWeight: "800",
-  },
-  searchBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    marginHorizontal: 16,
-    marginTop: 10,
-    paddingHorizontal: 12,
-    height: 42,
-  },
-  searchIcon: {
-    fontSize: 14,
-    marginRight: 6,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 13.5,
-    color: "#0F172A",
-    fontWeight: "600",
   },
   categoriesWrap: {
     backgroundColor: "#FFFFFF",

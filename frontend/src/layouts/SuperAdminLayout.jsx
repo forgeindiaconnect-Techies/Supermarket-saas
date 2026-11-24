@@ -479,17 +479,6 @@ export default function SuperAdminLayout() {
           </div>
 
           <div className="sa-header-actions-right">
-            {/* Direct Platform Settings Shortcut Button */}
-            <button
-              type="button"
-              className="sa-settings-circle-btn"
-              onClick={() => navigate("/super-admin/settings")}
-              title="Platform Settings"
-              aria-label="Platform Settings"
-            >
-              <Settings size={19} strokeWidth={2.2} />
-            </button>
-
             {/* Notification Bell with Red Badge */}
             <div className="sa-notif-wrap" ref={notifRef}>
               <button

@@ -914,170 +914,183 @@ exports.getSupermarketAvailability = async (req, res) => {
 // =============================================================================
 
 // POST /api/auth/customer/register
-// Customer registration with mandatory supermarket selection & availability check
+// Customer registration for ONLINE shopping (Mandatory for all new online shoppers)
 exports.customerRegister = async (req, res) => {
   try {
-    const { name, phone, email, password, address, supermarketId, supermarketCode, registrationType: reqRegType } = req.body;
+    const { name, phone, email, password, address, supermarketId, supermarketCode, supermarket: rawSupermarket } = req.body;
 
-    if (!name || !name.trim()) {
-      return res.status(400).json({ success: false, message: "Customer name is mandatory." });
+    // 1. Mandatory validation: Supermarket Selection
+    const targetStoreId = supermarketId || rawSupermarket || supermarketCode;
+    if (!targetStoreId) {
+      return res.status(400).json({
+        success: false,
+        message: "Please select a supermarket. Supermarket selection is mandatory to create your account.",
+      });
     }
 
-    const cleanEmail = String(email || "").trim().toLowerCase();
+    let store = null;
+    if (String(targetStoreId).match(/^[0-9a-fA-F]{24}$/)) {
+      store = await Supermarket.findById(targetStoreId);
+    }
+    if (!store && (supermarketCode || typeof targetStoreId === "string")) {
+      store = await Supermarket.findOne({ code: String(supermarketCode || targetStoreId).toUpperCase() });
+    }
 
+    if (!store || (store.status && store.status !== "Active" && store.status !== "Trial")) {
+      return res.status(400).json({
+        success: false,
+        message: "Selected supermarket is currently inactive or not found. Please choose an active supermarket.",
+      });
+    }
+
+    // 2. Mandatory validation: Name
+    if (!name || !name.trim() || name.trim().length < 2) {
+      return res.status(400).json({
+        success: false,
+        message: "Customer name is mandatory (minimum 2 characters).",
+      });
+    }
+
+    // 3. Mandatory validation: 10-digit Indian Mobile Number starting with 6, 7, 8, or 9
     const rawDigits = String(phone || "").replace(/\D/g, "");
     const cleanPhone = rawDigits.length >= 10 ? rawDigits.slice(-10) : rawDigits;
     if (!cleanPhone || cleanPhone.length !== 10 || !["6", "7", "8", "9"].includes(cleanPhone[0])) {
       return res.status(400).json({
         success: false,
-        message: "A valid 10-digit Indian mobile number starting with 6, 7, 8, or 9 is required.",
+        message: "Mobile number must contain exactly 10 digits and start with 6, 7, 8, or 9.",
       });
     }
 
-    // Determine strict registration source (default to ONLINE if initiated from customer online app flow)
-    const rawRegType = String(reqRegType || req.body.source || "ONLINE").toUpperCase();
-    const registrationType = rawRegType === "OFFLINE" ? "OFFLINE" : "ONLINE";
-
-    // Lookup supermarket
-    let targetId = supermarketId || supermarketCode;
-    let store = null;
-    if (targetId) {
-      if (String(targetId).match(/^[0-9a-fA-F]{24}$/)) {
-        store = await Supermarket.findById(targetId);
-      }
-      if (!store) {
-        store = await Supermarket.findOne({ code: String(targetId).toUpperCase() });
-      }
-    }
-    // Fallback if targetId was omitted in offline flow: find first active supermarket
-    if (!store && registrationType === "OFFLINE") {
-      store = (await Supermarket.findOne({ status: "Active" })) || (await Supermarket.findOne());
-    }
-
-    if (!store) {
-      return res.status(404).json({
+    // 4. Mandatory validation: Valid Email format stored in lowercase
+    const cleanEmail = String(email || "").trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!cleanEmail || !emailRegex.test(cleanEmail)) {
+      return res.status(400).json({
         success: false,
-        message: "Selected supermarket not found.",
+        message: "A valid email address is mandatory (e.g. name@example.com).",
       });
     }
 
-    // STRICT CHECK: Verify availability based on registration source
-    const isOnlineAllowed =
-      store.onlineDeliveryAvailable === true ||
-      store.selfPickupAvailable === true ||
-      store.onlineAvailable === true;
-
-    if (registrationType === "ONLINE" && !isOnlineAllowed) {
-      return res.status(403).json({
+    // 5. Mandatory validation: Delivery Address
+    if (!address || !address.trim() || address.trim().length < 5) {
+      return res.status(400).json({
         success: false,
-        message: "This supermarket does not currently support Online Purchase. Please choose an available option.",
-        supermarket: {
-          _id: store._id,
-          name: store.name,
-          onlineAvailable: false,
-          offlineAvailable: store.offlineAvailable === true || store.selfPickupAvailable === true,
-        },
+        message: "Delivery address is mandatory (minimum 5 characters).",
+      });
+    }
+
+    // 6. Mandatory validation: Password / PIN
+    if (!password || String(password).trim().length < 4) {
+      return res.status(400).json({
+        success: false,
+        message: "Password / PIN is mandatory and must be at least 4 characters long.",
       });
     }
 
     const Customer = require("../models/Customer");
-    let customer = await Customer.findOne({ phone: cleanPhone });
 
-    if (customer) {
-      // Update customer details and connect permanently to selected supermarket
-      customer.name = name.trim();
-      if (cleanEmail) customer.email = cleanEmail;
-      if (address) customer.address = address.trim();
-      customer.supermarket = store._id;
-      customer.supermarketCode = store.code;
-      customer.supermarketName = store.name;
-      customer.registeredLocation = `${store.city}, ${store.state || ""}`.trim();
-      if (password) customer.password = password;
-      // Set registrationType: strictly enforce OFFLINE if this was an offline registration
-      if (registrationType === "OFFLINE") {
-        customer.registrationType = "OFFLINE";
-      } else if (!customer.registrationType) {
-        customer.registrationType = registrationType;
+    // 7. Prevent duplicate registrations using an already registered mobile number
+    const existing = await Customer.findOne({ phone: cleanPhone });
+    if (existing) {
+      if (existing.registrationType === "ONLINE" && existing.password) {
+        return res.status(400).json({
+          success: false,
+          message: "An account with this mobile number is already registered. Please sign in instead.",
+        });
       }
-      await customer.save();
-    } else {
-      customer = await Customer.create({
-        name: name.trim(),
-        phone: cleanPhone,
-        email: cleanEmail,
-        password: password || "",
-        address: address?.trim() || "",
-        supermarket: store._id,
-        supermarketCode: store.code,
-        supermarketName: store.name,
-        registeredLocation: `${store.city}, ${store.state || ""}`.trim(),
-        registrationType,
+      // If was walk-in offline customer without password, convert to full online registered customer with chosen supermarket
+      existing.name = name.trim();
+      existing.email = cleanEmail;
+      existing.address = address.trim();
+      existing.password = String(password).trim(); // hashed by pre-save
+      existing.registrationType = "ONLINE";
+      existing.supermarket = store._id;
+      existing.supermarketCode = store.code;
+      existing.supermarketName = store.name;
+      existing.registeredLocation = `${store.city || ""}, ${store.state || ""}`.trim();
+      if (!existing.customerId) {
+        existing.customerId = `CUST-ONL-${cleanPhone.slice(-4)}`;
+      }
+      await existing.save();
+
+      return res.status(201).json({
+        success: true,
+        message: `Account created successfully with ${store.name}! Please sign in to continue.`,
+        customerId: existing.customerId,
+        supermarket: {
+          _id: store._id.toString(),
+          name: store.name,
+          code: store.code,
+          city: store.city,
+          state: store.state,
+        },
       });
     }
 
-    // Emit real-time notification to store admin dashboard
-    try {
-      const { emitTenantNotification } = require("../utils/notificationEmitter");
-      emitTenantNotification(store._id.toString(), {
-        type: "NEW_CUSTOMER",
-        title: registrationType === "OFFLINE" ? "New Offline Customer Registered" : "New Online Customer Registered",
-        message: `${customer.name} (${customer.phone}) registered as ${customer.registrationType} customer.`,
-        data: { customerId: customer._id, registrationType: customer.registrationType },
-      });
-    } catch (_) {}
+    // 8. Generate unique customer ID
+    let uniqueCustId = `CUST-ONL-${cleanPhone.slice(-4)}`;
+    const idTaken = await Customer.findOne({ customerId: uniqueCustId });
+    if (idTaken) {
+      uniqueCustId = `CUST-ONL-${cleanPhone.slice(-4)}-${Math.floor(10 + Math.random() * 90)}`;
+    }
 
-    const token = jwt.sign(
-      {
-        id: customer._id,
-        role: "CUSTOMER",
-        phone: customer.phone,
-        email: customer.email,
-        registrationType: customer.registrationType,
-        supermarketId: store._id.toString(),
-        supermarketCode: store.code,
-      },
-      JWT_SECRET,
-      { expiresIn: "30d" }
-    );
+    // 9. Save customer securely in MongoDB associated with the selected supermarket
+    const newCustomer = await Customer.create({
+      customerId: uniqueCustId,
+      name: name.trim(),
+      phone: cleanPhone,
+      email: cleanEmail,
+      address: address.trim(),
+      password: String(password).trim(), // automatically hashed with bcrypt via pre-save hook
+      registrationType: "ONLINE",
+      supermarket: store._id,
+      supermarketCode: store.code,
+      supermarketName: store.name,
+      registeredLocation: `${store.city || ""}, ${store.state || ""}`.trim(),
+      status: "Active",
+    });
+
+    // Real-time notification to store admin dashboard
+    try {
+      const io = req.app && req.app.get ? req.app.get("io") : null;
+      if (io) {
+        const { emitTenantNotification } = require("../utils/notificationEmitter");
+        emitTenantNotification(io, "notification", {
+          type: "NEW_CUSTOMER",
+          title: "New Customer Registered",
+          message: `${newCustomer.name} (${newCustomer.phone}) selected ${store.name} and registered.`,
+          data: { customerId: newCustomer._id, registrationType: "ONLINE", supermarketId: store._id },
+          supermarketId: store._id.toString(),
+          supermarketCode: store.code,
+        });
+      }
+    } catch (emitterErr) {
+      console.warn("Notification emitter warning:", emitterErr ? emitterErr.message : emitterErr);
+    }
 
     return res.status(201).json({
       success: true,
-      message: `Welcome to ${store.name}! Your account is registered as ${customer.registrationType}.`,
-      token,
-      customer: {
-        _id: customer._id,
-        name: customer.name,
-        phone: customer.phone,
-        email: customer.email,
-        address: customer.address,
-        registrationType: customer.registrationType,
-        supermarketId: store._id.toString(),
-        supermarketCode: store.code,
-        supermarketName: store.name,
-        registeredLocation: customer.registeredLocation,
-      },
+      message: `Account created successfully with ${store.name}! Please sign in to continue.`,
+      customerId: newCustomer.customerId,
       supermarket: {
         _id: store._id.toString(),
         name: store.name,
         code: store.code,
         city: store.city,
         state: store.state,
-        address: store.address,
-        onlineAvailable: true,
-        offlineAvailable: store.offlineAvailable === true,
       },
     });
   } catch (err) {
+    console.error("Customer registration error:", err);
     return res.status(500).json({
       success: false,
-      message: "Customer registration failed",
-      error: err.message,
+      message: err.message || "Customer registration failed",
     });
   }
 };
 
 // POST /api/auth/customer/login
-// Customer login with supermarket online availability verification
+// Customer login with strict authentication & registered customer verification
 exports.customerLogin = async (req, res) => {
   try {
     const { phone, password } = req.body;
@@ -1087,68 +1100,51 @@ exports.customerLogin = async (req, res) => {
     if (!cleanPhone || cleanPhone.length !== 10) {
       return res.status(400).json({
         success: false,
-        message: "Please enter a valid 10-digit mobile number.",
+        message: "Please enter a valid 10-digit registered mobile number.",
+      });
+    }
+
+    if (!password || !String(password).trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Please enter your password / PIN.",
       });
     }
 
     const Customer = require("../models/Customer");
     const customer = await Customer.findOne({ phone: cleanPhone }).populate("supermarket");
 
-    if (!customer) {
+    // Authentication rule: Only customers with an existing, successfully registered account can sign in.
+    if (!customer || !customer.password) {
       return res.status(404).json({
         success: false,
-        message: "No customer account found with this mobile number. Please register first.",
+        message: "Your account is not registered. Please create an account first and then sign in.",
       });
     }
 
-    // Check password if provided
-    if (password && customer.password) {
-      const match = await customer.comparePassword(password);
-      if (!match) {
-        return res.status(401).json({
-          success: false,
-          message: "Incorrect password. Please try again.",
-        });
-      }
-    }
-
-    const store = customer.supermarket;
-    if (!store) {
-      return res.status(400).json({
+    // Verify password / PIN against the actual database
+    const match = await customer.comparePassword(String(password).trim());
+    if (!match) {
+      return res.status(401).json({
         success: false,
-        message: "Your account is not linked to any supermarket. Please re-register and select your supermarket.",
-      });
-    }
-
-    // Verify supermarket online availability
-    const isOnlineAllowed =
-      store.onlineDeliveryAvailable === true ||
-      store.selfPickupAvailable === true ||
-      store.onlineAvailable === true;
-
-    if (!isOnlineAllowed) {
-      return res.status(403).json({
-        success: false,
-        message: "This supermarket does not currently support Online Purchase. Please choose an available option.",
-        supermarket: {
-          _id: store._id,
-          name: store.name,
-          onlineAvailable: false,
-          offlineAvailable: store.offlineAvailable === true || store.selfPickupAvailable === true,
-        },
+        message: "Incorrect password or PIN. Please try again.",
       });
     }
 
     customer.lastLogin = new Date();
     await customer.save();
 
+    const store = customer.supermarket;
+
     const token = jwt.sign(
       {
-        id: customer._id,
+        id: customer._id.toString(),
         role: "CUSTOMER",
         phone: customer.phone,
-        supermarketId: store._id.toString(),
-        supermarketCode: store.code,
+        email: customer.email,
+        registrationType: customer.registrationType || "ONLINE",
+        supermarketId: store ? store._id.toString() : null,
+        supermarketCode: store?.code || customer.supermarketCode || "",
       },
       JWT_SECRET,
       { expiresIn: "30d" }
@@ -1160,28 +1156,32 @@ exports.customerLogin = async (req, res) => {
       token,
       customer: {
         _id: customer._id,
+        customerId: customer.customerId || `CUST-ONL-${customer.phone.slice(-4)}`,
         name: customer.name,
         phone: customer.phone,
         email: customer.email || "",
-        address: customer.address,
+        address: customer.address || "",
         registrationType: customer.registrationType || "ONLINE",
-        supermarketId: store._id.toString(),
-        supermarketCode: store.code,
-        supermarketName: store.name,
-        registeredLocation: customer.registeredLocation,
+        supermarketId: store ? store._id.toString() : (customer.supermarket ? customer.supermarket.toString() : null),
+        supermarketCode: store?.code || customer.supermarketCode || "",
+        supermarketName: store?.name || customer.supermarketName || "",
+        registeredLocation: customer.registeredLocation || "",
       },
-      supermarket: {
+      supermarket: store ? {
         _id: store._id.toString(),
         name: store.name,
         code: store.code,
         city: store.city,
         state: store.state,
         address: store.address,
-        onlineAvailable: true,
-        offlineAvailable: store.offlineAvailable === true,
-      },
+        onlineAvailable: store.onlineAvailable === true || store.onlineDeliveryAvailable === true,
+        offlineAvailable: store.offlineAvailable === true || store.selfPickupAvailable === true,
+        onlineDeliveryAvailable: store.onlineDeliveryAvailable === true,
+        selfPickupAvailable: store.selfPickupAvailable === true,
+      } : null,
     });
   } catch (err) {
+    console.error("Customer login error:", err);
     return res.status(500).json({
       success: false,
       message: "Customer login failed",
@@ -1190,15 +1190,79 @@ exports.customerLogin = async (req, res) => {
   }
 };
 
+// GET /api/auth/customer/me
+// Live verification of customer session & token validity
+exports.getCustomerMe = async (req, res) => {
+  try {
+    if (!req.user || req.user.role !== "CUSTOMER") {
+      return res.status(401).json({
+        success: false,
+        message: "Customer authentication required or session expired. Please sign in.",
+      });
+    }
+
+    const Customer = require("../models/Customer");
+    const customer = await Customer.findById(req.user.id || req.user._id).select("-password").populate("supermarket");
+
+    if (!customer || customer.status !== "Active") {
+      return res.status(401).json({
+        success: false,
+        message: "Customer account not found or suspended. Please sign in again.",
+      });
+    }
+
+    const store = customer.supermarket;
+
+    return res.status(200).json({
+      success: true,
+      customer: {
+        _id: customer._id,
+        customerId: customer.customerId || `CUST-ONL-${customer.phone.slice(-4)}`,
+        name: customer.name,
+        phone: customer.phone,
+        email: customer.email || "",
+        address: customer.address || "",
+        registrationType: customer.registrationType || "ONLINE",
+        supermarketId: store ? store._id.toString() : (customer.supermarket ? customer.supermarket.toString() : null),
+        supermarketCode: store?.code || customer.supermarketCode || "",
+        supermarketName: store?.name || customer.supermarketName || "",
+        registeredLocation: customer.registeredLocation || "",
+      },
+      supermarket: store ? {
+        _id: store._id.toString(),
+        name: store.name,
+        code: store.code,
+        city: store.city,
+        state: store.state,
+        address: store.address,
+        onlineAvailable: store.onlineAvailable === true || store.onlineDeliveryAvailable === true,
+        offlineAvailable: store.offlineAvailable === true || store.selfPickupAvailable === true,
+        onlineDeliveryAvailable: store.onlineDeliveryAvailable === true,
+        selfPickupAvailable: store.selfPickupAvailable === true,
+      } : null,
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to verify customer profile",
+      error: err.message,
+    });
+  }
+};
+
 // PUT /api/auth/customer/profile
-// Allows customer to update their delivery address, name, or contact details securely
+// Allows customer to update their delivery address, name, email, or change password/PIN securely
 exports.updateCustomerProfile = async (req, res) => {
   try {
-    const { customerId, phone, name, address } = req.body;
     const Customer = require("../models/Customer");
+    const { customerId, phone, name, email, address, currentPassword, newPassword } = req.body;
 
     let customer = null;
-    if (customerId && String(customerId).match(/^[0-9a-fA-F]{24}$/)) {
+    // Strict authentication first: identify customer from verified token
+    if (req.user && req.user.role === "CUSTOMER") {
+      customer = await Customer.findById(req.user.id || req.user._id);
+    }
+    if (!customer && customerId && String(customerId).match(/^[0-9a-fA-F]{24}$/)) {
       customer = await Customer.findById(customerId);
     }
     if (!customer && phone) {
@@ -1217,7 +1281,23 @@ exports.updateCustomerProfile = async (req, res) => {
     }
 
     if (name && name.trim()) customer.name = name.trim();
+    if (email && email.trim()) customer.email = email.trim().toLowerCase();
     if (address !== undefined) customer.address = address.trim();
+
+    // Password / PIN change handling if requested
+    if (newPassword && newPassword.trim()) {
+      if (currentPassword && currentPassword.trim()) {
+        const isMatch = await customer.comparePassword(currentPassword.trim());
+        if (!isMatch) {
+          return res.status(400).json({
+            success: false,
+            message: "Current password or PIN is incorrect.",
+          });
+        }
+      }
+      customer.password = newPassword.trim();
+    }
+
     await customer.save();
 
     return res.status(200).json({
@@ -1227,6 +1307,7 @@ exports.updateCustomerProfile = async (req, res) => {
         _id: customer._id,
         name: customer.name,
         phone: customer.phone,
+        email: customer.email || "",
         address: customer.address,
         supermarketId: customer.supermarket ? customer.supermarket.toString() : "",
         supermarketCode: customer.supermarketCode,

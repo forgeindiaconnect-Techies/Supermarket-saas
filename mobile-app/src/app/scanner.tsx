@@ -19,6 +19,7 @@ import { Theme } from "../constants/colors";
 import { API_URL, safeFetch } from "../constants/api";
 import { useCart, SupermarketInfo } from "../context/CartContext";
 import SupermarketSearchModal from "../components/SupermarketSearchModal";
+import CustomerBottomNav from "../components/CustomerBottomNav";
 
 const { width, height } = Dimensions.get("window");
 const SCAN_BOX_SIZE = width * 0.65;
@@ -186,21 +187,75 @@ export default function ScanProductScreen() {
         headers["x-supermarket-code"] = selectedSupermarket.code || "";
       }
 
-      const res = await safeFetch(endpoint, { headers }, 12000);
-      const json = await res.json();
+      let prod: any = null;
+      let rawSm: any = null;
 
-      if (res.ok && json.success && json.product) {
-        const prod = json.product;
+      try {
+        const res = await safeFetch(endpoint, { headers }, 15000);
+        const json = await res.json().catch(() => null);
+        if (res.ok && json?.success && json?.product) {
+          prod = json.product;
+          rawSm = prod.supermarket || json.supermarket;
+        }
+      } catch (_) {}
 
-        // If supermarket is not yet identified, automatically identify it from the scanned product
+      // Fallback 1: If product not yet resolved (e.g. deployed backend required supermarket ID before initial scan),
+      // search active products across the catalog using the clean barcode
+      if (!prod) {
+        try {
+          const fallbackRes = await safeFetch(
+            `${API_URL}/products?search=${encodeURIComponent(cleanCode)}`,
+            {},
+            15000
+          );
+          if (fallbackRes.ok) {
+            const fallbackJson = await fallbackRes.json().catch(() => null);
+            if (fallbackJson?.success && Array.isArray(fallbackJson.products) && fallbackJson.products.length > 0) {
+              const matched =
+                fallbackJson.products.find((p: any) => {
+                  const b = String(p.barcode || "").trim();
+                  return (
+                    b === cleanCode ||
+                    b === cleanCode.replace(/^0+/, "") ||
+                    cleanCode.endsWith(b) ||
+                    b.endsWith(cleanCode)
+                  );
+                }) || fallbackJson.products[0];
+
+              if (matched) {
+                prod = matched;
+                rawSm = matched.supermarket;
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
+      // Fallback 2: Direct lookup by ID if code is a 24-hex MongoDB ObjectId
+      if (!prod && cleanCode.match(/^[0-9a-fA-F]{24}$/)) {
+        try {
+          const idRes = await safeFetch(`${API_URL}/products/${cleanCode}`, {}, 10000);
+          if (idRes.ok) {
+            const idJson = await idRes.json().catch(() => null);
+            if (idJson?.success && idJson?.product) {
+              prod = idJson.product;
+              rawSm = prod.supermarket;
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (prod) {
+        // Automatically identify supermarket from the scanned product
         let currentStore = selectedSupermarket;
+        const sm = rawSm || prod.supermarket;
+
         if (!currentStore || !currentStore._id) {
-          if (prod.supermarket && typeof prod.supermarket === "object") {
-            const sm = prod.supermarket;
+          if (sm && typeof sm === "object" && sm.name) {
             currentStore = {
-              _id: sm._id,
+              _id: String(sm._id || ""),
               name: sm.name,
-              code: sm.code,
+              code: sm.code || prod.supermarketCode || "",
               address: sm.address,
               city: sm.city,
               state: sm.state,
@@ -209,26 +264,53 @@ export default function ScanProductScreen() {
             };
             setSelectedSupermarket(currentStore);
             setToastMsg(`✓ Identified: ${sm.name}`);
-          } else if (prod.supermarket) {
+          } else if (sm) {
+            // Attempt to resolve store details by ID, or fallback to product-level attributes
             try {
-              const smRes = await safeFetch(`${API_URL}/supermarkets/${prod.supermarket}`, {}, 5000);
-              const smData = await smRes.json();
-              if (smData.success && smData.supermarket) {
-                const sm = smData.supermarket;
+              const smRes = await safeFetch(`${API_URL}/supermarkets/${sm}`, {}, 6000);
+              const smData = await smRes.json().catch(() => null);
+              if (smData?.success && smData?.supermarket) {
+                const s = smData.supermarket;
                 currentStore = {
-                  _id: sm._id,
-                  name: sm.name,
-                  code: sm.code,
-                  address: sm.address,
-                  city: sm.city,
-                  state: sm.state,
-                  pincode: sm.pincode,
-                  logoUrl: sm.logoUrl,
+                  _id: String(s._id),
+                  name: s.name,
+                  code: s.code,
+                  address: s.address,
+                  city: s.city,
+                  state: s.state,
+                  pincode: s.pincode,
+                  logoUrl: s.logoUrl,
                 };
                 setSelectedSupermarket(currentStore);
-                setToastMsg(`✓ Identified: ${sm.name}`);
+                setToastMsg(`✓ Identified: ${s.name}`);
+              } else if (prod.supermarketName) {
+                currentStore = {
+                  _id: String(sm),
+                  name: prod.supermarketName,
+                  code: prod.supermarketCode || "",
+                };
+                setSelectedSupermarket(currentStore);
+                setToastMsg(`✓ Identified: ${prod.supermarketName}`);
               }
-            } catch (_) {}
+            } catch (_) {
+              if (prod.supermarketName) {
+                currentStore = {
+                  _id: String(sm),
+                  name: prod.supermarketName,
+                  code: prod.supermarketCode || "",
+                };
+                setSelectedSupermarket(currentStore);
+                setToastMsg(`✓ Identified: ${prod.supermarketName}`);
+              }
+            }
+          } else if (prod.supermarketName) {
+            currentStore = {
+              _id: String(prod._id || "identified_store"),
+              name: prod.supermarketName,
+              code: prod.supermarketCode || "",
+            };
+            setSelectedSupermarket(currentStore);
+            setToastMsg(`✓ Identified: ${prod.supermarketName}`);
           }
         } else {
           // Strict multi-tenant verification: Never allow products from another supermarket
@@ -288,11 +370,17 @@ export default function ScanProductScreen() {
         setTimeout(() => setToastMsg(""), 2800);
       } else {
         const storePrefix = selectedSupermarket?.name ? `in ${selectedSupermarket.name}: ` : "";
-        setErrorMsg(json.message || `Product Not Found ${storePrefix}Barcode "${cleanCode}"`);
+        setErrorMsg(`Product Not Found ${storePrefix}(Barcode: "${cleanCode}")`);
         setTimeout(() => setErrorMsg(""), 3500);
       }
     } catch (err: any) {
-      const isTimeout = err.name === "AbortError";
+      const raw = (err?.message || "") + " " + (err?.cause?.message || "") + " " + String(err || "");
+      const isTimeout =
+        err.name === "AbortError" ||
+        raw.toLowerCase().includes("cancel") ||
+        raw.toLowerCase().includes("abort") ||
+        raw.toLowerCase().includes("timeout") ||
+        raw.toLowerCase().includes("fetch failed");
       setErrorMsg(
         isTimeout
           ? "Request timed out. Please point camera to try again."
@@ -421,7 +509,9 @@ export default function ScanProductScreen() {
             <Text style={styles.headerTitle}>Scan Products</Text>
             <View style={styles.offlineHeaderBadge}>
               <Text style={styles.offlineHeaderBadgeText}>
-                {selectedSupermarket?.name ? `${selectedSupermarket.name} • OFFLINE` : "OFFLINE SCANNER"}
+                {scannedSessionItems.length > 0 && selectedSupermarket?.name
+                  ? `${selectedSupermarket.name} • OFFLINE`
+                  : "OFFLINE SCANNER"}
               </Text>
             </View>
           </View>
@@ -444,38 +534,6 @@ export default function ScanProductScreen() {
             </TouchableOpacity>
           </View>
         </View>
-
-        {/* Prominent Supermarket Identity Banner */}
-        {selectedSupermarket ? (
-          <View style={styles.storeBannerWrap}>
-            <View style={styles.storeBannerLeft}>
-              <View style={styles.storeLogoBox}>
-                <Text style={{ fontSize: 20 }}>🏬</Text>
-              </View>
-              <View style={{ flex: 1, marginLeft: 10 }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                  <Text style={styles.storeBannerName} numberOfLines={1}>
-                    {selectedSupermarket.name}
-                  </Text>
-                  <View style={styles.storeCodePill}>
-                    <Text style={styles.storeCodePillText}>{selectedSupermarket.code || "STORE"}</Text>
-                  </View>
-                </View>
-                <Text style={styles.storeBannerLocation} numberOfLines={1}>
-                  📍 {selectedSupermarket.city || selectedSupermarket.address || "Active In-Store Session"}
-                </Text>
-              </View>
-            </View>
-
-            <TouchableOpacity
-              style={styles.switchStoreBtn}
-              onPress={handleSwitchStore}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.switchStoreBtnText}>Switch Store</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
       </SafeAreaView>
 
       {/* Live Camera Viewfinder (Top Half) */}
@@ -510,7 +568,9 @@ export default function ScanProductScreen() {
             <View style={styles.loadingBox}>
               <ActivityIndicator size="small" color="#FBBF24" />
               <Text style={styles.loadingText}>
-                Fetching from {selectedSupermarket?.name || "supermarket"}...
+                {scannedSessionItems.length > 0 && selectedSupermarket?.name
+                  ? `Scanning in ${selectedSupermarket.name}...`
+                  : "Looking up product..."}
               </Text>
             </View>
           )}
@@ -539,6 +599,31 @@ export default function ScanProductScreen() {
 
       {/* Scanned Products Session List (Bottom Section) */}
       <View style={styles.sessionListContainer}>
+        {/* Supermarket Name displayed strictly ABOVE the scanned product details once scanned */}
+        {selectedSupermarket?.name && scannedSessionItems.length > 0 && (
+          <View style={styles.scannedStoreBanner}>
+            <View style={styles.scannedStoreIconCircle}>
+              <Text style={{ fontSize: 18 }}>🏬</Text>
+            </View>
+            <View style={{ flex: 1, marginLeft: 10 }}>
+              <Text style={styles.scannedStoreSubLabel}>SUPERMARKET</Text>
+              <Text style={styles.scannedStoreName} numberOfLines={1}>
+                {selectedSupermarket.name}
+              </Text>
+              {(selectedSupermarket.city || selectedSupermarket.address) && (
+                <Text style={styles.scannedStoreLoc} numberOfLines={1}>
+                  📍 {selectedSupermarket.city || selectedSupermarket.address}
+                </Text>
+              )}
+            </View>
+            {selectedSupermarket.code && (
+              <View style={styles.scannedStoreCodePill}>
+                <Text style={styles.scannedStoreCodeText}>{selectedSupermarket.code}</Text>
+              </View>
+            )}
+          </View>
+        )}
+
         {/* Session Section Header */}
         <View style={styles.sessionListHeader}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -561,7 +646,7 @@ export default function ScanProductScreen() {
             <Text style={{ fontSize: 34, marginBottom: 6 }}>📦</Text>
             <Text style={styles.emptySessionTitle}>No products scanned yet</Text>
             <Text style={styles.emptySessionSub}>
-              Scan any product barcode above. All scanned products will be displayed here immediately and remain visible.
+              Point camera at any product barcode above. The supermarket and product details will appear here once scanned.
             </Text>
           </View>
         ) : (
@@ -762,6 +847,9 @@ export default function ScanProductScreen() {
         onSelect={handleSelectStoreFromModal}
         onClose={() => setStoreModalVisible(false)}
       />
+
+      {/* Customer Bottom Navigation Bar */}
+      <CustomerBottomNav activeTab="scan" />
     </View>
   );
 }
@@ -773,6 +861,58 @@ const styles = StyleSheet.create({
   },
   headerSafe: {
     backgroundColor: "#2E0854",
+  },
+  scannedStoreBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1.5,
+    borderBottomColor: "#EDE9FE",
+    shadowColor: "#6D28D9",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  scannedStoreIconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: "#EDE9FE",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  scannedStoreSubLabel: {
+    fontSize: 9.5,
+    fontWeight: "900",
+    color: "#6D28D9",
+    letterSpacing: 0.6,
+  },
+  scannedStoreName: {
+    fontSize: 15,
+    fontWeight: "900",
+    color: "#1E1B4B",
+    marginTop: 1,
+  },
+  scannedStoreLoc: {
+    fontSize: 11,
+    color: "#64748B",
+    marginTop: 1,
+  },
+  scannedStoreCodePill: {
+    backgroundColor: "#ECFDF5",
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  scannedStoreCodeText: {
+    color: "#059669",
+    fontSize: 10,
+    fontWeight: "900",
   },
   storeBannerWrap: {
     flexDirection: "row",

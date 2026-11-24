@@ -1,14 +1,20 @@
+import React, { useEffect } from "react";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { AnimatedSplashOverlay } from "@/components/animated-icon";
 import { CartProvider } from "../context/CartContext";
 
-SplashScreen.preventAutoHideAsync().catch(() => {});
+// Immediately dismiss any native splash screen so the app displays instantly
+SplashScreen.hideAsync().catch(() => {});
 
 export default function RootLayout() {
+  useEffect(() => {
+    // Unconditionally dismiss splash screen as soon as RootLayout mounts
+    SplashScreen.hideAsync().catch(() => {});
+    console.log("🚀 [SuperMart Mobile] RootLayout mounted & connected to Metro successfully!");
+  }, []);
+
   return (
     <CartProvider>
-      <AnimatedSplashOverlay />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="auth" />

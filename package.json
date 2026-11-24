@@ -1,0 +1,12 @@
+{
+  "name": "super-market-scan-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "npm --prefix mobile-app start",
+    "tunnel": "npm --prefix mobile-app run tunnel",
+    "mobile": "npm --prefix mobile-app start",
+    "mobile:clean": "npm --prefix mobile-app run start:clean"
+  }
+}
+
