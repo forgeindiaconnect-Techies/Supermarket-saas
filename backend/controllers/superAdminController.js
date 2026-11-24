@@ -7,6 +7,21 @@ const SubscriptionPlan = require("../models/SubscriptionPlan");
 const EmailLog = require("../models/EmailLog");
 const PlatformNotification = require("../models/PlatformNotification");
 const DeletedRecord = require("../models/DeletedRecord");
+
+// Strictly allowed platform-level notification types for Super Admin
+const ALLOWED_PLATFORM_TYPES = [
+  "NEW_REGISTRATION",
+  "SUPERMARKET_CREATED",
+  "SUPERMARKET_DEACTIVATED",
+  "SUPERMARKET_STATUS_CHANGED",
+  "TRIAL_EXPIRING",
+  "TRIAL_EXPIRED",
+  "TRIAL_COMPLETED",
+  "SUBSCRIPTION_RENEWED",
+  "PASSWORD_CHANGED",
+  "ADMIN_PASSWORD_UPDATED",
+  "EMAIL_SENT",
+];
 const { clearTenantCache } = require("../middleware/tenantMiddleware");
 const {
   sendSubscriptionRenewalEmail,
@@ -520,9 +535,10 @@ exports.createSupermarket = async (req, res) => {
 
     // 12. Create Super Admin Platform Notification for New Supermarket Registration
     try {
-      await PlatformNotification.create({
+      const regNotif = await PlatformNotification.create({
         type: "NEW_REGISTRATION",
         title: "New Supermarket Registration",
+        badge: "NEW STORE",
         supermarket: newSupermarket._id,
         supermarketName: newSupermarket.name,
         supermarketCode: newSupermarket.code,
@@ -536,6 +552,22 @@ exports.createSupermarket = async (req, res) => {
           registrationDate: newSupermarket.createdAt || new Date(),
         },
       });
+
+      const io = req.app?.get("io");
+      if (io) {
+        io.to("super_admin").emit("platform:notification", {
+          notification: regNotif,
+          unreadCountDelta: 1,
+        });
+        io.to("super-admin").emit("platform:notification", {
+          notification: regNotif,
+          unreadCountDelta: 1,
+        });
+        io.emit("platform:notification", {
+          notification: regNotif,
+          unreadCountDelta: 1,
+        });
+      }
     } catch (notifErr) {
       console.warn("Notice: Failed to create registration platform notification:", notifErr.message);
     }
@@ -777,16 +809,115 @@ exports.updateSupermarket = async (req, res) => {
       supermarket.adminName = adminName;
     }
 
-    if (status && status !== supermarket.status) {
+    const previousStatus = supermarket.status;
+    let statusChanged = false;
+
+    if (status && status !== previousStatus) {
+      statusChanged = true;
       supermarket.status = status;
       // Sync user status
       await User.updateMany(
         { supermarket: supermarket._id },
-        { status: status === "Suspended" ? "Suspended" : "Active" }
+        { status: status === "Suspended" || status === "Inactive" || status === "Deactivated" ? "Suspended" : "Active" }
       );
     }
 
     await supermarket.save();
+
+    // Trigger Super Admin Platform Notification if store status or deactivation occurred
+    if (statusChanged) {
+      try {
+        const isDeactivated = status === "Suspended" || status === "Inactive" || status === "Deactivated";
+        const notifType = isDeactivated ? "SUPERMARKET_DEACTIVATED" : "SUPERMARKET_STATUS_CHANGED";
+        const notifTitle = isDeactivated ? "Store Deactivated" : "Store Status Updated";
+        const notifBadge = isDeactivated ? "DEACTIVATED" : "STATUS UPDATED";
+        const notifColor = isDeactivated ? "red" : "orange";
+        const notifMessage = `Supermarket "${supermarket.name}" (${supermarket.code}) status changed from ${previousStatus} to ${status}.`;
+
+        const statusNotif = await PlatformNotification.create({
+          title: notifTitle,
+          badge: notifBadge,
+          type: notifType,
+          activityType: "SYSTEM",
+          supermarket: supermarket._id,
+          supermarketName: supermarket.name,
+          supermarketCode: supermarket.code,
+          message: notifMessage,
+          color: notifColor,
+          isRead: false,
+          actionUrl: "/super-admin/supermarkets",
+          metadata: {
+            previousStatus,
+            newStatus: status,
+            adminName: supermarket.adminName,
+            adminUsername: supermarket.adminUsername,
+            date: new Date().toLocaleDateString("en-IN"),
+            time: new Date().toLocaleTimeString("en-IN"),
+          },
+        });
+
+        const io = req.app?.get("io");
+        if (io) {
+          io.to("super_admin").emit("platform:notification", {
+            notification: statusNotif,
+            unreadCountDelta: 1,
+          });
+          io.to("super-admin").emit("platform:notification", {
+            notification: statusNotif,
+            unreadCountDelta: 1,
+          });
+          io.emit("platform:notification", {
+            notification: statusNotif,
+            unreadCountDelta: 1,
+          });
+        }
+      } catch (errNotif) {
+        console.warn("Notice: Failed to record supermarket status notification:", errNotif.message);
+      }
+    }
+
+    // Trigger Super Admin Platform Notification if admin password was modified
+    if (adminPassword) {
+      try {
+        const passNotif = await PlatformNotification.create({
+          title: `${supermarket.name} – Admin Password Updated`,
+          badge: "PASSWORD UPDATED",
+          type: "ADMIN_PASSWORD_UPDATED",
+          activityType: "SYSTEM",
+          supermarket: supermarket._id,
+          supermarketName: supermarket.name,
+          supermarketCode: supermarket.code,
+          message: `Admin credentials for "${supermarket.name}" (${supermarket.code}) were updated by Super Admin.`,
+          color: "blue",
+          isRead: false,
+          actionUrl: "/super-admin/supermarkets",
+          metadata: {
+            adminUsername: supermarket.adminUsername,
+            adminName: supermarket.adminName,
+            date: new Date().toLocaleDateString("en-IN"),
+            time: new Date().toLocaleTimeString("en-IN"),
+          },
+        });
+
+        const io = req.app?.get("io");
+        if (io) {
+          io.to("super_admin").emit("platform:notification", {
+            notification: passNotif,
+            unreadCountDelta: 1,
+          });
+          io.to("super-admin").emit("platform:notification", {
+            notification: passNotif,
+            unreadCountDelta: 1,
+          });
+          io.emit("platform:notification", {
+            notification: passNotif,
+            unreadCountDelta: 1,
+          });
+        }
+      } catch (pErr) {
+        console.warn("Notice: Failed to record password change notification in updateSupermarket:", pErr.message);
+      }
+    }
 
     // Update associated User credentials if changed
     if (credentialsUpdated || adminName) {
@@ -1029,6 +1160,47 @@ exports.resetStorePassword = async (req, res) => {
       console.log(`✓ [BREVO REAL-TIME] Password reset email delivered to ${targetEmail}`);
     } catch (mailErr) {
       console.warn("⚠️ Password reset email dispatch notice:", mailErr.message);
+    }
+
+    // Record Super Admin Platform Notification for Password Reset
+    try {
+      const resetNotif = await PlatformNotification.create({
+        title: `${supermarket.name} – Admin Password Reset`,
+        badge: "PASSWORD RESET",
+        type: "ADMIN_PASSWORD_UPDATED",
+        activityType: "SYSTEM",
+        supermarket: supermarket._id,
+        supermarketName: supermarket.name,
+        supermarketCode: supermarket.code,
+        message: `Store Admin password for "${supermarket.name}" (${supermarket.code}) was reset by Super Admin.`,
+        color: "blue",
+        isRead: false,
+        actionUrl: "/super-admin/supermarkets",
+        metadata: {
+          adminUsername: supermarket.adminUsername,
+          adminName: supermarket.adminName,
+          date: new Date().toLocaleDateString("en-IN"),
+          time: new Date().toLocaleTimeString("en-IN"),
+        },
+      });
+
+      const io = req.app?.get("io");
+      if (io) {
+        io.to("super_admin").emit("platform:notification", {
+          notification: resetNotif,
+          unreadCountDelta: 1,
+        });
+        io.to("super-admin").emit("platform:notification", {
+          notification: resetNotif,
+          unreadCountDelta: 1,
+        });
+        io.emit("platform:notification", {
+          notification: resetNotif,
+          unreadCountDelta: 1,
+        });
+      }
+    } catch (resetErr) {
+      console.warn("Notice: Failed to record password reset platform notification:", resetErr.message);
     }
 
     return res.status(200).json({
@@ -1754,9 +1926,10 @@ exports.extendSubscription = async (req, res) => {
 
     // Record Super Admin Platform Notification for Subscription Renewal
     try {
-      await PlatformNotification.create({
+      const renewalNotif = await PlatformNotification.create({
         type: "SUBSCRIPTION_RENEWED",
         title: "Subscription Renewal",
+        badge: "SUBSCRIPTION RENEWED",
         supermarket: supermarket._id,
         supermarketName: supermarket.name,
         supermarketCode: supermarket.code,
@@ -1768,6 +1941,22 @@ exports.extendSubscription = async (req, res) => {
           plan: supermarket.plan,
         },
       });
+
+      const io = req.app?.get("io");
+      if (io) {
+        io.to("super_admin").emit("platform:notification", {
+          notification: renewalNotif,
+          unreadCountDelta: 1,
+        });
+        io.to("super-admin").emit("platform:notification", {
+          notification: renewalNotif,
+          unreadCountDelta: 1,
+        });
+        io.emit("platform:notification", {
+          notification: renewalNotif,
+          unreadCountDelta: 1,
+        });
+      }
     } catch (notifErr) {
       console.warn("Notice: Failed to record renewal platform notification:", notifErr.message);
     }
@@ -2401,9 +2590,21 @@ exports.getSupermarketDetails = async (req, res) => {
 // Absolutely NO customer orders, POS checkouts, or shopper cart actions allowed.
 
 // GET /api/super-admin/notifications
+// Strictly manages SaaS Platform notifications:
+// 1. Store Admin Added / Created (NEW_REGISTRATION, SUPERMARKET_CREATED)
+// 2. Store Admin Deactivated / Status Changed (SUPERMARKET_DEACTIVATED, SUPERMARKET_STATUS_CHANGED)
+// 3. Trial Completed / Expired / Expiring & Subscriptions (TRIAL_EXPIRED, TRIAL_EXPIRING, SUBSCRIPTION_RENEWED)
+// 4. Password Changes & Resets (PASSWORD_CHANGED, ADMIN_PASSWORD_UPDATED)
+// Absolutely NO retail cart items, customer checkouts, or tenant store orders allowed.
 exports.getPlatformNotifications = async (req, res) => {
   try {
     const now = new Date();
+
+    // Self-healing migration: Permanently remove any legacy store customer cart/payment notifications from PlatformNotification
+    await PlatformNotification.deleteMany({
+      type: { $in: ["CART_ITEM_ADDED", "PAYMENT_SUCCESSFUL", "ORDER_CREATED"] },
+    }).catch(() => {});
+
     const supermarkets = await Supermarket.find();
 
     // Dynamically verify trial expiring (< 5 days) & trial expired
@@ -2421,8 +2622,9 @@ exports.getPlatformNotifications = async (req, res) => {
           });
 
           if (!existingExpired) {
-            await PlatformNotification.create({
+            const expNotif = await PlatformNotification.create({
               title: "Subscription Expired",
+              badge: "TRIAL EXPIRED",
               type: "TRIAL_EXPIRED",
               supermarket: sm._id,
               supermarketName: sm.name,
@@ -2432,6 +2634,14 @@ exports.getPlatformNotifications = async (req, res) => {
               actionUrl: "/super-admin/plans",
               metadata: { expiryDate: exp, plan: sm.plan },
             });
+
+            const io = req.app?.get("io");
+            if (io) {
+              io.to("super_admin").emit("platform:notification", {
+                notification: expNotif,
+                unreadCountDelta: 1,
+              });
+            }
           }
         } else if (diffDays <= 5) {
           // Trial / Subscription Expiring Soon
@@ -2442,8 +2652,9 @@ exports.getPlatformNotifications = async (req, res) => {
           });
 
           if (!existingExpiring) {
-            await PlatformNotification.create({
+            const expSoonNotif = await PlatformNotification.create({
               title: "Subscription Trial Expiry Reminder",
+              badge: "TRIAL EXPIRING",
               type: "TRIAL_EXPIRING",
               supermarket: sm._id,
               supermarketName: sm.name,
@@ -2453,6 +2664,14 @@ exports.getPlatformNotifications = async (req, res) => {
               actionUrl: "/super-admin/plans",
               metadata: { expiryDate: exp, daysRemaining: diffDays, plan: sm.plan },
             });
+
+            const io = req.app?.get("io");
+            if (io) {
+              io.to("super_admin").emit("platform:notification", {
+                notification: expSoonNotif,
+                unreadCountDelta: 1,
+              });
+            }
           }
         }
       }
@@ -2461,20 +2680,23 @@ exports.getPlatformNotifications = async (req, res) => {
     const { search, type, isRead, activityType, category } = req.query;
     const query = {};
 
-    if (type && type !== "all") {
+    if (category === "store" || category === "registration") {
+      query.type = { $in: ["NEW_REGISTRATION", "SUPERMARKET_CREATED"] };
+    } else if (category === "status" || category === "deactivation") {
+      query.type = { $in: ["SUPERMARKET_DEACTIVATED", "SUPERMARKET_STATUS_CHANGED"] };
+    } else if (category === "subscription" || category === "trial") {
+      query.type = { $in: ["TRIAL_EXPIRING", "TRIAL_EXPIRED", "TRIAL_COMPLETED", "SUBSCRIPTION_RENEWED"] };
+    } else if (category === "password") {
+      query.type = { $in: ["PASSWORD_CHANGED", "ADMIN_PASSWORD_UPDATED"] };
+    } else if (type && type !== "all") {
       query.type = type;
+    } else {
+      // Strictly enforce platform management event types only
+      query.type = { $in: ALLOWED_PLATFORM_TYPES };
     }
 
     if (activityType && activityType !== "all") {
       query.activityType = activityType;
-    }
-
-    if (category === "cart") {
-      query.type = "CART_ITEM_ADDED";
-    } else if (category === "payment") {
-      query.type = "PAYMENT_SUCCESSFUL";
-    } else if (category === "password") {
-      query.type = { $in: ["PASSWORD_CHANGED", "ADMIN_PASSWORD_UPDATED"] };
     }
 
     if (isRead !== undefined && isRead !== "all") {
@@ -2488,10 +2710,6 @@ exports.getPlatformNotifications = async (req, res) => {
         { supermarketCode: { $regex: s, $options: "i" } },
         { message: { $regex: s, $options: "i" } },
         { title: { $regex: s, $options: "i" } },
-        { customerName: { $regex: s, $options: "i" } },
-        { customerPhone: { $regex: s, $options: "i" } },
-        { productName: { $regex: s, $options: "i" } },
-        { orderNumber: { $regex: s, $options: "i" } },
         { "metadata.adminName": { $regex: s, $options: "i" } },
         { "metadata.adminUsername": { $regex: s, $options: "i" } },
         { "metadata.email": { $regex: s, $options: "i" } },
@@ -2503,7 +2721,10 @@ exports.getPlatformNotifications = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(100);
 
-    const unreadCount = await PlatformNotification.countDocuments({ isRead: false });
+    const unreadCount = await PlatformNotification.countDocuments({
+      isRead: false,
+      type: { $in: ALLOWED_PLATFORM_TYPES },
+    });
 
     return res.status(200).json({
       success: true,

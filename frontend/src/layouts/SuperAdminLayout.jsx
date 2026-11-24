@@ -561,8 +561,22 @@ export default function SuperAdminLayout() {
                                   fontWeight: 800,
                                   padding: "2px 6px",
                                   borderRadius: "4px",
-                                  background: n.type === "PAYMENT_SUCCESSFUL" ? "#DCFCE7" : n.type === "CART_ITEM_ADDED" ? "#F3E8FF" : "#EFF6FF",
-                                  color: n.type === "PAYMENT_SUCCESSFUL" ? "#15803D" : n.type === "CART_ITEM_ADDED" ? "#7E22CE" : "#1D4ED8",
+                                  background:
+                                    n.type === "SUPERMARKET_DEACTIVATED" || n.type === "TRIAL_EXPIRED"
+                                      ? "#FEE2E2"
+                                      : n.type === "SUPERMARKET_STATUS_CHANGED" || n.type === "TRIAL_EXPIRING"
+                                      ? "#FEF3C7"
+                                      : n.type === "NEW_REGISTRATION" || n.type === "SUPERMARKET_CREATED" || n.type === "SUBSCRIPTION_RENEWED"
+                                      ? "#DCFCE7"
+                                      : "#EFF6FF",
+                                  color:
+                                    n.type === "SUPERMARKET_DEACTIVATED" || n.type === "TRIAL_EXPIRED"
+                                      ? "#B91C1C"
+                                      : n.type === "SUPERMARKET_STATUS_CHANGED" || n.type === "TRIAL_EXPIRING"
+                                      ? "#B45309"
+                                      : n.type === "NEW_REGISTRATION" || n.type === "SUPERMARKET_CREATED" || n.type === "SUBSCRIPTION_RENEWED"
+                                      ? "#15803D"
+                                      : "#1D4ED8",
                                   letterSpacing: "0.4px"
                                 }}>
                                   {n.badge}

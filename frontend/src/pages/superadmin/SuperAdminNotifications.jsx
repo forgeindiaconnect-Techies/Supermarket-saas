@@ -153,17 +153,21 @@ export default function SuperAdminNotifications() {
     }
   };
 
-  // Filtered and searched notifications
+  // Filtered and searched notifications (Strictly SaaS Platform Lifecycle Events)
   const filteredNotifications = notifications.filter((n) => {
     // Tab filter
-    if (activeFilter === "cart") {
-      if (n.type !== "CART_ITEM_ADDED") return false;
-    } else if (activeFilter === "payment") {
-      if (n.type !== "PAYMENT_SUCCESSFUL") return false;
-    } else if (activeFilter === "delivery") {
-      if (n.activityType !== "ONLINE_DELIVERY") return false;
-    } else if (activeFilter === "pickup") {
-      if (n.activityType !== "STORE_PICKUP") return false;
+    if (activeFilter === "store") {
+      if (n.type !== "NEW_REGISTRATION" && n.type !== "SUPERMARKET_CREATED") return false;
+    } else if (activeFilter === "status") {
+      if (n.type !== "SUPERMARKET_DEACTIVATED" && n.type !== "SUPERMARKET_STATUS_CHANGED") return false;
+    } else if (activeFilter === "subscription") {
+      if (
+        n.type !== "TRIAL_EXPIRING" &&
+        n.type !== "TRIAL_EXPIRED" &&
+        n.type !== "TRIAL_COMPLETED" &&
+        n.type !== "SUBSCRIPTION_RENEWED"
+      )
+        return false;
     } else if (activeFilter === "password") {
       const isPass =
         n.type === "PASSWORD_CHANGED" ||
@@ -172,8 +176,6 @@ export default function SuperAdminNotifications() {
       if (!isPass) return false;
     } else if (activeFilter === "unread") {
       if (n.isRead) return false;
-    } else if (activeFilter === "registration") {
-      if (n.type !== "NEW_REGISTRATION") return false;
     }
 
     // Search query
@@ -182,34 +184,37 @@ export default function SuperAdminNotifications() {
     const title = (n.title || "").toLowerCase();
     const storeName = (n.supermarketName || "").toLowerCase();
     const storeCode = (n.supermarketCode || "").toLowerCase();
-    const custName = (n.customerName || "").toLowerCase();
-    const custPhone = (n.customerPhone || "").toLowerCase();
-    const prodName = (n.productName || "").toLowerCase();
-    const orderNum = (n.orderNumber || n.orderId || "").toLowerCase();
     const adminName = (n.metadata?.adminName || "").toLowerCase();
     const adminUser = (n.metadata?.adminUsername || "").toLowerCase();
     const email = (n.metadata?.email || "").toLowerCase();
     const msg = (n.message || "").toLowerCase();
+    const plan = (n.metadata?.plan || "").toLowerCase();
 
     return (
       title.includes(q) ||
       storeName.includes(q) ||
       storeCode.includes(q) ||
-      custName.includes(q) ||
-      custPhone.includes(q) ||
-      prodName.includes(q) ||
-      orderNum.includes(q) ||
       adminName.includes(q) ||
       adminUser.includes(q) ||
       email.includes(q) ||
-      msg.includes(q)
+      msg.includes(q) ||
+      plan.includes(q)
     );
   });
 
-  const cartUpdatesCount = notifications.filter((n) => n.type === "CART_ITEM_ADDED").length;
-  const paymentUpdatesCount = notifications.filter((n) => n.type === "PAYMENT_SUCCESSFUL").length;
-  const deliveryUpdatesCount = notifications.filter((n) => n.activityType === "ONLINE_DELIVERY").length;
-  const pickupUpdatesCount = notifications.filter((n) => n.activityType === "STORE_PICKUP").length;
+  const storesAddedCount = notifications.filter(
+    (n) => n.type === "NEW_REGISTRATION" || n.type === "SUPERMARKET_CREATED"
+  ).length;
+  const statusUpdatesCount = notifications.filter(
+    (n) => n.type === "SUPERMARKET_DEACTIVATED" || n.type === "SUPERMARKET_STATUS_CHANGED"
+  ).length;
+  const subscriptionUpdatesCount = notifications.filter(
+    (n) =>
+      n.type === "TRIAL_EXPIRING" ||
+      n.type === "TRIAL_EXPIRED" ||
+      n.type === "TRIAL_COMPLETED" ||
+      n.type === "SUBSCRIPTION_RENEWED"
+  ).length;
   const passwordUpdatesCount = notifications.filter(
     (n) =>
       n.type === "PASSWORD_CHANGED" ||
@@ -396,7 +401,7 @@ export default function SuperAdminNotifications() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
           gap: "1rem",
           marginBottom: "1.5rem",
         }}
@@ -429,11 +434,85 @@ export default function SuperAdminNotifications() {
             <Bell size={20} />
           </div>
           <div>
-            <span style={{ fontSize: "0.78rem", color: "#64748b", fontWeight: 700 }}>
-              TOTAL NOTIFICATIONS
+            <span style={{ fontSize: "0.74rem", color: "#64748b", fontWeight: 700 }}>
+              TOTAL PLATFORM ALERTS
             </span>
             <div style={{ fontSize: "1.45rem", fontWeight: 850, color: "#064e3b" }}>
               {notifications.length}
+            </div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            background: "#ffffff",
+            padding: "16px 20px",
+            borderRadius: "14px",
+            border: "1.5px solid #a7f3d0",
+            boxShadow: "0 2px 8px rgba(16, 185, 129, 0.05)",
+            display: "flex",
+            alignItems: "center",
+            gap: "14px",
+          }}
+        >
+          <div
+            style={{
+              width: "42px",
+              height: "42px",
+              borderRadius: "12px",
+              background: "#dcfce7",
+              color: "#16a34a",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              border: "1px solid #86efac",
+            }}
+          >
+            <Building2 size={20} />
+          </div>
+          <div>
+            <span style={{ fontSize: "0.74rem", color: "#64748b", fontWeight: 700 }}>
+              STORES CREATED
+            </span>
+            <div style={{ fontSize: "1.45rem", fontWeight: 850, color: "#16a34a" }}>
+              {storesAddedCount}
+            </div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            background: "#ffffff",
+            padding: "16px 20px",
+            borderRadius: "14px",
+            border: "1.5px solid #fed7aa",
+            boxShadow: "0 2px 8px rgba(234, 88, 12, 0.05)",
+            display: "flex",
+            alignItems: "center",
+            gap: "14px",
+          }}
+        >
+          <div
+            style={{
+              width: "42px",
+              height: "42px",
+              borderRadius: "12px",
+              background: "#fff7ed",
+              color: "#ea580c",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              border: "1px solid #fed7aa",
+            }}
+          >
+            <AlertCircle size={20} />
+          </div>
+          <div>
+            <span style={{ fontSize: "0.74rem", color: "#64748b", fontWeight: 700 }}>
+              STATUS &amp; DEACTIVATIONS
+            </span>
+            <div style={{ fontSize: "1.45rem", fontWeight: 850, color: "#c2410c" }}>
+              {statusUpdatesCount}
             </div>
           </div>
         </div>
@@ -466,7 +545,7 @@ export default function SuperAdminNotifications() {
             <Lock size={20} />
           </div>
           <div>
-            <span style={{ fontSize: "0.78rem", color: "#64748b", fontWeight: 700 }}>
+            <span style={{ fontSize: "0.74rem", color: "#64748b", fontWeight: 700 }}>
               PASSWORD CHANGES
             </span>
             <div style={{ fontSize: "1.45rem", fontWeight: 850, color: "#1e40af" }}>
@@ -500,10 +579,10 @@ export default function SuperAdminNotifications() {
               border: unreadCount > 0 ? "1px solid #fecaca" : "1px solid #86efac",
             }}
           >
-            <AlertCircle size={20} />
+            <Bell size={20} />
           </div>
           <div>
-            <span style={{ fontSize: "0.78rem", color: "#64748b", fontWeight: 700 }}>
+            <span style={{ fontSize: "0.74rem", color: "#64748b", fontWeight: 700 }}>
               UNREAD ALERTS
             </span>
             <div
@@ -536,7 +615,7 @@ export default function SuperAdminNotifications() {
         }}
       >
         {/* Search Input */}
-        <div style={{ position: "relative", flex: "1 1 320px", maxWidth: "520px" }}>
+        <div style={{ position: "relative", flex: "1 1 320px", maxWidth: "460px" }}>
           <Search
             size={16}
             color="#059669"
@@ -546,7 +625,7 @@ export default function SuperAdminNotifications() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by supermarket name, ID (e.g. SM-7087), admin name or email..."
+            placeholder="Search by store name, ID (e.g. SM-7087), admin name, email, plan..."
             style={{
               width: "100%",
               padding: "10px 14px 10px 42px",
@@ -579,7 +658,7 @@ export default function SuperAdminNotifications() {
           )}
         </div>
 
-        {/* Filter Tabs */}
+        {/* Filter Tabs strictly for SaaS Platform Management */}
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
           <button
             type="button"
@@ -613,44 +692,13 @@ export default function SuperAdminNotifications() {
 
           <button
             type="button"
-            onClick={() => setActiveFilter("cart")}
+            onClick={() => setActiveFilter("store")}
             style={{
               display: "inline-flex",
               alignItems: "center",
               gap: "6px",
-              background: activeFilter === "cart" ? "#7c3aed" : "#f5f3ff",
-              color: activeFilter === "cart" ? "#ffffff" : "#6d28d9",
-              border: "1px solid #ddd6fe",
-              padding: "8px 14px",
-              borderRadius: "10px",
-              fontSize: "0.82rem",
-              fontWeight: 750,
-              cursor: "pointer",
-            }}
-          >
-            <ShoppingCart size={13} />
-            <span>🛒 Cart Activity</span>
-            <span
-              style={{
-                background: activeFilter === "cart" ? "rgba(255,255,255,0.25)" : "#ddd6fe",
-                padding: "1px 6px",
-                borderRadius: "10px",
-                fontSize: "0.74rem",
-              }}
-            >
-              {cartUpdatesCount}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveFilter("payment")}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "6px",
-              background: activeFilter === "payment" ? "#059669" : "#ecfdf5",
-              color: activeFilter === "payment" ? "#ffffff" : "#047857",
+              background: activeFilter === "store" ? "#059669" : "#ecfdf5",
+              color: activeFilter === "store" ? "#ffffff" : "#047857",
               border: "1px solid #a7f3d0",
               padding: "8px 14px",
               borderRadius: "10px",
@@ -659,30 +707,30 @@ export default function SuperAdminNotifications() {
               cursor: "pointer",
             }}
           >
-            <CreditCard size={13} />
-            <span>💳 Payments</span>
+            <Building2 size={13} />
+            <span>🏪 Stores Added</span>
             <span
               style={{
-                background: activeFilter === "payment" ? "rgba(255,255,255,0.25)" : "#a7f3d0",
+                background: activeFilter === "store" ? "rgba(255,255,255,0.25)" : "#a7f3d0",
                 padding: "1px 6px",
                 borderRadius: "10px",
                 fontSize: "0.74rem",
               }}
             >
-              {paymentUpdatesCount}
+              {storesAddedCount}
             </span>
           </button>
 
           <button
             type="button"
-            onClick={() => setActiveFilter("delivery")}
+            onClick={() => setActiveFilter("status")}
             style={{
               display: "inline-flex",
               alignItems: "center",
               gap: "6px",
-              background: activeFilter === "delivery" ? "#2563eb" : "#eff6ff",
-              color: activeFilter === "delivery" ? "#ffffff" : "#1d4ed8",
-              border: "1px solid #bfdbfe",
+              background: activeFilter === "status" ? "#ea580c" : "#fff7ed",
+              color: activeFilter === "status" ? "#ffffff" : "#c2410c",
+              border: "1px solid #fed7aa",
               padding: "8px 14px",
               borderRadius: "10px",
               fontSize: "0.82rem",
@@ -690,30 +738,30 @@ export default function SuperAdminNotifications() {
               cursor: "pointer",
             }}
           >
-            <Truck size={13} />
-            <span>🚚 Online Delivery</span>
+            <AlertCircle size={13} />
+            <span>🛑 Deactivations &amp; Status</span>
             <span
               style={{
-                background: activeFilter === "delivery" ? "rgba(255,255,255,0.25)" : "#bfdbfe",
+                background: activeFilter === "status" ? "rgba(255,255,255,0.25)" : "#fed7aa",
                 padding: "1px 6px",
                 borderRadius: "10px",
                 fontSize: "0.74rem",
               }}
             >
-              {deliveryUpdatesCount}
+              {statusUpdatesCount}
             </span>
           </button>
 
           <button
             type="button"
-            onClick={() => setActiveFilter("pickup")}
+            onClick={() => setActiveFilter("subscription")}
             style={{
               display: "inline-flex",
               alignItems: "center",
               gap: "6px",
-              background: activeFilter === "pickup" ? "#9333ea" : "#faf5ff",
-              color: activeFilter === "pickup" ? "#ffffff" : "#7e22ce",
-              border: "1px solid #e9d5ff",
+              background: activeFilter === "subscription" ? "#d97706" : "#fef3c7",
+              color: activeFilter === "subscription" ? "#ffffff" : "#b45309",
+              border: "1px solid #fde68a",
               padding: "8px 14px",
               borderRadius: "10px",
               fontSize: "0.82rem",
@@ -721,17 +769,17 @@ export default function SuperAdminNotifications() {
               cursor: "pointer",
             }}
           >
-            <Package size={13} />
-            <span>🏬 Store Pickup</span>
+            <Calendar size={13} />
+            <span>⏳ Trials &amp; Subscriptions</span>
             <span
               style={{
-                background: activeFilter === "pickup" ? "rgba(255,255,255,0.25)" : "#e9d5ff",
+                background: activeFilter === "subscription" ? "rgba(255,255,255,0.25)" : "#fde68a",
                 padding: "1px 6px",
                 borderRadius: "10px",
                 fontSize: "0.74rem",
               }}
             >
-              {pickupUpdatesCount}
+              {subscriptionUpdatesCount}
             </span>
           </button>
 
@@ -753,7 +801,7 @@ export default function SuperAdminNotifications() {
             }}
           >
             <Lock size={13} />
-            <span>Security</span>
+            <span>🔑 Password Changes</span>
             <span
               style={{
                 background: activeFilter === "password" ? "rgba(255,255,255,0.25)" : "#bfdbfe",
@@ -837,17 +885,19 @@ export default function SuperAdminNotifications() {
           </div>
         ) : (
           filteredNotifications.map((notif) => {
-            const isCart = notif.type === "CART_ITEM_ADDED";
-            const isPayment = notif.type === "PAYMENT_SUCCESSFUL";
+            const isCreation = notif.type === "NEW_REGISTRATION" || notif.type === "SUPERMARKET_CREATED";
+            const isDeactivation = notif.type === "SUPERMARKET_DEACTIVATED";
+            const isStatus = notif.type === "SUPERMARKET_STATUS_CHANGED";
+            const isSubscription =
+              notif.type === "TRIAL_EXPIRING" ||
+              notif.type === "TRIAL_EXPIRED" ||
+              notif.type === "TRIAL_COMPLETED" ||
+              notif.type === "SUBSCRIPTION_RENEWED" ||
+              notif.type === "EMAIL_SENT";
             const isPassword =
               notif.type === "PASSWORD_CHANGED" ||
               notif.type === "ADMIN_PASSWORD_UPDATED" ||
               (notif.title && notif.title.toLowerCase().includes("password"));
-
-            const isStorePickup =
-              notif.activityType === "STORE_PICKUP" ||
-              (notif.metadata?.fulfillmentType && String(notif.metadata.fulfillmentType).includes("PICKUP"));
-            const shoppingTypeLabel = isStorePickup ? "Store Pickup" : "Online Delivery";
 
             const storeCode =
               notif.supermarketCode ||
@@ -860,11 +910,10 @@ export default function SuperAdminNotifications() {
               notif.supermarket?.name ||
               "Supermarket";
 
-            const customerName = notif.customerName || notif.metadata?.customerName || "Customer";
-            const customerPhone = notif.customerPhone || notif.metadata?.customerPhone || "";
-            const adminName = notif.metadata?.adminName || "Store Admin";
-            const adminUser = notif.metadata?.adminUsername || "";
-            const email = notif.metadata?.email || "N/A";
+            const adminName = notif.metadata?.adminName || notif.supermarket?.adminName || "Store Admin";
+            const adminUser = notif.metadata?.adminUsername || notif.supermarket?.adminUsername || "";
+            const email = notif.metadata?.email || notif.supermarket?.email || "N/A";
+            const plan = notif.metadata?.plan || notif.supermarket?.plan || "Standard";
 
             const dateStr =
               notif.metadata?.date ||
@@ -887,16 +936,21 @@ export default function SuperAdminNotifications() {
             let iconColor = "#16a34a";
             let iconBorder = "1.5px solid #86efac";
 
-            if (isCart) {
-              cardBorder = notif.isRead ? "1.5px solid #e2e8f0" : isStorePickup ? "2px solid #a855f7" : "2px solid #10b981";
-              iconBg = isStorePickup ? "#faf5ff" : "#f0fdf4";
-              iconColor = isStorePickup ? "#9333ea" : "#16a34a";
-              iconBorder = isStorePickup ? "1.5px solid #e9d5ff" : "1.5px solid #bbf7d0";
-            } else if (isPayment) {
-              cardBorder = notif.isRead ? "1.5px solid #e2e8f0" : "2px solid #059669";
-              iconBg = "#ecfdf5";
-              iconColor = "#059669";
-              iconBorder = "1.5px solid #a7f3d0";
+            if (isDeactivation) {
+              cardBorder = notif.isRead ? "1.5px solid #e2e8f0" : "2px solid #ef4444";
+              iconBg = "#fee2e2";
+              iconColor = "#dc2626";
+              iconBorder = "1.5px solid #fca5a5";
+            } else if (isStatus) {
+              cardBorder = notif.isRead ? "1.5px solid #e2e8f0" : "2px solid #f97316";
+              iconBg = "#fff7ed";
+              iconColor = "#ea580c";
+              iconBorder = "1.5px solid #fed7aa";
+            } else if (isSubscription) {
+              cardBorder = notif.isRead ? "1.5px solid #e2e8f0" : "2px solid #f59e0b";
+              iconBg = "#fef3c7";
+              iconColor = "#d97706";
+              iconBorder = "1.5px solid #fde68a";
             } else if (isPassword) {
               cardBorder = notif.isRead ? "1.5px solid #e2e8f0" : "2px solid #3b82f6";
               iconBg = "#eff6ff";
@@ -913,11 +967,15 @@ export default function SuperAdminNotifications() {
                   border: cardBorder,
                   padding: "1.25rem 1.5rem",
                   boxShadow: !notif.isRead
-                    ? isCart && isStorePickup
-                      ? "0 6px 20px rgba(168, 85, 247, 0.12)"
-                      : isPayment
-                      ? "0 6px 20px rgba(5, 150, 105, 0.12)"
-                      : "0 6px 20px rgba(59, 130, 246, 0.12)"
+                    ? isDeactivation
+                      ? "0 6px 20px rgba(239, 68, 68, 0.12)"
+                      : isStatus
+                      ? "0 6px 20px rgba(249, 115, 22, 0.12)"
+                      : isSubscription
+                      ? "0 6px 20px rgba(245, 158, 11, 0.12)"
+                      : isPassword
+                      ? "0 6px 20px rgba(59, 130, 246, 0.12)"
+                      : "0 6px 20px rgba(16, 185, 129, 0.12)"
                     : "0 2px 8px rgba(0,0,0,0.03)",
                   position: "relative",
                   transition: "all 0.2s ease",
@@ -949,10 +1007,12 @@ export default function SuperAdminNotifications() {
                         flexShrink: 0,
                       }}
                     >
-                      {isCart ? (
-                        <ShoppingCart size={20} strokeWidth={2.4} />
-                      ) : isPayment ? (
-                        <CreditCard size={20} strokeWidth={2.4} />
+                      {isDeactivation ? (
+                        <AlertCircle size={20} strokeWidth={2.4} />
+                      ) : isStatus ? (
+                        <RefreshCw size={20} strokeWidth={2.4} />
+                      ) : isSubscription ? (
+                        <Calendar size={20} strokeWidth={2.4} />
                       ) : isPassword ? (
                         <Lock size={20} strokeWidth={2.4} />
                       ) : (
@@ -969,28 +1029,33 @@ export default function SuperAdminNotifications() {
                             color: "#0f172a",
                           }}
                         >
-                          {notif.title || (isCart ? "Cart Item Added" : isPayment ? "Payment Successful" : `${storeName} – Admin Alert`)}
+                          {notif.title || (isDeactivation ? "Store Deactivated" : isCreation ? "New Store Registered" : `${storeName} – Platform Alert`)}
                         </h3>
 
-                        {/* Exact Badge Matching Specification */}
                         {notif.badge && (
                           <span
                             style={{
-                              background: isPayment
-                                ? "#dcfce7"
-                                : isCart && isStorePickup
-                                ? "#f3e8ff"
-                                : "#eff6ff",
-                              color: isPayment
-                                ? "#15803d"
-                                : isCart && isStorePickup
-                                ? "#7e22ce"
-                                : "#1e40af",
-                              border: isPayment
-                                ? "1px solid #86efac"
-                                : isCart && isStorePickup
-                                ? "1px solid #d8b4fe"
-                                : "1px solid #bfdbfe",
+                              background: isDeactivation || notif.type === "TRIAL_EXPIRED"
+                                ? "#fee2e2"
+                                : isStatus || notif.type === "TRIAL_EXPIRING"
+                                ? "#fef3c7"
+                                : isPassword
+                                ? "#eff6ff"
+                                : "#dcfce7",
+                              color: isDeactivation || notif.type === "TRIAL_EXPIRED"
+                                ? "#b91c1c"
+                                : isStatus || notif.type === "TRIAL_EXPIRING"
+                                ? "#b45309"
+                                : isPassword
+                                ? "#1e40af"
+                                : "#15803d",
+                              border: isDeactivation || notif.type === "TRIAL_EXPIRED"
+                                ? "1px solid #fca5a5"
+                                : isStatus || notif.type === "TRIAL_EXPIRING"
+                                ? "1px solid #fde68a"
+                                : isPassword
+                                ? "1px solid #bfdbfe"
+                                : "1px solid #86efac",
                               padding: "2px 8px",
                               borderRadius: "6px",
                               fontSize: "0.72rem",
@@ -1047,23 +1112,23 @@ export default function SuperAdminNotifications() {
                           <span>{storeName}</span>
                         </span>
 
-                        {(isCart || isPayment) && (
+                        {plan && (
                           <span
                             style={{
                               display: "inline-flex",
                               alignItems: "center",
                               gap: "4px",
-                              background: isStorePickup ? "#faf5ff" : "#f0fdf4",
-                              color: isStorePickup ? "#7e22ce" : "#15803d",
-                              border: isStorePickup ? "1px solid #e9d5ff" : "1px solid #bbf7d0",
+                              background: "#f0fdf4",
+                              color: "#15803d",
+                              border: "1px solid #bbf7d0",
                               padding: "2px 8px",
                               borderRadius: "6px",
                               fontSize: "0.74rem",
                               fontWeight: 750,
                             }}
                           >
-                            {isStorePickup ? <Package size={12} /> : <Truck size={12} />}
-                            <span>{shoppingTypeLabel}</span>
+                            <Sparkles size={12} />
+                            <span>{plan} Plan</span>
                           </span>
                         )}
                       </div>
@@ -1136,32 +1201,38 @@ export default function SuperAdminNotifications() {
                 {/* Primary Activity Message Display */}
                 <div
                   style={{
-                    background: isCart
-                      ? isStorePickup ? "#faf5ff" : "#f0fdf4"
-                      : isPayment
-                      ? "#ecfdf5"
-                      : "#f8fafc",
-                    border: isCart
-                      ? isStorePickup ? "1px solid #e9d5ff" : "1px solid #bbf7d0"
-                      : isPayment
-                      ? "1px solid #a7f3d0"
-                      : "1px solid #e2e8f0",
+                    background: isDeactivation || notif.type === "TRIAL_EXPIRED"
+                      ? "#fff5f5"
+                      : isStatus || notif.type === "TRIAL_EXPIRING"
+                      ? "#fffbeb"
+                      : isPassword
+                      ? "#f8faff"
+                      : "#f0fdf4",
+                    border: isDeactivation || notif.type === "TRIAL_EXPIRED"
+                      ? "1px solid #fed7d7"
+                      : isStatus || notif.type === "TRIAL_EXPIRING"
+                      ? "1px solid #fef3c7"
+                      : isPassword
+                      ? "1px solid #dbeafe"
+                      : "1px solid #bbf7d0",
                     borderRadius: "10px",
                     padding: "10px 14px",
                     marginBottom: "1rem",
                     fontSize: "0.92rem",
                     fontWeight: 750,
-                    color: isCart
-                      ? isStorePickup ? "#6b21a8" : "#166534"
-                      : isPayment
-                      ? "#065f46"
-                      : "#1e293b",
+                    color: isDeactivation || notif.type === "TRIAL_EXPIRED"
+                      ? "#991b1b"
+                      : isStatus || notif.type === "TRIAL_EXPIRING"
+                      ? "#92400e"
+                      : isPassword
+                      ? "#1e40af"
+                      : "#166534",
                   }}
                 >
                   {notif.message}
                 </div>
 
-                {/* Information Grid: 100% dynamic details */}
+                {/* Information Grid: 100% dynamic SaaS platform details */}
                 <div
                   style={{
                     display: "grid",
@@ -1174,79 +1245,120 @@ export default function SuperAdminNotifications() {
                     marginBottom: "1rem",
                   }}
                 >
-                  {isCart ? (
+                  {isCreation ? (
                     <>
                       <div>
                         <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
-                          Customer Name
+                          Store Name &amp; Code
                         </span>
                         <div style={{ fontSize: "0.88rem", fontWeight: 750, color: "#0f172a", marginTop: "2px" }}>
-                          {customerName}
+                          {storeName} ({storeCode})
                         </div>
                       </div>
 
                       <div>
                         <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
-                          Mobile Number
+                          Subscription Plan
                         </span>
-                        <div style={{ fontSize: "0.88rem", fontWeight: 750, color: "#0f172a", marginTop: "2px" }}>
-                          {customerPhone || "N/A"}
+                        <div style={{ fontSize: "0.88rem", fontWeight: 750, color: "#16a34a", marginTop: "2px" }}>
+                          {plan} Plan
                         </div>
                       </div>
 
                       <div>
                         <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
-                          Product Added
+                          Store Admin Email
                         </span>
-                        <div style={{ fontSize: "0.88rem", fontWeight: 750, color: "#7c3aed", marginTop: "2px" }}>
-                          {notif.productName || notif.metadata?.productName || "Product"} (Qty: {notif.productQuantity || notif.metadata?.quantity || 1})
+                        <div style={{ fontSize: "0.88rem", fontWeight: 700, color: "#0f172a", marginTop: "2px", wordBreak: "break-all" }}>
+                          {email}
                         </div>
                       </div>
 
                       <div>
                         <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
-                          Shopping Type
+                          Registration Status
                         </span>
-                        <div style={{ fontSize: "0.88rem", fontWeight: 750, color: isStorePickup ? "#9333ea" : "#16a34a", marginTop: "2px" }}>
-                          {shoppingTypeLabel}
+                        <div style={{ fontSize: "0.88rem", fontWeight: 750, color: "#15803d", marginTop: "2px", display: "flex", alignItems: "center", gap: "4px" }}>
+                          <CheckCircle2 size={14} color="#16a34a" />
+                          <span>Tenant Active</span>
                         </div>
                       </div>
                     </>
-                  ) : isPayment ? (
+                  ) : isDeactivation || isStatus ? (
                     <>
                       <div>
                         <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
-                          Customer Name
+                          Supermarket
                         </span>
                         <div style={{ fontSize: "0.88rem", fontWeight: 750, color: "#0f172a", marginTop: "2px" }}>
-                          {customerName}
+                          {storeName} ({storeCode})
                         </div>
                       </div>
 
                       <div>
                         <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
-                          Mobile Number
+                          New Status
+                        </span>
+                        <div style={{ fontSize: "0.88rem", fontWeight: 800, color: isDeactivation ? "#dc2626" : "#ea580c", marginTop: "2px" }}>
+                          {notif.metadata?.newStatus || (isDeactivation ? "Suspended" : "Updated")}
+                        </div>
+                      </div>
+
+                      <div>
+                        <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
+                          Previous Status
+                        </span>
+                        <div style={{ fontSize: "0.88rem", fontWeight: 700, color: "#64748b", marginTop: "2px" }}>
+                          {notif.metadata?.previousStatus || "Active"}
+                        </div>
+                      </div>
+
+                      <div>
+                        <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
+                          Action Type
+                        </span>
+                        <div style={{ fontSize: "0.88rem", fontWeight: 750, color: isDeactivation ? "#b91c1c" : "#c2410c", marginTop: "2px", display: "flex", alignItems: "center", gap: "4px" }}>
+                          <AlertCircle size={14} />
+                          <span>{isDeactivation ? "Store Deactivated" : "Status Changed"}</span>
+                        </div>
+                      </div>
+                    </>
+                  ) : isSubscription ? (
+                    <>
+                      <div>
+                        <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
+                          Supermarket
                         </span>
                         <div style={{ fontSize: "0.88rem", fontWeight: 750, color: "#0f172a", marginTop: "2px" }}>
-                          {customerPhone || "N/A"}
+                          {storeName} ({storeCode})
                         </div>
                       </div>
 
                       <div>
                         <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
-                          Payment Amount
+                          Subscription Plan
                         </span>
-                        <div style={{ fontSize: "0.95rem", fontWeight: 850, color: "#15803d", marginTop: "2px" }}>
-                          ₹{Number(notif.amount || notif.metadata?.totalAmount || 0).toFixed(2)}
+                        <div style={{ fontSize: "0.88rem", fontWeight: 750, color: "#0f172a", marginTop: "2px" }}>
+                          {plan}
                         </div>
                       </div>
 
                       <div>
                         <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
-                          Order ID
+                          Expiry / Renewal Date
                         </span>
-                        <div style={{ fontSize: "0.88rem", fontWeight: 750, color: "#1e40af", marginTop: "2px" }}>
-                          {notif.orderNumber || notif.metadata?.orderNumber || notif.orderId || "N/A"}
+                        <div style={{ fontSize: "0.88rem", fontWeight: 750, color: notif.type === "TRIAL_EXPIRED" ? "#dc2626" : "#d97706", marginTop: "2px" }}>
+                          {notif.metadata?.expiryDate || notif.metadata?.newExpiryDate ? new Date(notif.metadata.expiryDate || notif.metadata.newExpiryDate).toLocaleDateString("en-IN") : "Recorded"}
+                        </div>
+                      </div>
+
+                      <div>
+                        <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
+                          Subscription Status
+                        </span>
+                        <div style={{ fontSize: "0.88rem", fontWeight: 750, color: notif.type === "TRIAL_EXPIRED" ? "#dc2626" : "#16a34a", marginTop: "2px", display: "flex", alignItems: "center", gap: "4px" }}>
+                          <Calendar size={14} />
+                          <span>{notif.badge || "Subscription Alert"}</span>
                         </div>
                       </div>
                     </>

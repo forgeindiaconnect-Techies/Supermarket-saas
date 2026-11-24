@@ -1,5 +1,4 @@
 const mongoose = require("mongoose");
-const PlatformNotification = require("../models/PlatformNotification");
 const Supermarket = require("../models/Supermarket");
 const { emitTenantNotification } = require("./notificationEmitter");
 
@@ -50,96 +49,47 @@ async function recordCartItemAddedNotification({
       }
     }
 
-    // Exact message matching specification:
-    // e.g.: "Naveen added Hari (Qty: 1) to their Online Delivery cart."
-    // e.g.: "Agila added Dairy Milk (Qty: 2) to their Store Pickup cart."
     const title = "Cart Item Added";
     const badge = "ADDED TO CART";
     const message = `${cleanCustName} added ${productName} (Qty: ${cleanQty}) to their ${typeLabel} cart.`;
 
-    // Deduplication window: Prevent duplicate notifications from rapid re-clicks / retries within 4 seconds
-    const timeBucket = Math.floor(Date.now() / 4000);
-    const custIdentifier = customerId || cleanCustPhone.replace(/\D/g, "") || cleanCustName;
-    const idempotencyKey = `cart-${custIdentifier}-${productName}-${cleanQty}-${activityType}-${timeBucket}`;
-
-    const existing = await PlatformNotification.findOne({ idempotencyKey }).catch(() => null);
-    if (existing) {
-      return existing;
-    }
-
-    const doc = await PlatformNotification.create({
-      title,
-      badge,
-      type: "CART_ITEM_ADDED",
-      activityType,
-      supermarket: storeObjId,
-      supermarketName: resolvedStoreName || "Supermarket",
-      supermarketCode: resolvedStoreCode || "",
-      customerName: cleanCustName,
-      customerPhone: cleanCustPhone,
-      productName,
-      productQuantity: cleanQty,
-      amount: Number(price || 0) * cleanQty,
-      message,
-      color: isStorePickup ? "purple" : "green",
-      isRead: false,
-      idempotencyKey,
-      actionUrl: "/super-admin/notifications",
-      metadata: {
-        productName,
-        quantity: cleanQty,
-        unitPrice: Number(price || 0),
-        fulfillmentType,
-        customerName: cleanCustName,
-        customerPhone: cleanCustPhone,
-        date: new Date().toLocaleDateString("en-IN", {
-          day: "numeric",
-          month: "short",
-          year: "numeric",
-        }),
-        time: new Date().toLocaleTimeString("en-IN", {
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: true,
-        }),
-      },
-    });
-
-    // Real-Time Socket.IO emission to Super Admin and Tenant Store Admin
+    // Strict SaaS Separation: Cart item additions are store-level retail customer actions.
+    // They are dispatched EXCLUSIVELY to the tenant Store Admin and NEVER saved into PlatformNotification
+    // or sent to the platform Super Admin.
     if (io) {
       try {
-        io.to("super_admin").emit("platform:notification", {
-          notification: doc,
-          unreadCountDelta: 1,
-        });
-
-        emitTenantNotification(io, "admin:notification", {
-          id: `cart-${doc._id}`,
+        const notifPayload = {
+          id: `cart-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
           type: "cart",
           badge: "ADDED TO CART",
           title,
           actor: cleanCustName,
           message,
-          timestamp: doc.createdAt,
+          timestamp: new Date().toISOString(),
           customerName: cleanCustName,
           productName,
           quantity: cleanQty,
           supermarketId: storeObjId ? storeObjId.toString() : null,
           supermarketCode: resolvedStoreCode,
           supermarketName: resolvedStoreName,
-        });
+        };
+
+        emitTenantNotification(io, "admin:notification", notifPayload);
       } catch (sockErr) {
-        console.warn("Notice emitting cart activity notification:", sockErr.message);
+        console.warn("Notice emitting store admin cart activity notification:", sockErr.message);
       }
     }
 
-    return doc;
+    return {
+      success: true,
+      title,
+      badge,
+      message,
+      supermarketCode: resolvedStoreCode,
+      supermarketName: resolvedStoreName,
+    };
   } catch (err) {
-    // Graceful duplicate key or validation handling
-    if (err.code === 11000) {
-      return null;
-    }
-    console.error("Error recording cart item added notification:", err);
+    console.error("Error dispatching cart item added notification:", err);
     return null;
   }
 }
@@ -161,12 +111,6 @@ async function recordPaymentSuccessfulNotification({ order, io = null }) {
     // Strict idempotency: Ensure one successful payment generates strictly one payment notification
     const orderIdStr = String(order._id || order.id || "");
     const orderNumStr = String(order.orderNumber || "").trim();
-    const idempotencyKey = `payment-success-${orderIdStr || orderNumStr}`;
-
-    const existing = await PlatformNotification.findOne({ idempotencyKey }).catch(() => null);
-    if (existing) {
-      return existing;
-    }
 
     // Strict fulfillment separation
     const oType = String(order.orderType || "").toUpperCase();
@@ -212,80 +156,43 @@ async function recordPaymentSuccessfulNotification({ order, io = null }) {
       storeObjId = new mongoose.Types.ObjectId(order.supermarket);
     }
 
-    const doc = await PlatformNotification.create({
-      title,
-      badge,
-      type: "PAYMENT_SUCCESSFUL",
-      activityType,
-      supermarket: storeObjId,
-      supermarketName: order.supermarketName || "Supermarket",
-      supermarketCode: order.supermarketCode || "",
-      customerName: custName,
-      customerPhone: custPhone,
-      amount: rawAmount,
-      orderId: orderIdStr,
-      orderNumber: orderNumStr,
-      message,
-      color: isStorePickup ? "blue" : "green",
-      isRead: false,
-      idempotencyKey,
-      actionUrl: `/super-admin/orders?search=${encodeURIComponent(orderNumStr)}`,
-      metadata: {
-        orderId: orderIdStr,
-        orderNumber: orderNumStr,
-        totalAmount: rawAmount,
-        paymentMethod: order.paymentMethod || "UPI",
-        fulfillmentType: isStorePickup ? "SELF_PICKUP" : "DELIVERY",
-        customerName: custName,
-        customerPhone: custPhone,
-        itemsCount: order.items?.length || order.totalItems || 1,
-        date: new Date().toLocaleDateString("en-IN", {
-          day: "numeric",
-          month: "short",
-          year: "numeric",
-        }),
-        time: new Date().toLocaleTimeString("en-IN", {
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: true,
-        }),
-      },
-    });
-
-    // Real-Time Socket.IO emission to Super Admin and Tenant Store Admin
+    // Strict SaaS Separation: Order payment successes are store-level customer actions.
+    // They are dispatched EXCLUSIVELY to the tenant Store Admin and NEVER saved into PlatformNotification
+    // or sent to the platform Super Admin.
     if (io) {
       try {
-        io.to("super_admin").emit("platform:notification", {
-          notification: doc,
-          unreadCountDelta: 1,
-        });
-
-        emitTenantNotification(io, "admin:notification", {
-          id: `payment-${orderNumStr}`,
+        const notifPayload = {
+          id: `payment-${orderNumStr || Date.now()}`,
           type: "approved",
           badge: "PAYMENT SUCCESSFUL",
           title,
           actor: custName,
           message,
-          timestamp: doc.createdAt,
+          timestamp: new Date().toISOString(),
           order,
           customerName: custName,
           totalAmount: rawAmount,
           supermarketId: storeObjId ? storeObjId.toString() : null,
           supermarketCode: order.supermarketCode,
           supermarketName: order.supermarketName,
-        });
+        };
+
+        emitTenantNotification(io, "admin:notification", notifPayload);
       } catch (sockErr) {
-        console.warn("Notice emitting payment notification:", sockErr.message);
+        console.warn("Notice emitting store admin payment notification:", sockErr.message);
       }
     }
 
-    return doc;
+    return {
+      success: true,
+      title,
+      badge,
+      message,
+      orderNumber: orderNumStr,
+      supermarketCode: order.supermarketCode,
+    };
   } catch (err) {
-    if (err.code === 11000) {
-      return null;
-    }
-    console.error("Error recording payment successful notification:", err);
+    console.error("Error dispatching payment successful notification:", err);
     return null;
   }
 }
