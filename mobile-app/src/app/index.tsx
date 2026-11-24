@@ -26,6 +26,7 @@ export default function WelcomeHomeScreen() {
     setSelectedSupermarket,
     setPurchaseMode,
     clearCart,
+    startFreshOfflineSession,
   } = useCart();
 
   const [verifying] = useState(false);
@@ -57,13 +58,11 @@ export default function WelcomeHomeScreen() {
     }
   };
 
-  // 2. OFFLINE: Customer clicks OFFLINE → Barcode Scanner only opens.
-  // No supermarket name before scanning. After scanning, show the correct supermarket name and product details.
+  // 2. OFFLINE: Customer clicks OFFLINE → Opens Barcode Scanner directly without registration, login, or previous session data.
+  // Starts a completely fresh offline shopping session for every walk-in customer.
   const handleSelectOffline = () => {
-    setPurchaseMode("offline");
-    setSelectedSupermarket(null);
-    clearCart();
-    router.push({ pathname: "/scanner", params: { fresh: "true" } });
+    startFreshOfflineSession();
+    router.push({ pathname: "/scanner", params: { fresh: "true", mode: "offline" } });
   };
 
   // Handle Delivery / Track Orders selection:
@@ -90,7 +89,7 @@ export default function WelcomeHomeScreen() {
       // Offline mode sequence: Select Supermarket -> Fresh Scanner Session
       setPurchaseMode("offline");
       clearCart();
-      router.push({ pathname: "/scanner", params: { fresh: "true" } });
+      router.push({ pathname: "/scanner", params: { fresh: "true", mode: "offline" } });
     } else {
       // Online mode sequence: Select Supermarket -> Customer Registration / Login Page (/auth)
       router.push("/auth");

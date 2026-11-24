@@ -30,6 +30,7 @@ export default function MyCartScreen() {
     totalCount,
     purchaseMode,
     customerUser,
+    customerInfo,
     selectedSupermarket,
   } = useCart();
 
@@ -227,12 +228,16 @@ export default function MyCartScreen() {
                 </View>
               </View>
 
-              {/* Proceed to Checkout Button */}
+              {/* Proceed to Checkout / Payment Button */}
               <TouchableOpacity
                 style={styles.checkoutBtn}
                 onPress={() => {
                   if (purchaseMode === "offline") {
-                    router.push("/customer-details");
+                    // Mandatory offline walk-in customer details form
+                    router.push({
+                      pathname: "/customer-details",
+                      params: { method: "UPI" },
+                    });
                   } else {
                     if (!customerUser || !customerUser.token) {
                       router.push({ pathname: "/auth", params: { tab: "register" } });
@@ -244,7 +249,9 @@ export default function MyCartScreen() {
                 activeOpacity={0.88}
               >
                 <Text style={styles.checkoutBtnText}>
-                  {purchaseMode === "offline" ? "Proceed to Customer Details →" : `Proceed to Checkout (₹${Number(displayTotal || 0).toFixed(2)}) →`}
+                  {purchaseMode === "offline"
+                    ? `Proceed to Payment (₹${Number(displayTotal || 0).toFixed(2)}) →`
+                    : `Proceed to Checkout (₹${Number(displayTotal || 0).toFixed(2)}) →`}
                 </Text>
               </TouchableOpacity>
             </>
@@ -252,8 +259,8 @@ export default function MyCartScreen() {
         </ScrollView>
       </View>
 
-      {/* 6-Tab Customer Bottom Navigation */}
-      <CustomerBottomNav activeTab="cart" />
+      {/* 6-Tab Customer Bottom Navigation (Online shopping only) */}
+      {purchaseMode !== "offline" && <CustomerBottomNav activeTab="cart" />}
     </View>
   );
 }

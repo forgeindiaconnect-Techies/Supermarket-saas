@@ -126,6 +126,37 @@ const orderSchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
+    pickupSlotStart: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    pickupSlotEnd: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    pickupTimezone: {
+      type: String,
+      default: "Asia/Kolkata",
+      trim: true,
+    },
+    actualCollectionTime: {
+      type: Date,
+    },
+    collectedAt: {
+      type: Date,
+    },
+    collectedBy: {
+      userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+      name: { type: String, default: "" },
+      role: { type: String, default: "" },
+    },
+    collectionFlag: {
+      type: String,
+      enum: ["ON_TIME", "EARLY", "LATE", ""],
+      default: "",
+    },
     estimatedReadyTime: {
       type: String,
       default: "",

@@ -83,21 +83,31 @@ export default function PickupManagement() {
             return false;
           }
 
-          const isHomeDelivery =
+          // Explicit Doorstep Delivery
+          if (
+            choice === "DOORSTEP_DELIVERY" ||
             type === "DELIVERY" ||
             type === "ONLINE_DELIVERY" ||
-            type === "SELF_PICKUP_DOORSTEP" ||
-            choice === "DOORSTEP_DELIVERY" ||
-            Boolean(o.deliveryStatus && o.deliveryStatus !== "");
-          if (isHomeDelivery) return false;
+            type === "SELF_PICKUP_DOORSTEP"
+          ) {
+            return false;
+          }
 
-          return (
-            mode === "ONLINE" &&
-            (type === "SELF_PICKUP" ||
-              type === "SELF_PICKUP_STORE_COLLECTION" ||
-              choice === "STORE_COLLECTION" ||
-              (Boolean(o.pickupStatus) && o.pickupStatus !== ""))
-          );
+          // Explicit Store Collection
+          if (
+            choice === "STORE_COLLECTION" ||
+            type === "SELF_PICKUP" ||
+            type === "SELF_PICKUP_STORE_COLLECTION"
+          ) {
+            return true;
+          }
+
+          // Fallback: If has pickupStatus and no delivery choice
+          if (Boolean(o.pickupStatus) && o.pickupStatus !== "") {
+            return true;
+          }
+
+          return false;
         });
         setOrders(pickupList);
       }
@@ -119,6 +129,11 @@ export default function PickupManagement() {
       });
 
       socket.on("order:updated", () => {
+        fetchOrders();
+      });
+
+      socket.on("order:reviewed", (data) => {
+        showToast(`⭐ New Customer Review received for Order #${data?.orderNumber || ""}!`);
         fetchOrders();
       });
 
@@ -212,31 +227,58 @@ export default function PickupManagement() {
     }
   };
 
-  // Admin Manual Override to Complete Pickup
-  const handleManualComplete = async (orderId) => {
+  // Confirm Customer Collection Action (Store Admin Counter Hand-off)
+  const handleConfirmCollection = async (orderId) => {
     try {
-      const res = await API.put(`/orders/${orderId}/customer-complete-pickup`, {
+      const res = await API.put(`/orders/${orderId}/confirm-collection`, {
         adminOverride: true,
+        adminName: "Store Admin",
       });
       if (res.data?.success) {
-        showToast("✓ Order marked as Completed (Collected from Store)!");
+        showToast("✓ Customer Collection Confirmed! Actual collection time recorded.");
         fetchOrders();
+        if (selectedOrderForView && selectedOrderForView._id === orderId) {
+          setSelectedOrderForView(res.data.order);
+        }
       } else {
-        showToast(`⚠️ ${res.data?.message || "Failed to complete pickup."}`);
+        showToast(`⚠️ ${res.data?.message || "Failed to confirm collection."}`);
       }
     } catch (err) {
       showToast(`⚠️ ${err.response?.data?.message || err.message}`);
     }
   };
+  const handleManualComplete = handleConfirmCollection;
 
-  // Filter Orders
+  // Canonical Normalized Status helper for Pickup Orders
+  const getNormPickupStatus = (status) => {
+    if (!status) return "Pending";
+    const s = String(status).toLowerCase().trim();
+    if (s === "completed" || s === "collected") return "Completed";
+    if (s === "readyforpickup" || s === "ready" || s === "ready for pickup") return "ReadyForPickup";
+    if (s === "preparing" || s === "packing") return "Preparing";
+    if (s === "cancelled" || s === "canceled") return "Cancelled";
+    return "Pending";
+  };
+
+  // Category Counts (Strictly dynamic derived from real MongoDB orders)
+  const countNew = orders.filter((o) => getNormPickupStatus(o.pickupStatus) === "Pending").length;
+  const countPreparing = orders.filter((o) => getNormPickupStatus(o.pickupStatus) === "Preparing").length;
+  const countReady = orders.filter((o) => getNormPickupStatus(o.pickupStatus) === "ReadyForPickup").length;
+  const countCompleted = orders.filter((o) => getNormPickupStatus(o.pickupStatus) === "Completed").length;
+  const countReviewed = orders.filter((o) => Boolean(o.review && o.review.rating && o.review.rating > 0)).length;
+  const countHistory = orders.filter((o) => {
+    const norm = getNormPickupStatus(o.pickupStatus);
+    return norm === "Completed" || norm === "Cancelled";
+  }).length;
+
+  // Filter Orders using normalized canonical status
   const filteredOrders = orders.filter((o) => {
-    const s = o.pickupStatus || "New";
-    if (statusFilter === "new" && s !== "New" && s !== "Pending") return false;
-    if (statusFilter === "preparing" && s !== "Preparing") return false;
-    if (statusFilter === "ready" && s !== "ReadyForPickup") return false;
-    if (statusFilter === "completed" && s !== "Completed") return false;
-    if (statusFilter === "history" && s !== "Completed" && s !== "Cancelled") return false;
+    const norm = getNormPickupStatus(o.pickupStatus);
+    if (statusFilter === "new" && norm !== "Pending") return false;
+    if (statusFilter === "preparing" && norm !== "Preparing") return false;
+    if (statusFilter === "ready" && norm !== "ReadyForPickup") return false;
+    if (statusFilter === "completed" && norm !== "Completed") return false;
+    if (statusFilter === "history" && norm !== "Completed" && norm !== "Cancelled") return false;
     if (statusFilter === "reviewed" && (!o.review || !o.review.rating)) return false;
 
     if (search.trim()) {
@@ -249,13 +291,6 @@ export default function PickupManagement() {
     }
     return true;
   });
-
-  // Category Counts
-  const countNew = orders.filter((o) => ["New", "Pending"].includes(o.pickupStatus || "New")).length;
-  const countPreparing = orders.filter((o) => o.pickupStatus === "Preparing").length;
-  const countReady = orders.filter((o) => o.pickupStatus === "ReadyForPickup").length;
-  const countCompleted = orders.filter((o) => o.pickupStatus === "Completed").length;
-  const countReviewed = orders.filter((o) => o.review && o.review.rating).length;
 
   return (
     <div className="grocer-page-container">
@@ -361,7 +396,7 @@ export default function PickupManagement() {
           { id: "ready", label: "Ready for Pickup", count: countReady },
           { id: "completed", label: "Completed Orders", count: countCompleted },
           { id: "reviewed", label: "⭐ Customer Reviews", count: countReviewed },
-          { id: "history", label: "Pickup History", count: countCompleted },
+          { id: "history", label: "Pickup History", count: countHistory },
         ].map((f) => (
           <button
             key={f.id}
@@ -407,10 +442,12 @@ export default function PickupManagement() {
           <div className="del-empty-icon-wrap" style={{ background: "#F0FDF4", borderColor: "#BBF7D0" }}>
             <Store size={34} color="#059669" />
           </div>
-          <h4>No Store Collection Orders</h4>
+          <h4>{statusFilter === "reviewed" ? "No Customer Reviews Submitted Yet" : "No Store Collection Orders"}</h4>
           <p>
             {search
               ? `No pickup orders matched "${search}". Try searching with a different term.`
+              : statusFilter === "reviewed"
+              ? "No customer reviews have been submitted yet. When customers complete their in-store counter collection and submit their ratings, verified feedback and ratings will appear here."
               : "There are currently no store pickup orders in this status category. Live counter collection orders will appear here automatically."}
           </p>
           {search ? (
@@ -460,42 +497,10 @@ export default function PickupManagement() {
                 </span>
               </div>
             </div>
-
-            <div
-              className="cm-header-controls"
-              style={{
-                display: "flex",
-                gap: "8px",
-                alignItems: "center",
-                flexWrap: "wrap",
-              }}
-            >
-              <button
-                type="button"
-                className="pm-action-btn primary"
-                onClick={fetchOrders}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "5px",
-                  padding: "6px 14px",
-                  borderRadius: "8px",
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  background: "#059669",
-                  color: "#FFFFFF",
-                  border: "none",
-                  cursor: "pointer",
-                }}
-              >
-                <RefreshCw size={13} />
-                <span>Refresh Orders</span>
-              </button>
-            </div>
           </div>
 
-          <div className="orders-table-responsive pm-table-wrapper">
-            <table className="orders-table pm-products-table">
+          <div className="orders-table-responsive">
+            <table className="orders-table">
               <thead>
                 <tr>
                   <th className="th-idx">#</th>
@@ -504,7 +509,12 @@ export default function PickupManagement() {
                   <th className="th-customer">CUSTOMER</th>
                   <th className="th-mobile">MOBILE</th>
                   <th className="th-items">ITEMS</th>
-                  <th className="th-amount">TOTAL AMOUNT</th>
+                  <th className="th-amount">TOTAL</th>
+                  <th className="th-timeslot">PICKUP TIME SLOT</th>
+                  <th className="th-collectiontime">ACTUAL COLLECTION TIME</th>
+                  {statusFilter === "reviewed" ? (
+                    <th className="th-review">CUSTOMER REVIEW</th>
+                  ) : null}
                   <th className="th-status">STATUS</th>
                   <th className="th-action">ACTIONS</th>
                 </tr>
@@ -593,41 +603,199 @@ export default function PickupManagement() {
                           })}
                         </span>
                       </td>
-                      <td className="td-status">
-                        {s === "Completed" || isCompleted ? (
-                          <span className="order-status-pill status-completed">
-                            <CheckCircle2 size={13} color="#15803D" strokeWidth={2.4} />
-                            <span>Completed</span>
+
+                      {/* Pickup Time Slot Column */}
+                      <td className="td-timeslot">
+                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                          <span style={{ fontWeight: 800, color: "#1E1B4B", fontSize: "12.5px" }}>
+                            ⏰ {ord.pickupTimeSlot || "10:00 AM – 12:00 PM"}
                           </span>
-                        ) : s === "ReadyForPickup" ? (
-                          <span className="order-status-pill status-ready">
-                            <Bell size={13} color="#7E22CE" strokeWidth={2.4} />
-                            <span>Ready</span>
+                          <span style={{ fontSize: "11px", color: "#64748B", fontWeight: 600 }}>
+                            📅 {ord.pickupDate || "Today"}
                           </span>
-                        ) : s === "Preparing" ? (
-                          <span className="order-status-pill status-preparing">
-                            <Package size={13} color="#1D4ED8" strokeWidth={2.4} />
-                            <span>Preparing</span>
-                          </span>
+                        </div>
+                      </td>
+
+                      {/* Actual Collection Time Column */}
+                      <td className="td-collectiontime">
+                        {ord.actualCollectionTime || ord.customerPickupCompletedAt || (isCompleted && ord.completedAt) ? (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                            <span style={{ fontWeight: 800, color: "#15803D", fontSize: "12.5px", display: "flex", alignItems: "center", gap: 4 }}>
+                              <CheckCircle2 size={13} color="#16A34A" strokeWidth={2.4} />
+                              {new Date(ord.actualCollectionTime || ord.customerPickupCompletedAt || ord.completedAt).toLocaleTimeString("en-IN", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                hour12: true,
+                              })}
+                            </span>
+                            <span style={{ fontSize: "10.5px", color: "#64748B" }}>
+                              {new Date(ord.actualCollectionTime || ord.customerPickupCompletedAt || ord.completedAt).toLocaleDateString("en-IN", {
+                                day: "numeric",
+                                month: "short",
+                              })}
+                              {ord.collectionFlag ? (
+                                <span style={{
+                                  marginLeft: 4,
+                                  fontSize: "9.5px",
+                                  padding: "1px 5px",
+                                  borderRadius: 4,
+                                  fontWeight: 700,
+                                  background: ord.collectionFlag === "ON_TIME" ? "#DCFCE7" : ord.collectionFlag === "EARLY" ? "#FEF3C7" : "#FEE2E2",
+                                  color: ord.collectionFlag === "ON_TIME" ? "#166534" : ord.collectionFlag === "EARLY" ? "#92400E" : "#991B1B",
+                                }}>
+                                  {ord.collectionFlag === "ON_TIME" ? "On Time" : ord.collectionFlag === "EARLY" ? "Early" : "Late"}
+                                </span>
+                              ) : null}
+                            </span>
+                          </div>
                         ) : (
-                          <span className="order-status-pill status-pending">
-                            <Clock size={13} color="#C2410C" strokeWidth={2.4} />
-                            <span>Pending</span>
+                          <span style={{ fontSize: "11.5px", color: "#94A3B8", fontWeight: 600, fontStyle: "italic" }}>
+                            Not Yet Collected
                           </span>
                         )}
                       </td>
+
+                      {statusFilter === "reviewed" ? (
+                        <td className="td-review">
+                          {ord.review?.rating ? (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                                <span style={{ color: "#F59E0B", fontSize: 13 }}>
+                                  {"★".repeat(ord.review.rating)}{"☆".repeat(5 - ord.review.rating)}
+                                </span>
+                                <strong style={{ fontSize: 12, color: "#0F172A" }}>
+                                  {ord.review.rating}.0
+                                </strong>
+                                <span style={{ fontSize: 10.5, background: "#FEF3C7", color: "#92400E", padding: "1px 6px", borderRadius: 4, fontWeight: 700 }}>
+                                  {ord.review.rating === 5 ? "5-Star" : `${ord.review.rating} Stars`}
+                                </span>
+                              </div>
+                              {ord.review.comment ? (
+                                <span style={{ fontSize: 11.5, color: "#334155", fontStyle: "italic", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={ord.review.comment}>
+                                  "{ord.review.comment}"
+                                </span>
+                              ) : (
+                                <span style={{ fontSize: 11, color: "#94A3B8", fontStyle: "italic" }}>Rating submitted</span>
+                              )}
+                              <span style={{ fontSize: 10.5, color: "#64748B" }}>
+                                Reviewed: {ord.review.submittedAt
+                                  ? new Date(ord.review.submittedAt).toLocaleDateString("en-IN", {
+                                      day: "numeric",
+                                      month: "short",
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                      hour12: true,
+                                    })
+                                  : formattedDate}
+                              </span>
+                            </div>
+                          ) : (
+                            <span style={{ fontSize: 11, color: "#94A3B8" }}>No review</span>
+                          )}
+                        </td>
+                      ) : null}
+                      <td className="td-status">
+                        {(() => {
+                          const norm = getNormPickupStatus(ord.pickupStatus);
+                          if (norm === "Completed") {
+                            return (
+                              <span className="order-status-pill status-completed">
+                                <CheckCircle2 size={13} color="#15803D" strokeWidth={2.4} />
+                                <span>Completed</span>
+                              </span>
+                            );
+                          }
+                          if (norm === "ReadyForPickup") {
+                            return (
+                              <span className="order-status-pill status-ready">
+                                <Bell size={13} color="#7E22CE" strokeWidth={2.4} />
+                                <span>Ready</span>
+                              </span>
+                            );
+                          }
+                          if (norm === "Preparing") {
+                            return (
+                              <span className="order-status-pill status-preparing">
+                                <Package size={13} color="#1D4ED8" strokeWidth={2.4} />
+                                <span>Preparing</span>
+                              </span>
+                            );
+                          }
+                          return (
+                            <span className="order-status-pill status-pending">
+                              <Clock size={13} color="#C2410C" strokeWidth={2.4} />
+                              <span>Pending</span>
+                            </span>
+                          );
+                        })()}
+                      </td>
                       <td className="td-action">
-                        <button
-                          type="button"
-                          className="order-action-view-btn"
-                          onClick={() => {
-                            setSelectedOrderForView(ord);
-                            setViewOrderModalOpen(true);
-                          }}
-                        >
-                          <Eye size={13} />
-                          <span>View Details</span>
-                        </button>
+                        <div className="orders-actions-wrap">
+                          <button
+                            type="button"
+                            className="order-action-view-btn"
+                            onClick={() => {
+                              setSelectedOrderForView(ord);
+                              setViewOrderModalOpen(true);
+                            }}
+                          >
+                            <Eye size={12} />
+                            <span>View Details</span>
+                          </button>
+
+                          {(() => {
+                            const norm = getNormPickupStatus(ord.pickupStatus);
+                            if (norm === "Pending") {
+                              return (
+                                <button
+                                  type="button"
+                                  className="pick-quick-action-btn prepare"
+                                  onClick={() => handleStartPreparing(ord._id)}
+                                  title="Start Preparing Pickup Order"
+                                >
+                                  Prepare
+                                </button>
+                              );
+                            }
+                            if (norm === "Preparing") {
+                              return (
+                                <button
+                                  type="button"
+                                  className="pick-quick-action-btn ready"
+                                  onClick={() => handleOpenReadyModal(ord)}
+                                  title="Set Ready Time & Alert Customer"
+                                >
+                                  Set Ready
+                                </button>
+                              );
+                            }
+                            if (norm === "ReadyForPickup") {
+                              return (
+                                <button
+                                  type="button"
+                                  className="pick-quick-action-btn complete"
+                                  onClick={() => handleConfirmCollection(ord._id)}
+                                  title="Confirm Counter Hand-off to Customer"
+                                >
+                                  Confirm Collection
+                                </button>
+                              );
+                            }
+                            if (norm === "Completed") {
+                              return ord.review?.rating ? (
+                                <button
+                                  type="button"
+                                  className="pick-quick-action-btn review"
+                                  onClick={() => setSelectedReviewOrder(ord)}
+                                  title="View Customer Review & Rating"
+                                >
+                                  ⭐ Review
+                                </button>
+                              ) : null;
+                            }
+                            return null;
+                          })()}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -833,6 +1001,61 @@ export default function PickupManagement() {
                 </div>
               </div>
 
+              {/* Booked Pickup Time Slot & Collection Tracking Details */}
+              <div
+                style={{
+                  background: "#F8FAFC",
+                  border: "1.5px solid #E2E8F0",
+                  borderRadius: "12px",
+                  padding: "12px 16px",
+                  marginBottom: "14px",
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: "12px",
+                }}
+              >
+                <div>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase" }}>
+                    Booked Pickup Time Slot
+                  </span>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: "#1E1B4B", marginTop: 2 }}>
+                    ⏰ {selectedOrderForView.pickupTimeSlot || "10:00 AM – 12:00 PM"}
+                  </div>
+                  <div style={{ fontSize: 12, color: "#64748B", marginTop: 1 }}>
+                    📅 {selectedOrderForView.pickupDate || "Today"}
+                  </div>
+                </div>
+
+                <div>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase" }}>
+                    Actual Collection Time
+                  </span>
+                  {selectedOrderForView.actualCollectionTime || selectedOrderForView.customerPickupCompletedAt || (selectedOrderForView.pickupStatus === "Completed" && selectedOrderForView.completedAt) ? (
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: "#15803D", marginTop: 2 }}>
+                        ✓ {new Date(selectedOrderForView.actualCollectionTime || selectedOrderForView.customerPickupCompletedAt || selectedOrderForView.completedAt).toLocaleTimeString("en-IN", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          hour12: true,
+                        })}
+                      </div>
+                      <div style={{ fontSize: 11, color: "#64748B", marginTop: 1 }}>
+                        {new Date(selectedOrderForView.actualCollectionTime || selectedOrderForView.customerPickupCompletedAt || selectedOrderForView.completedAt).toLocaleDateString("en-IN", {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        })}
+                        {selectedOrderForView.collectedBy?.name ? ` • Collected by ${selectedOrderForView.collectedBy.name}` : ""}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 13, color: "#94A3B8", fontWeight: 700, fontStyle: "italic", marginTop: 4 }}>
+                      Not Yet Collected
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* Ready Schedule Banner if present */}
               {selectedOrderForView.estimatedReadyTime && (
                 <div
@@ -925,17 +1148,18 @@ export default function PickupManagement() {
                 </button>
               ) : null}
 
-              {selectedOrderForView.pickupStatus === "ReadyForPickup" &&
+              {(selectedOrderForView.pickupStatus === "ReadyForPickup" || selectedOrderForView.pickupStatus === "Ready") &&
               !selectedOrderForView.customerPickupConfirmed ? (
                 <button
                   type="button"
                   className="pick-btn-primary"
+                  style={{ backgroundColor: "#16A34A" }}
                   onClick={() => {
-                    handleManualComplete(selectedOrderForView._id);
+                    handleConfirmCollection(selectedOrderForView._id);
                     setViewOrderModalOpen(false);
                   }}
                 >
-                  Confirm Customer Hand-off (Complete)
+                  ✓ Confirm Collection (Hand-off)
                 </button>
               ) : null}
             </div>

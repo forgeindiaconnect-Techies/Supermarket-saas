@@ -2458,11 +2458,23 @@ exports.getPlatformNotifications = async (req, res) => {
       }
     }
 
-    const { search, type, isRead } = req.query;
+    const { search, type, isRead, activityType, category } = req.query;
     const query = {};
 
     if (type && type !== "all") {
       query.type = type;
+    }
+
+    if (activityType && activityType !== "all") {
+      query.activityType = activityType;
+    }
+
+    if (category === "cart") {
+      query.type = "CART_ITEM_ADDED";
+    } else if (category === "payment") {
+      query.type = "PAYMENT_SUCCESSFUL";
+    } else if (category === "password") {
+      query.type = { $in: ["PASSWORD_CHANGED", "ADMIN_PASSWORD_UPDATED"] };
     }
 
     if (isRead !== undefined && isRead !== "all") {
@@ -2476,6 +2488,10 @@ exports.getPlatformNotifications = async (req, res) => {
         { supermarketCode: { $regex: s, $options: "i" } },
         { message: { $regex: s, $options: "i" } },
         { title: { $regex: s, $options: "i" } },
+        { customerName: { $regex: s, $options: "i" } },
+        { customerPhone: { $regex: s, $options: "i" } },
+        { productName: { $regex: s, $options: "i" } },
+        { orderNumber: { $regex: s, $options: "i" } },
         { "metadata.adminName": { $regex: s, $options: "i" } },
         { "metadata.adminUsername": { $regex: s, $options: "i" } },
         { "metadata.email": { $regex: s, $options: "i" } },

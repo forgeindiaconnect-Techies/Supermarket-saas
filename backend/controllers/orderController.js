@@ -10,46 +10,45 @@ const { sendOrderReceiptEmail } = require("../utils/mailer");
 async function deductOrderInventory(order) {
   if (order.inventoryDeducted) return;
 
-  const session = await mongoose.startSession();
+  const currentOrder = await Order.findById(order._id);
+  if (!currentOrder || currentOrder.inventoryDeducted) return;
 
   try {
-    await session.withTransaction(async () => {
-      const currentOrder = await Order.findById(order._id).session(session);
-
-      if (!currentOrder) {
-        throw new Error("Order not found.");
-      }
-
-      if (currentOrder.inventoryDeducted) {
-        return;
-      }
-
-      for (const item of currentOrder.items) {
-        const result = await Product.updateOne(
-          {
-            _id: item.product,
-            stock: { $gte: item.quantity },
-          },
-          {
-            $inc: { stock: -item.quantity },
-          },
-          { session }
-        );
-
-        if (result.matchedCount !== 1) {
-          throw new Error(
-            `Insufficient stock or product unavailable: ${item.name}`
-          );
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        for (const item of currentOrder.items) {
+          const prodId = item.product?._id || item.product;
+          if (prodId) {
+            await Product.updateOne(
+              { _id: prodId, stock: { $gte: item.quantity } },
+              { $inc: { stock: -item.quantity } },
+              { session }
+            );
+          }
         }
+        currentOrder.inventoryDeducted = true;
+        await currentOrder.save({ session });
+      });
+      order.inventoryDeducted = true;
+      return;
+    } finally {
+      await session.endSession();
+    }
+  } catch (txErr) {
+    // Fallback direct atomic deduction
+    for (const item of currentOrder.items) {
+      const prodId = item.product?._id || item.product;
+      if (prodId) {
+        await Product.updateOne(
+          { _id: prodId, stock: { $gte: item.quantity } },
+          { $inc: { stock: -item.quantity } }
+        );
       }
-
-      currentOrder.inventoryDeducted = true;
-      await currentOrder.save({ session });
-    });
-
+    }
+    currentOrder.inventoryDeducted = true;
+    await currentOrder.save();
     order.inventoryDeducted = true;
-  } finally {
-    await session.endSession();
   }
 }
 
@@ -141,7 +140,17 @@ exports.checkout = async (req, res) => {
     const resolvedSupermarketName = verifiedStore.name;
 
     // Strict Super Admin Online / Offline availability validation
-    const purchaseMode = String(req.body?.purchaseMode || req.headers["x-purchase-mode"] || "OFFLINE").toUpperCase();
+    let inferredPurchaseMode = req.body?.purchaseMode || req.headers["x-purchase-mode"];
+    if (!inferredPurchaseMode) {
+      const oT = String(req.body?.orderType || "").toUpperCase();
+      const fC = String(req.body?.fulfillmentChoice || req.body?.fulfillmentType || "").toUpperCase();
+      if (oT.includes("PICKUP") || oT.includes("DELIVERY") || fC === "STORE_COLLECTION" || fC === "DOORSTEP_DELIVERY") {
+        inferredPurchaseMode = "ONLINE";
+      } else {
+        inferredPurchaseMode = "OFFLINE";
+      }
+    }
+    const purchaseMode = String(inferredPurchaseMode).toUpperCase();
     if (purchaseMode === "ONLINE") {
       if (verifiedStore.onlineAvailable !== true) {
         return res.status(403).json({
@@ -164,7 +173,7 @@ exports.checkout = async (req, res) => {
     let totalDiscount = 0;
 
     for (const item of items) {
-      const productId = item.productId || item._id;
+      const productId = item.productId || item._id || item.product;
       const quantity = Number(item.quantity);
 
       if (!productId || !Number.isInteger(quantity) || quantity <= 0) {
@@ -249,7 +258,7 @@ exports.checkout = async (req, res) => {
     const isCashPayment = paymentMethod === "Cash";
     const isPaid = req.body?.isPaid === true || req.body?.status === "Completed" || paymentMethod === "UPI" || paymentMethod === "Card";
     const paymentStatus = req.body?.paymentStatus || (isPaid ? "Completed" : "Pending");
-    const inventoryDeducted = paymentStatus === "Completed";
+    const inventoryDeducted = false; // Initialized false until deductOrderInventory executes upon payment confirmation
 
     // 5. Generate unique Order number and Exit Receipt Barcode
     const timestampStr = Date.now().toString().slice(-6);
@@ -354,6 +363,67 @@ exports.checkout = async (req, res) => {
     const finalPickupStatus = (isOffline || isHomeDelivery) ? "" : ((req.body.pickupStatus && String(req.body.pickupStatus).trim()) || "Pending");
     const finalDeliveryStatus = isOffline ? "" : (isHomeDelivery ? ((req.body.deliveryStatus && String(req.body.deliveryStatus).trim()) || "Order Confirmed") : "");
 
+    // Pickup Slot Validation & Processing (Store Pickup Workflow)
+    let pickupDateVal = (isOffline || isHomeDelivery) ? "" : (req.body.pickupDate || "");
+    let pickupTimeSlotVal = (isOffline || isHomeDelivery) ? "" : (req.body.pickupTimeSlot || "");
+    let pickupSlotStartVal = "";
+    let pickupSlotEndVal = "";
+    let pickupTimezoneVal = "Asia/Kolkata";
+
+    if (!isOffline && !isHomeDelivery && finalOrderType === "SELF_PICKUP") {
+      if (!pickupTimeSlotVal) {
+        pickupTimeSlotVal = "10:00 AM – 12:00 PM";
+      }
+      if (!pickupDateVal) {
+        pickupDateVal = "Today";
+      }
+
+      // Parse slot start & end (e.g. "2:00 PM – 4:00 PM" or "10:00 AM - 12:00 PM")
+      const slotMatch = pickupTimeSlotVal.match(/(\d{1,2}):(\d{2})\s*(AM|PM)\s*[-–]\s*(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+      if (slotMatch) {
+        let sH = parseInt(slotMatch[1], 10);
+        const sM = parseInt(slotMatch[2], 10);
+        const sAmPm = slotMatch[3].toUpperCase();
+        if (sAmPm === "PM" && sH < 12) sH += 12;
+        if (sAmPm === "AM" && sH === 12) sH = 0;
+
+        let eH = parseInt(slotMatch[4], 10);
+        const eM = parseInt(slotMatch[5], 10);
+        const eAmPm = slotMatch[6].toUpperCase();
+        if (eAmPm === "PM" && eH < 12) eH += 12;
+        if (eAmPm === "AM" && eH === 12) eH = 0;
+
+        pickupSlotStartVal = `${String(sH).padStart(2, "0")}:${String(sM).padStart(2, "0")}`;
+        pickupSlotEndVal = `${String(eH).padStart(2, "0")}:${String(eM).padStart(2, "0")}`;
+
+        // Validate that past slots cannot be booked for "Today"
+        const isBookingToday = String(pickupDateVal).toLowerCase().includes("today") ||
+          new Date(nowTime).toDateString() === new Date(pickupDateVal).toDateString();
+
+        if (isBookingToday) {
+          const istFormatter = new Intl.DateTimeFormat("en-US", {
+            timeZone: "Asia/Kolkata",
+            hour: "numeric",
+            minute: "numeric",
+            hour12: false,
+          });
+          const parts = istFormatter.formatToParts(nowTime);
+          const curH = parseInt(parts.find(p => p.type === "hour")?.value || "0", 10);
+          const curM = parseInt(parts.find(p => p.type === "minute")?.value || "0", 10);
+          const curTotalMinutes = curH * 60 + curM;
+          const endTotalMinutes = eH * 60 + eM;
+
+          // If the slot has already ended:
+          if (curTotalMinutes >= endTotalMinutes) {
+            return res.status(400).json({
+              success: false,
+              message: `The selected pickup slot "${pickupTimeSlotVal}" for today has already ended. Please select an upcoming time slot.`,
+            });
+          }
+        }
+      }
+    }
+
     const order = await Order.create({
       orderNumber,
       items: verifiedItems,
@@ -368,8 +438,11 @@ exports.checkout = async (req, res) => {
       purchaseMode,
       orderType: finalOrderType,
       fulfillmentChoice: finalFulfillmentChoice,
-      pickupDate: (isOffline || isHomeDelivery) ? "" : (req.body.pickupDate || ""),
-      pickupTimeSlot: (isOffline || isHomeDelivery) ? "" : (req.body.pickupTimeSlot || ""),
+      pickupDate: pickupDateVal,
+      pickupTimeSlot: pickupTimeSlotVal,
+      pickupSlotStart: pickupSlotStartVal,
+      pickupSlotEnd: pickupSlotEndVal,
+      pickupTimezone: pickupTimezoneVal,
       pickupStatus: finalPickupStatus,
       deliveryStatus: finalDeliveryStatus,
       deliveryAddress: finalCustomerAddress,
@@ -482,6 +555,13 @@ exports.checkout = async (req, res) => {
           ...notifData,
           order,
         });
+
+        if (paymentStatus === "Completed") {
+          try {
+            const { recordPaymentSuccessfulNotification } = require("../utils/activityNotificationHelper");
+            await recordPaymentSuccessfulNotification({ order, io });
+          } catch (_) {}
+        }
       }
     } catch (_) { }
 
@@ -572,6 +652,25 @@ exports.logCartActivity = async (req, res) => {
           supermarketId: actSupermarketId ? actSupermarketId.toString() : null,
           supermarketCode: actSupermarketCode || "DEFAULT",
         });
+
+        if (action === "added") {
+          try {
+            const { recordCartItemAddedNotification } = require("../utils/activityNotificationHelper");
+            await recordCartItemAddedNotification({
+              customerName: customerName || "Customer",
+              customerPhone: req.body?.customerPhone || "",
+              customerId: req.user?._id || req.user?.id || null,
+              productName,
+              quantity,
+              price,
+              supermarketId: actSupermarketId,
+              supermarketCode: actSupermarketCode,
+              supermarketName: req.body?.supermarketName || "",
+              fulfillmentType: req.body?.fulfillmentType || "ONLINE_DELIVERY",
+              io,
+            });
+          } catch (_) {}
+        }
       }
     } catch (_) {}
 
@@ -1539,6 +1638,13 @@ exports.completePayment = async (req, res) => {
           completedAt: order.completedAt,
           order,
         });
+
+        if (order.paymentStatus === "Completed") {
+          try {
+            const { recordPaymentSuccessfulNotification } = require("../utils/activityNotificationHelper");
+            await recordPaymentSuccessfulNotification({ order, io });
+          } catch (_) {}
+        }
       }
     } catch (_) {}
 
@@ -1656,6 +1762,13 @@ exports.updatePaymentStatus = async (req, res) => {
           completedAt: order.completedAt,
           order,
         });
+
+        if (order.paymentStatus === "Completed") {
+          try {
+            const { recordPaymentSuccessfulNotification } = require("../utils/activityNotificationHelper");
+            await recordPaymentSuccessfulNotification({ order, io });
+          } catch (_) {}
+        }
       }
     } catch (_) {}
 
@@ -1720,6 +1833,15 @@ exports.confirmCashPayment = async (req, res) => {
     order.completedAt = new Date();
     order.paymentId = `CASH-${Date.now().toString().slice(-6)}`;
     await order.save();
+
+    try {
+      const io = req.app?.get("io");
+      if (io) {
+        io.emit("order:updated", { order });
+        const { recordPaymentSuccessfulNotification } = require("../utils/activityNotificationHelper");
+        await recordPaymentSuccessfulNotification({ order, io });
+      }
+    } catch (_) {}
 
     return res.status(200).json({
       success: true,
@@ -2139,6 +2261,9 @@ exports.updatePickupStatus = async (req, res) => {
       });
     }
 
+    const previousStatus = order.pickupStatus || "Pending";
+    const nowTimestamp = new Date();
+
     if (pickupStatus) {
       order.pickupStatus = pickupStatus;
     }
@@ -2152,7 +2277,7 @@ exports.updatePickupStatus = async (req, res) => {
       order.pickupInstructions = instructions;
     }
     if (pickupStatus === "Preparing") {
-      if (!order.preparingAt) order.preparingAt = new Date();
+      if (!order.preparingAt) order.preparingAt = nowTimestamp;
       if (!Array.isArray(order.trackingTimeline)) order.trackingTimeline = [];
       order.trackingTimeline.push({
         status: "Preparing at Store",
@@ -2166,7 +2291,7 @@ exports.updatePickupStatus = async (req, res) => {
     }
     if (pickupStatus === "ReadyForPickup") {
       order.pickupReadyNotificationSent = true;
-      if (!order.pickupReadyAt) order.pickupReadyAt = new Date();
+      if (!order.pickupReadyAt) order.pickupReadyAt = nowTimestamp;
       if (!Array.isArray(order.trackingTimeline)) order.trackingTimeline = [];
       order.trackingTimeline.push({
         status: "Ready for Pickup",
@@ -2180,7 +2305,7 @@ exports.updatePickupStatus = async (req, res) => {
     }
     if (pickupStatus === "Completed") {
       order.customerPickupConfirmed = true;
-      if (!order.customerPickupCompletedAt) order.customerPickupCompletedAt = new Date();
+      if (!order.customerPickupCompletedAt) order.customerPickupCompletedAt = nowTimestamp;
       order.completedAt = order.customerPickupCompletedAt;
       if (order.paymentStatus === "Pending" || order.paymentStatus === "Approved") {
         order.paymentStatus = "Completed";
@@ -2194,6 +2319,19 @@ exports.updatePickupStatus = async (req, res) => {
         timestamp: order.customerPickupCompletedAt,
         updatedBy: req.user?.name || "Store Admin",
         role: "STORE_ADMIN",
+      });
+    }
+
+    // Always append permanent status change record to statusHistory audit trail
+    if (pickupStatus && pickupStatus !== previousStatus) {
+      if (!Array.isArray(order.statusHistory)) order.statusHistory = [];
+      order.statusHistory.push({
+        previousStatus,
+        newStatus: pickupStatus,
+        timestamp: nowTimestamp,
+        updatedBy: req.user?.name || "Store Admin",
+        updatedById: req.user?._id || req.user?.id || null,
+        role: req.user?.role || "STORE_ADMIN",
       });
     }
 
@@ -2366,6 +2504,7 @@ exports.setPickupReady = async (req, res) => {
       });
     }
 
+    const previousStatus = order.pickupStatus || "Preparing";
     order.pickupStatus = "ReadyForPickup";
     order.estimatedReadyTime = estimatedReadyTime.trim();
     order.estimatedReadyDate = estimatedReadyDate.trim();
@@ -2382,6 +2521,17 @@ exports.setPickupReady = async (req, res) => {
       updatedBy: req.user?.name || "Store Admin",
       role: "STORE_ADMIN",
     });
+
+    if (!Array.isArray(order.statusHistory)) order.statusHistory = [];
+    order.statusHistory.push({
+      previousStatus,
+      newStatus: "ReadyForPickup",
+      timestamp: order.pickupReadyAt,
+      updatedBy: req.user?.name || "Store Admin",
+      updatedById: req.user?._id || req.user?.id || null,
+      role: req.user?.role || "STORE_ADMIN",
+    });
+
     await order.save();
 
     const notifMessage = `Your order will be ready for pickup at ${order.estimatedReadyTime}. Please visit the store and collect your products.`;
@@ -2415,7 +2565,7 @@ exports.setPickupReady = async (req, res) => {
   }
 };
 
-// Customer physically collects order and clicks Complete in mobile app
+// Customer physically collects order or Store Admin confirms counter hand-off
 exports.customerCompletePickup = async (req, res) => {
   try {
     const { id } = req.params;
@@ -2429,19 +2579,82 @@ exports.customerCompletePickup = async (req, res) => {
       });
     }
 
+    // STRICT: Do not allow collection confirmation twice
+    if (order.customerPickupConfirmed && (order.actualCollectionTime || order.customerPickupCompletedAt)) {
+      return res.status(400).json({
+        success: false,
+        message: "This pickup order has already been confirmed as collected. Cannot confirm collection twice.",
+        order,
+      });
+    }
+
+    const collectionTime = new Date();
+    const previousStatus = order.pickupStatus || "ReadyForPickup";
     order.pickupStatus = "Completed";
     order.paymentStatus = "Completed";
     order.customerPickupConfirmed = true;
-    order.customerPickupCompletedAt = new Date();
-    order.completedAt = new Date();
+    order.customerPickupCompletedAt = collectionTime;
+    order.actualCollectionTime = collectionTime;
+    order.collectedAt = collectionTime;
+    order.completedAt = collectionTime;
+
+    // Record collectedBy: actual user ID, name and role (Store Admin)
+    const adminUser = req.user || {};
+    const adminName = (req.body?.adminName || adminUser.name || "Store Admin").trim();
+    order.collectedBy = {
+      userId: adminUser._id || adminUser.id || null,
+      name: adminName,
+      role: adminUser.role || (req.body?.adminOverride ? "STORE_ADMIN" : "CUSTOMER"),
+    };
+
+    // Calculate collectionFlag (ON_TIME, EARLY, LATE) compared to originally booked slot
+    let collectionFlag = "ON_TIME";
+    if (order.pickupSlotStart && order.pickupSlotEnd) {
+      try {
+        const [sH, sM] = order.pickupSlotStart.split(":").map(Number);
+        const [eH, eM] = order.pickupSlotEnd.split(":").map(Number);
+        const istFormatter = new Intl.DateTimeFormat("en-US", {
+          timeZone: "Asia/Kolkata",
+          hour: "numeric",
+          minute: "numeric",
+          hour12: false,
+        });
+        const parts = istFormatter.formatToParts(collectionTime);
+        const curH = parseInt(parts.find((p) => p.type === "hour")?.value || "0", 10);
+        const curM = parseInt(parts.find((p) => p.type === "minute")?.value || "0", 10);
+        const curMins = curH * 60 + curM;
+        const startMins = sH * 60 + sM;
+        const endMins = eH * 60 + eM;
+
+        if (curMins < startMins) {
+          collectionFlag = "EARLY";
+        } else if (curMins > endMins) {
+          collectionFlag = "LATE";
+        } else {
+          collectionFlag = "ON_TIME";
+        }
+      } catch (_) {}
+    }
+    order.collectionFlag = collectionFlag;
+
     if (!Array.isArray(order.trackingTimeline)) order.trackingTimeline = [];
     order.trackingTimeline.push({
       status: "Order Completed & Collected",
       stage: "PICKUP_COMPLETED",
       title: "Order Completed & Collected",
-      description: "Items verified and successfully collected by customer at the supermarket counter.",
-      timestamp: order.customerPickupCompletedAt,
-      updatedBy: req.body?.adminOverride ? "Store Admin" : (order.customer?.name || "Customer"),
+      description: `Items verified and successfully collected by customer at the supermarket counter (Collection: ${collectionFlag.replace("_", " ")}).`,
+      timestamp: collectionTime,
+      updatedBy: req.body?.adminOverride ? adminName : (order.customer?.name || "Customer"),
+      role: req.body?.adminOverride ? "STORE_ADMIN" : "CUSTOMER",
+    });
+
+    if (!Array.isArray(order.statusHistory)) order.statusHistory = [];
+    order.statusHistory.push({
+      previousStatus,
+      newStatus: "Completed",
+      timestamp: collectionTime,
+      updatedBy: req.body?.adminOverride ? adminName : (order.customer?.name || "Customer"),
+      updatedById: adminUser._id || adminUser.id || null,
       role: req.body?.adminOverride ? "STORE_ADMIN" : "CUSTOMER",
     });
 
@@ -2522,6 +2735,8 @@ exports.customerCompletePickup = async (req, res) => {
     });
   }
 };
+
+exports.confirmPickupCollection = exports.customerCompletePickup;
 
 // Update Delivery status (Order Confirmed, Preparing, Assigned, Products Collected, Out for Delivery, Delivered)
 exports.updateDeliveryStatus = async (req, res) => {
@@ -2688,27 +2903,35 @@ exports.submitOrderReview = async (req, res) => {
       });
     }
 
-    // Verify order completion stage before enabling review (Flexible check)
-    const orderTypeUpper = String(order.orderType || "").toUpperCase();
-    const pickupStatusUpper = String(order.pickupStatus || "").toUpperCase();
-    const deliveryStatusUpper = String(order.deliveryStatus || "").toUpperCase();
-    const paymentStatusUpper = String(order.paymentStatus || "").toUpperCase();
+    // STRICT CHECK: Verify order completion stage before enabling review
+    const oType = String(order.orderType || "").toUpperCase();
+    const fChoice = String(order.fulfillmentChoice || "").toUpperCase();
+    const isPickup =
+      oType.includes("PICKUP") ||
+      fChoice === "STORE_COLLECTION" ||
+      Boolean(order.pickupStatus && String(order.pickupStatus).trim() !== "");
 
-    const isPickupCompleted =
-      order.customerPickupConfirmed === true ||
-      pickupStatusUpper === "COMPLETED" ||
-      orderTypeUpper.includes("PICKUP");
-
-    const isDeliveryCompleted =
-      deliveryStatusUpper === "DELIVERED" ||
-      deliveryStatusUpper === "COMPLETED";
-
-    const isCompleted = isPickupCompleted || isDeliveryCompleted || paymentStatusUpper === "COMPLETED";
+    let isCompleted = false;
+    if (isPickup) {
+      const pUpper = String(order.pickupStatus || "").toUpperCase();
+      isCompleted =
+        pUpper === "COMPLETED" ||
+        order.customerPickupConfirmed === true ||
+        Boolean(order.customerPickupCompletedAt);
+    } else {
+      const dUpper = String(order.deliveryStatus || "").toUpperCase();
+      isCompleted =
+        dUpper === "DELIVERED" ||
+        dUpper === "COMPLETED" ||
+        Boolean(order.deliveryCompletedAt);
+    }
 
     if (!isCompleted) {
       return res.status(400).json({
         success: false,
-        message: "Reviews are only enabled after your order has been completed, collected, or delivered.",
+        message: isPickup
+          ? "Reviews are only enabled after your order has been successfully collected at the store counter."
+          : "Reviews are only enabled after your order has been successfully delivered.",
       });
     }
 
@@ -2725,12 +2948,19 @@ exports.submitOrderReview = async (req, res) => {
 
     const customerName = (
       req.body.customerName ||
+      req.user?.name ||
       order.customer?.name ||
       order.deliveryCustomerName ||
       "Verified Customer"
     ).trim();
-    const customerPhone = order.customer?.phone || order.deliveryPhone || "";
-    const customerId = order.customer?.customerId || null;
+    const customerPhone = (
+      req.body.customerPhone ||
+      req.user?.phone ||
+      order.customer?.phone ||
+      order.deliveryPhone ||
+      ""
+    ).trim();
+    const customerId = req.user?.id || req.user?._id || order.customer?.customerId || null;
 
     // Save embedded review summary on order document first
     order.review = {
@@ -2756,11 +2986,11 @@ exports.submitOrderReview = async (req, res) => {
             customerId,
             name: customerName,
             phone: customerPhone,
-            email: order.customer?.email || "",
+            email: order.customer?.email || req.user?.email || "",
           },
           rating: numRating,
           comment: (comment || "").trim(),
-          orderType: order.orderType || "SELF_PICKUP",
+          orderType: isPickup ? "SELF_PICKUP" : "DELIVERY",
         },
         { upsert: true, new: true, setDefaultsOnInsert: true }
       );
@@ -2775,12 +3005,17 @@ exports.submitOrderReview = async (req, res) => {
           type: "NEW_REVIEW",
           title: `New ${numRating}★ Customer Review`,
           message: `Order #${order.orderNumber}: "${(comment || "").trim().slice(0, 80)}" by ${customerName}`,
-          data: { orderId: order._id, rating: numRating },
+          data: { orderId: order._id, orderNumber: order.orderNumber, rating: numRating },
         });
       }
       const io = req.app?.get("io");
       if (io) {
-        io.emit("order:reviewed", { orderId: order._id, review: order.review });
+        io.emit("order:reviewed", {
+          orderId: order._id,
+          orderNumber: order.orderNumber,
+          review: order.review,
+          supermarket: order.supermarket,
+        });
         io.emit("order:updated", { order });
       }
     } catch (_) {}
@@ -2820,6 +3055,34 @@ exports.getOrderReview = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to retrieve order review.",
+      error: error.message,
+    });
+  }
+};
+
+// GET Supermarket Reviews (Strict Multi-Tenant Isolation)
+exports.getSupermarketReviews = async (req, res) => {
+  try {
+    const filter = {};
+    if (req.user && req.user.role === "STORE_ADMIN") {
+      const tenantStoreId = req.user.supermarket?._id || req.user.supermarket || req.supermarketId;
+      if (tenantStoreId) filter.supermarket = tenantStoreId;
+    } else if (req.supermarketId) {
+      filter.supermarket = req.supermarketId;
+    } else if (req.query.supermarketId) {
+      filter.supermarket = req.query.supermarketId;
+    }
+    const Review = require("../models/Review");
+    const reviews = await Review.find(filter).sort({ createdAt: -1 });
+    return res.status(200).json({
+      success: true,
+      count: reviews.length,
+      reviews,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to retrieve supermarket reviews.",
       error: error.message,
     });
   }

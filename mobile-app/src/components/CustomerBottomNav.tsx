@@ -14,7 +14,13 @@ export type TabName =
 
 export default function CustomerBottomNav({ activeTab }: { activeTab: TabName }) {
   const router = useRouter();
-  const { totalCount, customerUser } = useCart();
+  const { totalCount, customerUser, purchaseMode } = useCart();
+
+  // In Offline Shopping Mode (physical in-store supermarket checkout) or Scanner screen,
+  // hide the bottom navigation footer bar completely.
+  if (purchaseMode === "offline" || activeTab === "scan") {
+    return null;
+  }
 
   // For authenticated customers, Home opens the online supermarket store/catalog.
   // For guests, Home opens the initial public home screen.

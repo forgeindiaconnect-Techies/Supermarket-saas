@@ -43,7 +43,7 @@ export default function SuperAdminLayout() {
     settings: false,
   });
 
-  const [unreadNotifCount, setUnreadNotifCount] = useState(3);
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
   const [notifications, setNotifications] = useState([]);
 
   // Close dropdowns when clicking outside
@@ -67,8 +67,10 @@ export default function SuperAdminLayout() {
         const res = await API.get("/super-admin/notifications");
         if (res.data?.success && Array.isArray(res.data.notifications)) {
           setNotifications(res.data.notifications);
-          const unread = res.data.notifications.filter((n) => !n.isRead).length;
-          setUnreadNotifCount(unread > 0 ? unread : 3);
+          const unread = typeof res.data.unreadCount === "number"
+            ? res.data.unreadCount
+            : res.data.notifications.filter((n) => !n.isRead).length;
+          setUnreadNotifCount(unread);
         }
       } catch (_) {}
     };
@@ -491,9 +493,11 @@ export default function SuperAdminLayout() {
                 aria-label="Platform Notifications"
               >
                 <Bell size={19} color="#1f2937" strokeWidth={2.2} />
-                <span className="sa-notif-badge-pill">
-                  {unreadNotifCount > 0 ? unreadNotifCount : 3}
-                </span>
+                {unreadNotifCount > 0 && (
+                  <span className="sa-notif-badge-pill">
+                    {unreadNotifCount}
+                  </span>
+                )}
               </button>
 
               {/* Notifications Dropdown */}
@@ -549,16 +553,37 @@ export default function SuperAdminLayout() {
                         >
                           <div className={`sa-nd-item-dot ${n.color || "green"}`} />
                           <div className="sa-nd-item-content">
-                            <div className="sa-nd-item-title-row">
+                            <div className="sa-nd-item-title-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "6px" }}>
                               <span className="sa-nd-item-title">{n.title}</span>
+                              {n.badge && (
+                                <span style={{
+                                  fontSize: "9.5px",
+                                  fontWeight: 800,
+                                  padding: "2px 6px",
+                                  borderRadius: "4px",
+                                  background: n.type === "PAYMENT_SUCCESSFUL" ? "#DCFCE7" : n.type === "CART_ITEM_ADDED" ? "#F3E8FF" : "#EFF6FF",
+                                  color: n.type === "PAYMENT_SUCCESSFUL" ? "#15803D" : n.type === "CART_ITEM_ADDED" ? "#7E22CE" : "#1D4ED8",
+                                  letterSpacing: "0.4px"
+                                }}>
+                                  {n.badge}
+                                </span>
+                              )}
                             </div>
                             <p className="sa-nd-item-msg">{n.message}</p>
-                            <span className="sa-nd-item-time">
-                              {new Date(n.createdAt).toLocaleTimeString("en-IN", {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </span>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "3px" }}>
+                              {n.supermarketName && (
+                                <span style={{ fontSize: "10.5px", color: "#64748B", fontWeight: 600 }}>
+                                  🏪 {n.supermarketName}
+                                </span>
+                              )}
+                              <span className="sa-nd-item-time">
+                                {new Date(n.createdAt).toLocaleTimeString("en-IN", {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                  hour12: true,
+                                })}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       ))

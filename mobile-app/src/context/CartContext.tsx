@@ -177,6 +177,7 @@ type CartContextType = {
   // Multi-Tenant Purchase Mode & Supermarket Isolation
   purchaseMode: "online" | "offline" | null;
   setPurchaseMode: (mode: "online" | "offline" | null) => void;
+  startFreshOfflineSession: () => void;
   fulfillmentType: FulfillmentType;
   setFulfillmentType: (type: FulfillmentType) => void;
   selectedSupermarket: SupermarketInfo | null;
@@ -209,6 +210,8 @@ const notifyAdminCartActivity = (data: {
   customerPhone?: string;
   supermarketId?: string;
   supermarketCode?: string;
+  supermarketName?: string;
+  fulfillmentType?: string;
 }) => {
   if (!API_URL) return;
   fetch(`${API_URL}/orders/cart-activity`, {
@@ -236,9 +239,48 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   // Synchronous initial session rehydration to prevent screen guards tripping during mount
   const initialSession = getCustomerSessionSync();
-  const [purchaseMode, setPurchaseMode] = useState<"online" | "offline" | null>(
-    initialSession ? "online" : null
+  const getInitialPurchaseMode = (): "online" | "offline" | null => {
+    try {
+      if (typeof window !== "undefined" && window.sessionStorage) {
+        const stored = window.sessionStorage.getItem("supermart_purchase_mode");
+        if (stored === "offline" || stored === "online") return stored;
+      }
+    } catch (_) {}
+    return initialSession ? "online" : null;
+  };
+
+  const [purchaseMode, setPurchaseModeState] = useState<"online" | "offline" | null>(
+    getInitialPurchaseMode()
   );
+
+  const setPurchaseMode = (mode: "online" | "offline" | null) => {
+    setPurchaseModeState(mode);
+    try {
+      if (typeof window !== "undefined" && window.sessionStorage) {
+        if (mode) window.sessionStorage.setItem("supermart_purchase_mode", mode);
+        else window.sessionStorage.removeItem("supermart_purchase_mode");
+      }
+    } catch (_) {}
+  };
+
+  // Completely resets offline shopping session: cleans cart, customer info, selected store, and ensures pure walk-in privacy
+  const startFreshOfflineSession = useCallback(() => {
+    setCart([]);
+    clearCartStorage();
+    setCustomerInfo(null);
+    setCustomerUserState(null);
+    setSelectedSupermarketState(null);
+    setPurchaseModeState("offline");
+    try {
+      if (typeof window !== "undefined" && window.sessionStorage) {
+        window.sessionStorage.setItem("supermart_purchase_mode", "offline");
+        window.sessionStorage.removeItem("supermart_offline_cust_name");
+        window.sessionStorage.removeItem("supermart_offline_cust_phone");
+        window.sessionStorage.removeItem("supermart_offline_cust_email");
+        window.sessionStorage.removeItem("supermart_offline_cust_address");
+      }
+    } catch (_) {}
+  }, []);
   const [fulfillmentType, setFulfillmentType] = useState<FulfillmentType>("DELIVERY");
   const [selectedSupermarket, setSelectedSupermarketState] = useState<SupermarketInfo | null>(
     initialSession?.supermarketId
@@ -419,7 +461,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const setCustomerUser = (user: CustomerUser | null) => {
     setCustomerUserState(user);
     if (user) {
-      setPurchaseMode("online");
+      setPurchaseModeState((prev) => (prev === "offline" ? "offline" : "online"));
       saveCustomerSession(user);
       setCustomerInfo({
         name: user.name,
@@ -693,6 +735,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     if (success) {
       const newTotalCount = updatedCart.reduce((s, it) => s + it.quantity, 0);
       const newTotalAmount = updatedCart.reduce((s, it) => s + it.effectivePrice * it.quantity, 0);
+      const activeFulfillment =
+        fulfillmentType === "SELF_PICKUP"
+          ? "STORE_PICKUP"
+          : "ONLINE_DELIVERY";
+
       notifyAdminCartActivity({
         productName: product.name,
         productId: product._id,
@@ -705,6 +752,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         customerPhone: customerInfo?.phone || customerUser?.phone,
         supermarketId: String(activeStoreId || product.supermarket || ""),
         supermarketCode: selectedSupermarket?.code || customerUser?.supermarketCode || "",
+        supermarketName: selectedSupermarket?.name || customerUser?.supermarketName || "",
+        fulfillmentType: activeFulfillment,
       });
 
       // Synchronize immediately to backend MongoDB cart
@@ -718,6 +767,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           body: JSON.stringify({
             productId: product._id,
             quantity: addQty,
+            fulfillmentType: activeFulfillment,
           }),
         }, 5000).catch(() => {});
       }
@@ -892,6 +942,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
         purchaseMode,
         setPurchaseMode,
+        startFreshOfflineSession,
         fulfillmentType,
         setFulfillmentType,
         selectedSupermarket,

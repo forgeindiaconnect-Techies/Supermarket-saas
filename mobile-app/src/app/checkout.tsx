@@ -17,6 +17,53 @@ import { useCart } from "../context/CartContext";
 import { Theme } from "../constants/colors";
 import { API_URL, safeFetch } from "../constants/api";
 
+// 5 Official Supermarket Pickup Time Slots
+export type PickupSlot = {
+  id: string;
+  label: string;
+  startHour: number;
+  startMin: number;
+  endHour: number;
+  endMin: number;
+};
+
+export const OFFICIAL_PICKUP_SLOTS: PickupSlot[] = [
+  { id: "slot-1", label: "10:00 AM – 12:00 PM", startHour: 10, startMin: 0, endHour: 12, endMin: 0 },
+  { id: "slot-2", label: "12:00 PM – 2:00 PM", startHour: 12, startMin: 0, endHour: 14, endMin: 0 },
+  { id: "slot-3", label: "2:00 PM – 4:00 PM", startHour: 14, startMin: 0, endHour: 16, endMin: 0 },
+  { id: "slot-4", label: "4:00 PM – 6:00 PM", startHour: 16, startMin: 0, endHour: 18, endMin: 0 },
+  { id: "slot-5", label: "6:00 PM – 8:00 PM", startHour: 18, startMin: 0, endHour: 20, endMin: 0 },
+];
+
+export const getPickupSlotStatus = (slot: PickupSlot, dateChoice: string) => {
+  const isToday = dateChoice === "Today";
+  if (!isToday) {
+    return { available: true, reason: "Available", isOngoing: false, isEnded: false };
+  }
+
+  const now = new Date();
+  const currentTotalMins = now.getHours() * 60 + now.getMinutes();
+  const startTotalMins = slot.startHour * 60 + slot.startMin;
+  const endTotalMins = slot.endHour * 60 + slot.endMin;
+
+  // 1. Slot has already ended: past end time
+  if (currentTotalMins >= endTotalMins) {
+    return { available: false, reason: "Slot Ended", isOngoing: false, isEnded: true };
+  }
+
+  // 2. Ongoing slot: currently between start and end
+  if (currentTotalMins >= startTotalMins && currentTotalMins < endTotalMins) {
+    const remainingMins = endTotalMins - currentTotalMins;
+    if (remainingMins < 15) {
+      return { available: false, reason: "Closing Soon", isOngoing: true, isEnded: false };
+    }
+    return { available: true, reason: "Ongoing (Available)", isOngoing: true, isEnded: false };
+  }
+
+  // 3. Future slot: start time is ahead of current time
+  return { available: true, reason: "Available", isOngoing: false, isEnded: false };
+};
+
 export default function CheckoutScreen() {
   const router = useRouter();
   const {
@@ -88,7 +135,23 @@ export default function CheckoutScreen() {
 
   // Self Pickup Date & Time Slot selection
   const [pickupDate, setPickupDate] = useState("Today");
-  const [pickupTimeSlot, setPickupTimeSlot] = useState("10:00 AM - 12:00 PM");
+  const [pickupTimeSlot, setPickupTimeSlot] = useState<string>(() => {
+    const firstAvail = OFFICIAL_PICKUP_SLOTS.find((s) => getPickupSlotStatus(s, "Today").available);
+    return firstAvail ? firstAvail.label : "";
+  });
+
+  // Keep pickup slot synchronized with selected date and current time
+  useEffect(() => {
+    const isCurrentValid = OFFICIAL_PICKUP_SLOTS.some(
+      (s) =>
+        (s.label === pickupTimeSlot || s.label.replace("–", "-") === pickupTimeSlot.replace("–", "-")) &&
+        getPickupSlotStatus(s, pickupDate).available
+    );
+    if (!isCurrentValid) {
+      const nextAvail = OFFICIAL_PICKUP_SLOTS.find((s) => getPickupSlotStatus(s, pickupDate).available);
+      setPickupTimeSlot(nextAvail ? nextAvail.label : "");
+    }
+  }, [pickupDate]);
 
   // Check store availability saved by Super Admin
   const isDeliverySupported =
@@ -160,6 +223,30 @@ export default function CheckoutScreen() {
         { text: "Add Address", onPress: () => setIsEditModalOpen(true) },
       ]);
       return;
+    }
+
+    if (effectiveFulfillment === "SELF_PICKUP") {
+      if (!pickupTimeSlot) {
+        Alert.alert(
+          "Pickup Slot Required",
+          "All pickup slots for today have ended. Please select Tomorrow or another date above to book your collection slot."
+        );
+        return;
+      }
+
+      const chosenSlot = OFFICIAL_PICKUP_SLOTS.find(
+        (s) => s.label === pickupTimeSlot || s.label.replace("–", "-") === pickupTimeSlot.replace("–", "-")
+      );
+      if (chosenSlot) {
+        const slotStatus = getPickupSlotStatus(chosenSlot, pickupDate);
+        if (!slotStatus.available) {
+          Alert.alert(
+            "Slot Unavailable",
+            `The selected slot "${pickupTimeSlot}" is ${slotStatus.reason.toLowerCase()}. Please select an available upcoming time slot.`
+          );
+          return;
+        }
+      }
     }
 
     router.push({
@@ -329,27 +416,73 @@ export default function CheckoutScreen() {
               ))}
             </View>
 
-            {/* Time Slot Selector */}
-            <Text style={[styles.slotGroupLabel, { marginTop: 14 }]}>Available Time Slot</Text>
-            <View style={styles.slotsRow}>
-              {[
-                "10:00 AM - 12:00 PM",
-                "12:00 PM - 02:00 PM",
-                "04:00 PM - 06:00 PM",
-                "06:00 PM - 08:00 PM",
-              ].map((slot) => (
-                <TouchableOpacity
-                  key={slot}
-                  style={[styles.slotChip, pickupTimeSlot === slot && styles.slotChipActive]}
-                  onPress={() => setPickupTimeSlot(slot)}
-                  activeOpacity={0.8}
-                >
-                  <Text style={[styles.slotChipText, pickupTimeSlot === slot && styles.slotChipTextActive]}>
-                    {slot}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+            {/* Time Slot Selector with Real-Time Validation */}
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 14, marginBottom: 6 }}>
+              <Text style={styles.slotGroupLabel}>Pickup Time Slot (2-Hour Window)</Text>
+              <Text style={styles.slotLiveBadge}>● Live Validation</Text>
             </View>
+
+            {pickupDate === "Today" && OFFICIAL_PICKUP_SLOTS.every((s) => !getPickupSlotStatus(s, "Today").available) ? (
+              <View style={styles.noSlotsBanner}>
+                <Text style={styles.noSlotsBannerText}>
+                  ⚠️ All pickup slots for Today have ended. Please select "Tomorrow" above to book your collection slot.
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.slotsRow}>
+                {OFFICIAL_PICKUP_SLOTS.map((slot) => {
+                  const status = getPickupSlotStatus(slot, pickupDate);
+                  const isSelected =
+                    pickupTimeSlot === slot.label ||
+                    pickupTimeSlot.replace("–", "-") === slot.label.replace("–", "-");
+                  const isDisabled = !status.available;
+
+                  return (
+                    <TouchableOpacity
+                      key={slot.id}
+                      style={[
+                        styles.slotChip,
+                        isSelected && styles.slotChipActive,
+                        isDisabled && styles.slotChipDisabled,
+                      ]}
+                      onPress={() => {
+                        if (isDisabled) {
+                          Alert.alert(
+                            "Slot Unavailable",
+                            `This pickup time slot is ${status.reason.toLowerCase()} and cannot be booked.`
+                          );
+                          return;
+                        }
+                        setPickupTimeSlot(slot.label);
+                      }}
+                      disabled={isDisabled}
+                      activeOpacity={0.8}
+                    >
+                      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+                        <Text
+                          style={[
+                            styles.slotChipText,
+                            isSelected && styles.slotChipTextActive,
+                            isDisabled && styles.slotChipTextDisabled,
+                          ]}
+                        >
+                          ⏰ {slot.label}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.slotStatusTag,
+                            isSelected && styles.slotStatusTagActive,
+                            isDisabled && styles.slotStatusTagDisabled,
+                          ]}
+                        >
+                          {status.reason}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
           </View>
         )}
 
@@ -872,30 +1005,79 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   slotsRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
+    flexDirection: "column",
     gap: 8,
   },
   slotChip: {
     borderWidth: 1.5,
     borderColor: "#E2E8F0",
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
     backgroundColor: "#F8FAFC",
+    width: "100%",
   },
   slotChipActive: {
     borderColor: "#059669",
     backgroundColor: "#ECFDF5",
   },
+  slotChipDisabled: {
+    borderColor: "#E2E8F0",
+    backgroundColor: "#F1F5F9",
+    opacity: 0.65,
+  },
   slotChipText: {
-    fontSize: 12,
-    fontWeight: "600",
+    fontSize: 13,
+    fontWeight: "700",
     color: "#334155",
   },
   slotChipTextActive: {
     color: "#065F46",
+    fontWeight: "800",
+  },
+  slotChipTextDisabled: {
+    color: "#94A3B8",
+    fontWeight: "500",
+  },
+  slotStatusTag: {
+    fontSize: 10.5,
+    fontWeight: "800",
+    color: "#059669",
+    backgroundColor: "#DCFCE7",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  slotStatusTagActive: {
+    backgroundColor: "#059669",
+    color: "#FFFFFF",
+  },
+  slotStatusTagDisabled: {
+    backgroundColor: "#E2E8F0",
+    color: "#64748B",
+  },
+  slotLiveBadge: {
+    fontSize: 10.5,
+    fontWeight: "800",
+    color: "#059669",
+    backgroundColor: "#ECFDF5",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  noSlotsBanner: {
+    backgroundColor: "#FFFBEB",
+    borderWidth: 1.5,
+    borderColor: "#FDE68A",
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 6,
+  },
+  noSlotsBannerText: {
+    fontSize: 12.5,
+    color: "#92400E",
     fontWeight: "700",
+    lineHeight: 18,
   },
   detailsBox: {
     backgroundColor: "#F8FAFC",

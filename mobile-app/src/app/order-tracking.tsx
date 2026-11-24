@@ -106,18 +106,16 @@ export default function OrderTrackingScreen() {
     if (isPickup) {
       const pStatus = String(ord.pickupStatus || "Pending").toLowerCase().trim();
 
-      // STRICT LIFECYCLE: Pickup is ONLY completed when counter collection is confirmed by staff or customer.
-      // NEVER automatically mark completed on payment or order placement!
-      const isPickupCompleted =
-        pStatus === "completed" ||
-        Boolean((ord as any).customerPickupConfirmed) ||
-        Boolean((ord as any).customerPickupCompletedAt);
-      const isPickupReady = (pStatus === "readyforpickup" || pStatus === "ready") && !isPickupCompleted;
-      const isPickupPreparing = pStatus === "preparing" && !isPickupReady && !isPickupCompleted;
+      // STRICT LIFECYCLE: Pickup is ONLY completed when status is explicitly "completed"!
+      // If store admin has not updated the order (status is Pending or New), it is strictly NEVER completed!
+      const isInitialPending = pStatus === "pending" || pStatus === "new" || pStatus === "order confirmed" || pStatus === "";
+      const isPickupCompleted = !isInitialPending && (pStatus === "completed" || ((ord as any).customerPickupConfirmed === true && Boolean((ord as any).customerPickupCompletedAt)));
+      const isPickupReady = !isInitialPending && !isPickupCompleted && (pStatus === "readyforpickup" || pStatus === "ready");
+      const isPickupPreparing = !isInitialPending && !isPickupReady && !isPickupCompleted && pStatus === "preparing";
 
       // Stage 1: Order Placed & Confirmed
       const s1Completed = true;
-      const s1Active = !isPickupPreparing && !isPickupReady && !isPickupCompleted;
+      const s1Active = isInitialPending;
 
       // Stage 2: Preparing at Store
       const s2Completed = isPickupReady || isPickupCompleted;
@@ -623,13 +621,20 @@ export default function OrderTrackingScreen() {
       (order as any)?.customerName ||
       (order as any)?.customer?.name ||
       "Verified Customer";
+    const custPhone =
+      customerUser?.phone ||
+      (order as any)?.customerPhone ||
+      (order as any)?.customer?.phone ||
+      (order as any)?.deliveryPhone ||
+      "";
     const reviewData = {
       rating,
-      comment: reviewComment,
+      comment: reviewComment.trim(),
       customerName: custName,
+      customerPhone: custPhone,
       review: {
         rating,
-        comment: reviewComment,
+        comment: reviewComment.trim(),
         customerName: custName,
         submittedAt: new Date().toISOString(),
       },
@@ -639,10 +644,13 @@ export default function OrderTrackingScreen() {
       let isSuccess = false;
       let reviewResult: any = null;
 
+      const reqHeaders: Record<string, string> = { "Content-Type": "application/json" };
+      if (customerUser?.token) reqHeaders["Authorization"] = `Bearer ${customerUser.token}`;
+
       try {
         const res = await safeFetch(`${API_URL}/orders/${targetId}/review`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: reqHeaders,
           body: JSON.stringify(reviewData),
         });
         const contentType = res.headers?.get("content-type") || "";
@@ -655,12 +663,31 @@ export default function OrderTrackingScreen() {
         }
       } catch (_) {}
 
-      // Fallback: delivery-status endpoint
+      // Fallback: pickup-review endpoint
       if (!isSuccess) {
         try {
-          const resFallback = await safeFetch(`${API_URL}/orders/${targetId}/delivery-status`, {
+          const resFallback = await safeFetch(`${API_URL}/orders/${targetId}/pickup-review`, {
+            method: "POST",
+            headers: reqHeaders,
+            body: JSON.stringify(reviewData),
+          });
+          const contentType = resFallback.headers?.get("content-type") || "";
+          if (contentType.includes("application/json")) {
+            const data = await resFallback.json();
+            if (data?.success) {
+              isSuccess = true;
+              reviewResult = data.review;
+            }
+          }
+        } catch (_) {}
+      }
+
+      // Fallback 2: customer-complete-pickup endpoint
+      if (!isSuccess) {
+        try {
+          const resFallback = await safeFetch(`${API_URL}/orders/${targetId}/customer-complete-pickup`, {
             method: "PUT",
-            headers: { "Content-Type": "application/json" },
+            headers: reqHeaders,
             body: JSON.stringify(reviewData),
           });
           const contentType = resFallback.headers?.get("content-type") || "";
@@ -676,8 +703,18 @@ export default function OrderTrackingScreen() {
 
       const finalReview = reviewResult || reviewData.review;
       setExistingReview(finalReview);
+      if (order) {
+        const updated = { ...order, review: finalReview };
+        setOrder(updated);
+        updateRecentOrder(updated);
+      }
       setReviewSuccessMsg("Thank you! Your review has been saved to the supermarket profile.");
-      Alert.alert("Review Submitted", "Thank you for rating your delivery experience!");
+      Alert.alert(
+        "Review Submitted",
+        isPickupOrder()
+          ? "Thank you for rating your store pickup experience!"
+          : "Thank you for rating your delivery experience!"
+      );
     } catch (err: any) {
       Alert.alert("Error", err.message || "Could not submit review. Please try again.");
     } finally {
@@ -732,18 +769,29 @@ export default function OrderTrackingScreen() {
     if (!order) return false;
     if (isPickupOrder()) {
       const pickSt = String((order as any)?.pickupStatus || "").toLowerCase().trim();
-      return (
-        pickSt === "completed" ||
-        (order as any)?.customerPickupConfirmed === true ||
-        Boolean((order as any)?.customerPickupCompletedAt)
-      );
+      // STRICT CHECK: If store admin has not updated or order is pending/preparing/ready, strictly NOT completed!
+      if (pickSt === "pending" || pickSt === "new" || pickSt === "order confirmed" || pickSt === "preparing" || pickSt === "readyforpickup" || pickSt === "ready" || pickSt === "") {
+        return false;
+      }
+      return pickSt === "completed" || ((order as any)?.customerPickupConfirmed === true && Boolean((order as any)?.customerPickupCompletedAt));
     }
     const delSt = String(order.deliveryStatus || "").toLowerCase().trim();
-    return (
-      delSt === "delivered" ||
-      Boolean((order as any)?.deliveryCompletedAt) ||
-      (delSt === "completed" && Boolean((order as any)?.deliveryCompletedAt))
-    );
+    if (
+      delSt === "order confirmed" ||
+      delSt === "confirmed" ||
+      delSt === "new" ||
+      delSt === "pending" ||
+      delSt === "preparing" ||
+      delSt === "assigned" ||
+      delSt === "products collected" ||
+      delSt === "productscollected" ||
+      delSt === "out for delivery" ||
+      delSt === "outfordelivery" ||
+      delSt === ""
+    ) {
+      return false;
+    }
+    return delSt === "delivered" || (delSt === "completed" && Boolean((order as any)?.deliveryCompletedAt));
   };
 
   // Calculate Progress percentage for progress bar
@@ -890,21 +938,39 @@ export default function OrderTrackingScreen() {
               {isOrderCompleted() ? (
                 <View style={styles.deliveredHighlight}>
                   <Text style={styles.deliveredHighlightEmoji}>✅</Text>
-                  <Text style={styles.deliveredHighlightText}>
-                    {isPickupOrder()
-                      ? `Successfully Collected & Completed on ${formatTimestamp((order as any).customerPickupCompletedAt || (order as any).completedAt || (order as any).updatedAt || order.createdAt)}`
-                      : `Successfully Delivered on ${formatTimestamp(order.deliveryCompletedAt || (order as any).completedAt || (order as any).updatedAt || order.createdAt)}`}
-                  </Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.deliveredHighlightText}>
+                      {isPickupOrder() ? "Order Collected & Completed ✓" : "Successfully Delivered"}
+                    </Text>
+                    {isPickupOrder() ? (
+                      <View style={{ marginTop: 4 }}>
+                        <Text style={{ fontSize: 13, color: "#166534", fontWeight: "800" }}>
+                          Actual Collection Time: {formatTimestamp((order as any).actualCollectionTime || (order as any).customerPickupCompletedAt || (order as any).completedAt)}
+                        </Text>
+                        <Text style={{ fontSize: 11.5, color: "#166534", fontWeight: "600", marginTop: 2 }}>
+                          Booked Slot: {(order as any).pickupTimeSlot || "10:00 AM – 12:00 PM"} ({(order as any).pickupDate || "Today"})
+                        </Text>
+                      </View>
+                    ) : (
+                      <Text style={{ fontSize: 13, color: "#166534", fontWeight: "700", marginTop: 2 }}>
+                        Delivered on {formatTimestamp(order.deliveryCompletedAt || (order as any).completedAt)}
+                      </Text>
+                    )}
+                  </View>
                 </View>
               ) : isPickupOrder() ? (
                 <View style={styles.etaTimeBox}>
-                  <Text style={styles.etaLabel}>Store Pickup Status:</Text>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                    <Text style={styles.etaLabel}>Booked Pickup Slot:</Text>
+                    <Text style={{ fontSize: 12, color: "#059669", fontWeight: "800" }}>
+                      📅 {(order as any).pickupDate || "Today"}
+                    </Text>
+                  </View>
                   <Text style={styles.etaTimeVal}>
-                    {(order as any).estimatedReadyTime
-                      ? `Ready at ${(order as any).estimatedReadyTime} (${(order as any).estimatedReadyDate || "Today"})`
-                      : String((order as any)?.pickupStatus || "").toLowerCase() === "preparing"
-                      ? "Store staff is packing and inspecting your items"
-                      : "Awaiting store staff packing & preparation"}
+                    ⏰ {(order as any).pickupTimeSlot || "10:00 AM – 12:00 PM"}
+                  </Text>
+                  <Text style={{ fontSize: 12.5, color: "#1E1B4B", fontWeight: "800", marginTop: 4 }}>
+                    Status: {currentStatusTitle()}
                   </Text>
                 </View>
               ) : (
@@ -941,6 +1007,8 @@ export default function OrderTrackingScreen() {
                 </Text>
               </View>
             </View>
+
+
 
             {/* ========================================================= */}
             {/* 2. DELIVERY PARTNER CARD (Strictly shown once assigned)   */}
@@ -1283,111 +1351,103 @@ export default function OrderTrackingScreen() {
             </View>
 
             {/* ========================================================= */}
-            {/* 5.5 REVIEW & RATING (DELIVERED / PICKUP WORKFLOW)          */}
+            {/* 5.5 CUSTOMER REVIEW (ENABLED ONLY AFTER ORDER COMPLETION) */}
             {/* ========================================================= */}
-            <View style={styles.reviewCard}>
-              <View style={styles.reviewHeader}>
-                <Text style={styles.reviewEmoji}>⭐</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.reviewTitle}>
-                    {isPickupOrder() ? "Rate Your Store Pickup Experience" : "Rate Your Delivery Experience"}
-                  </Text>
-                  <Text style={styles.reviewSubtitle}>
-                    {isOrderCompleted()
-                      ? "Share feedback about your packaged groceries and service"
-                      : isPickupOrder()
-                      ? "Review will be enabled once your order has been collected"
-                      : "Review will be enabled once your order has been delivered"}
-                  </Text>
+            {isOrderCompleted() && (
+              <View style={styles.reviewCard}>
+                <View style={styles.reviewHeader}>
+                  <Text style={styles.reviewEmoji}>⭐</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.reviewTitle}>
+                      {isPickupOrder() ? "Rate Your Store Pickup Experience" : "Rate Your Delivery Experience"}
+                    </Text>
+                    <Text style={styles.reviewSubtitle}>
+                      Share verified feedback about your packaged groceries and service
+                    </Text>
+                  </View>
                 </View>
-              </View>
 
-              {existingReview || (order as any).review?.rating ? (
-                <View style={styles.reviewSubmittedBox}>
-                  <View style={styles.reviewStarsRow}>
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <Text
-                        key={star}
-                        style={[
-                          styles.reviewStarLarge,
-                          star <= (existingReview?.rating || (order as any).review?.rating || 5)
-                            ? styles.starFilled
-                            : styles.starEmpty,
-                        ]}
-                      >
-                        ★
-                      </Text>
-                    ))}
-                  </View>
-                  {(existingReview?.comment || (order as any).review?.comment) ? (
-                    <Text style={styles.reviewSubmittedComment}>
-                      "{existingReview?.comment || (order as any).review?.comment}"
-                    </Text>
-                  ) : null}
-                  <View style={styles.reviewVerifiedBadge}>
-                    <Text style={styles.reviewVerifiedText}>
-                      ✓ Review Submitted • Saved to Supermarket Profile
-                    </Text>
-                  </View>
-                </View>
-              ) : isOrderCompleted() ? (
-                <View style={styles.reviewFormBox}>
-                  <Text style={styles.reviewRatingLabel}>Your Overall Rating:</Text>
-                  <View style={styles.reviewInteractiveStarsRow}>
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <TouchableOpacity
-                        key={star}
-                        onPress={() => setRating(star)}
-                        activeOpacity={0.7}
-                        style={styles.starTouchable}
-                      >
+                {existingReview || (order as any).review?.rating ? (
+                  <View style={styles.reviewSubmittedBox}>
+                    <View style={styles.reviewStarsRow}>
+                      {[1, 2, 3, 4, 5].map((star) => (
                         <Text
+                          key={star}
                           style={[
-                            styles.starInteractive,
-                            star <= rating ? styles.starFilled : styles.starEmpty,
+                            styles.reviewStarLarge,
+                            star <= (existingReview?.rating || (order as any).review?.rating || 5)
+                              ? styles.starFilled
+                              : styles.starEmpty,
                           ]}
                         >
                           ★
                         </Text>
-                      </TouchableOpacity>
-                    ))}
+                      ))}
+                    </View>
+                    {(existingReview?.comment || (order as any).review?.comment) ? (
+                      <Text style={styles.reviewSubmittedComment}>
+                        "{existingReview?.comment || (order as any).review?.comment}"
+                      </Text>
+                    ) : null}
+                    <View style={styles.reviewVerifiedBadge}>
+                      <Text style={styles.reviewVerifiedText}>
+                        ✓ Review Submitted • Saved to Supermarket Profile
+                      </Text>
+                    </View>
                   </View>
+                ) : (
+                  <View style={styles.reviewFormBox}>
+                    <Text style={styles.reviewRatingLabel}>Your Overall Rating:</Text>
+                    <View style={styles.reviewInteractiveStarsRow}>
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <TouchableOpacity
+                          key={star}
+                          onPress={() => setRating(star)}
+                          activeOpacity={0.7}
+                          style={styles.starTouchable}
+                        >
+                          <Text
+                            style={[
+                              styles.starInteractive,
+                              star <= rating ? styles.starFilled : styles.starEmpty,
+                            ]}
+                          >
+                            ★
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
 
-                  <TextInput
-                    style={styles.reviewTextInput}
-                    placeholder="Write a brief review (e.g. quick packaging, fresh items, courteous service)..."
-                    placeholderTextColor="#94A3B8"
-                    value={reviewComment}
-                    onChangeText={setReviewComment}
-                    multiline
-                    numberOfLines={3}
-                  />
+                    <TextInput
+                      style={styles.reviewTextInput}
+                      placeholder="Write a brief review (e.g. quick packaging, fresh items, courteous service)..."
+                      placeholderTextColor="#94A3B8"
+                      value={reviewComment}
+                      onChangeText={setReviewComment}
+                      multiline
+                      numberOfLines={3}
+                    />
 
-                  {reviewSuccessMsg ? (
-                    <Text style={styles.reviewSuccessMsg}>{reviewSuccessMsg}</Text>
-                  ) : null}
+                    {reviewSuccessMsg ? (
+                      <Text style={styles.reviewSuccessMsg}>{reviewSuccessMsg}</Text>
+                    ) : null}
 
-                  <TouchableOpacity
-                    style={[styles.submitReviewBtn, submittingReview && { opacity: 0.7 }]}
-                    onPress={handleSubmitReview}
-                    disabled={submittingReview}
-                    activeOpacity={0.85}
-                  >
-                    {submittingReview ? (
-                      <ActivityIndicator color="#FFFFFF" size="small" />
-                    ) : (
-                      <Text style={styles.submitReviewBtnText}>Submit Order Review</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <View style={styles.reviewDisabledNotice}>
-                  <Text style={styles.reviewDisabledText}>
-                    🔒 Reviews unlock once order status reaches Completed.
-                  </Text>
-                </View>
-              )}
-            </View>
+                    <TouchableOpacity
+                      style={[styles.submitReviewBtn, submittingReview && { opacity: 0.7 }]}
+                      onPress={handleSubmitReview}
+                      disabled={submittingReview}
+                      activeOpacity={0.85}
+                    >
+                      {submittingReview ? (
+                        <ActivityIndicator color="#FFFFFF" size="small" />
+                      ) : (
+                        <Text style={styles.submitReviewBtnText}>Submit Customer Review ⭐</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            )}
 
             {/* ========================================================= */}
             {/* 6. BOTTOM NAVIGATION ACTIONS                              */}
@@ -2098,6 +2158,41 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "#475569",
     fontWeight: "600",
+  },
+
+  // 1.5 Compulsory Review Banner
+  compulsoryReviewBanner: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 18,
+    marginBottom: 16,
+    borderWidth: 2,
+    borderColor: "#FCD34D",
+    shadowColor: "#F59E0B",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  compulsoryReviewHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  compulsoryReviewIcon: {
+    fontSize: 26,
+    marginRight: 10,
+  },
+  compulsoryReviewTitle: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: "#92400E",
+  },
+  compulsoryReviewSubtitle: {
+    fontSize: 12,
+    color: "#78350F",
+    marginTop: 2,
+    lineHeight: 16,
   },
 
   // 5.5 Review & Rating Card

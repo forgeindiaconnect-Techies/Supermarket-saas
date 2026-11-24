@@ -108,7 +108,7 @@ export default function PaymentSuccessScreen() {
     method?: string;
     status?: string;
   }>();
-  const { recentOrders, updateRecentOrder, customerUser, clearCart, purchaseMode } = useCart();
+  const { recentOrders, updateRecentOrder, customerUser, clearCart, purchaseMode, startFreshOfflineSession } = useCart();
 
   const [order, setOrder] = useState<OrderRecord | null>(null);
   const [loading, setLoading] = useState(true);
@@ -806,7 +806,7 @@ export default function PaymentSuccessScreen() {
               <TouchableOpacity
                 style={styles.secondaryContinueBtn}
                 onPress={() => {
-                  clearCart();
+                  startFreshOfflineSession();
                   router.replace(isOfflineOrder ? "/" : "/scanner");
                 }}
                 activeOpacity={0.85}

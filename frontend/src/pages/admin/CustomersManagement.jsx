@@ -260,6 +260,10 @@ export default function CustomersManagement() {
       }
 
       return true;
+    }).sort((a, b) => {
+      const timeA = new Date(a.latestOrderDate || a.registrationDate || 0).getTime();
+      const timeB = new Date(b.latestOrderDate || b.registrationDate || 0).getTime();
+      return timeB - timeA;
     });
   }, [customers, selectedStatus, selectedTier, selectedDateFilter, search, now, thirtyDaysAgo]);
 

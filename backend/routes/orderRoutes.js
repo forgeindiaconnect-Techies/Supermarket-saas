@@ -22,6 +22,7 @@ const {
   getOrderTracking,
   submitOrderReview,
   getOrderReview,
+  getSupermarketReviews,
 } = require("../controllers/orderController");
 
 // Public/Customer routes
@@ -30,16 +31,20 @@ router.post("/cart-activity", logCartActivity);
 router.get("/cart-activity", getCartActivity);
 
 // Order Customer Review routes
+router.get("/reviews", getSupermarketReviews);
 router.post("/:id/review", submitOrderReview);
+router.post("/:id/pickup-review", submitOrderReview);
 router.get("/:id/review", getOrderReview);
 
 // Customer Post-Payment Fulfillment Choice (Option A: Doorstep vs Option B: Collect from Store)
 router.put("/:id/fulfillment-choice", setFulfillmentChoice);
 router.post("/:id/fulfillment-choice", setFulfillmentChoice);
 
-// Customer Complete Button for Store Collection Pickup
+// Customer Complete Button for Store Collection Pickup & Admin Confirm Collection
 router.put("/:id/customer-complete-pickup", customerCompletePickup);
 router.post("/:id/customer-complete-pickup", customerCompletePickup);
+router.put("/:id/confirm-collection", customerCompletePickup);
+router.post("/:id/confirm-collection", customerCompletePickup);
 
 // Store Admin Pickup Ready Notification Dispatch
 router.put("/:id/pickup-ready", setPickupReady);

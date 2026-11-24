@@ -369,6 +369,14 @@ exports.assignOrderToStaff = async (req, res) => {
       });
     }
 
+    if (staff.status === "Inactive" || staff.status === "Suspended") {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot assign order to inactive staff member (${staff.name}). Please activate their account or select an active driver.`,
+      });
+    }
+
+    const previousStatus = order.deliveryStatus || "Order Confirmed";
     const now = new Date();
     order.assignedStaff = staff._id;
     order.assignedStaffName = staff.name;
@@ -384,6 +392,18 @@ exports.assignOrderToStaff = async (req, res) => {
       status: "Assigned",
       title: "Delivery Partner Assigned",
       description: `${staff.name} has been assigned to deliver your order.`,
+      timestamp: now,
+      updatedBy: req.user.name || "Store Admin",
+      updatedById: req.user._id,
+      role: req.user.role || "STORE_ADMIN",
+    });
+
+    if (!Array.isArray(order.statusHistory)) {
+      order.statusHistory = [];
+    }
+    order.statusHistory.push({
+      previousStatus,
+      newStatus: "Assigned",
       timestamp: now,
       updatedBy: req.user.name || "Store Admin",
       updatedById: req.user._id,

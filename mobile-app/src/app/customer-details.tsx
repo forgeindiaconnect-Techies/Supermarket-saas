@@ -30,13 +30,16 @@ export default function CustomerDetailsScreen() {
     setCustomerUser,
     selectedSupermarket,
     updateCustomerDetails,
+    purchaseMode,
   } = useCart();
 
-  // Retrieve saved customer details if already registered/logged in
-  const initialName = customerUser?.name || customerInfo?.name || "";
-  const initialPhone = customerUser?.phone || customerInfo?.phone || "";
-  const initialEmail = customerUser?.email || "";
-  const initialAddress = customerUser?.address || customerInfo?.address || "";
+  const isOffline = purchaseMode === "offline";
+
+  // In Offline walk-in shopping, always start with fresh blank inputs to protect customer privacy on shared devices
+  const initialName = isOffline ? "" : (customerUser?.name || customerInfo?.name || "");
+  const initialPhone = isOffline ? "" : (customerUser?.phone || customerInfo?.phone || "");
+  const initialEmail = isOffline ? "" : (customerUser?.email || "");
+  const initialAddress = isOffline ? "" : (customerUser?.address || customerInfo?.address || "");
 
   const [name, setName] = useState(initialName);
   const [phone, setPhone] = useState(initialPhone);
@@ -45,6 +48,9 @@ export default function CustomerDetailsScreen() {
   const [registering, setRegistering] = useState(false);
 
   useEffect(() => {
+    // In Offline mode, do NOT auto-fill previous customer details
+    if (isOffline) return;
+
     if (!name && (customerUser?.name || customerInfo?.name)) {
       setName(customerUser?.name || customerInfo?.name || "");
     }
@@ -57,11 +63,12 @@ export default function CustomerDetailsScreen() {
     if (!address && (customerUser?.address || customerInfo?.address)) {
       setAddress(customerUser?.address || customerInfo?.address || "");
     }
-  }, [customerUser, customerInfo]);
+  }, [customerUser, customerInfo, isOffline]);
 
   // Error validation states
   const [nameError, setNameError] = useState("");
   const [phoneError, setPhoneError] = useState("");
+  const [emailError, setEmailError] = useState("");
   const [touched, setTouched] = useState(false);
 
   // Clean numeric phone input (Indian mobile: starts strictly with 6, 7, 8, or 9; max 10 digits)
@@ -147,7 +154,35 @@ export default function CustomerDetailsScreen() {
       setPhoneError("");
     }
 
+    // Optional email validation: if provided, must be valid email format
+    const trimmedEmail = email.trim();
+    if (trimmedEmail) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+      if (!emailRegex.test(trimmedEmail)) {
+        setEmailError("Please enter a valid email address (e.g. name@example.com)");
+        isValid = false;
+      } else {
+        setEmailError("");
+      }
+    } else {
+      setEmailError("");
+    }
+
     return isValid;
+  };
+
+  const handleEmailChange = (text: string) => {
+    setEmail(text);
+    if (touched && text.trim()) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+      if (!emailRegex.test(text.trim())) {
+        setEmailError("Please enter a valid email address (e.g. name@example.com)");
+      } else {
+        setEmailError("");
+      }
+    } else {
+      setEmailError("");
+    }
   };
 
   const handleProceedToPayment = async () => {
@@ -443,23 +478,32 @@ export default function CustomerDetailsScreen() {
                   </View>
                 </View>
 
-                <View style={styles.inputContainer}>
+                <View
+                  style={[
+                    styles.inputContainer,
+                    emailError ? styles.inputErrorBorder : null,
+                  ]}
+                >
                   <Text style={styles.inputPrefixIcon}>✉️</Text>
                   <TextInput
                     style={styles.textInput}
                     placeholder="name@example.com (Optional)"
                     placeholderTextColor="#94A3B8"
                     value={email}
-                    onChangeText={setEmail}
+                    onChangeText={handleEmailChange}
                     keyboardType="email-address"
                     autoCapitalize="none"
                     autoCorrect={false}
                   />
-                  {email.includes("@") && email.includes(".") && (
+                  {email.trim() && !emailError && email.includes("@") && email.includes(".") && (
                     <Text style={styles.checkIcon}>✓</Text>
                   )}
                 </View>
-                <Text style={styles.helperText}>Used for sending digital receipt & invoice</Text>
+                {emailError ? (
+                  <Text style={styles.errorText}>{emailError}</Text>
+                ) : (
+                  <Text style={styles.helperText}>Used for sending digital receipt & invoice</Text>
+                )}
               </View>
 
               {/* Field 4: Address (OPTIONAL) */}

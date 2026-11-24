@@ -19,7 +19,6 @@ import { Theme } from "../constants/colors";
 import { API_URL, safeFetch } from "../constants/api";
 import { useCart, SupermarketInfo } from "../context/CartContext";
 import SupermarketSearchModal from "../components/SupermarketSearchModal";
-import CustomerBottomNav from "../components/CustomerBottomNav";
 
 const { width, height } = Dimensions.get("window");
 const SCAN_BOX_SIZE = width * 0.65;
@@ -34,18 +33,27 @@ export type ScannedSessionItem = {
 
 export default function ScanProductScreen() {
   const router = useRouter();
-  const { fresh } = useLocalSearchParams<{ fresh?: string }>();
+  const { fresh, mode } = useLocalSearchParams<{ fresh?: string; mode?: string }>();
   const {
     selectedSupermarket,
     setSelectedSupermarket,
     purchaseMode,
+    setPurchaseMode,
+    startFreshOfflineSession,
     addToCart,
     cart,
     totalCount,
     totalAmount,
     clearCart,
     updateQuantity,
+    customerUser,
+    customerInfo,
   } = useCart();
+
+  // In offline in-store mode, enforce offline purchase mode
+  useEffect(() => {
+    setPurchaseMode("offline");
+  }, []);
 
   const [permission, requestPermission] = useCameraPermissions();
   const [torch, setTorch] = useState(false);
@@ -116,10 +124,9 @@ export default function ScanProductScreen() {
   useEffect(() => {
     if (fresh === "true") {
       setScannedSessionItems([]);
-      clearCart();
-      setSelectedSupermarket(null);
+      startFreshOfflineSession();
     }
-  }, [fresh]);
+  }, [fresh, startFreshOfflineSession]);
 
   // Sync addedToCart status with the live cart
   useEffect(() => {
@@ -322,14 +329,17 @@ export default function ScanProductScreen() {
           }
         }
 
-        // Check if this product is already in the session scanned list
+        // AUTOMATIC SCAN & ADD TO CART (Physical Supermarket In-Store Self-Checkout)
+        addToCart(prod, 1);
+
+        // Update session scanned products list
         setScannedSessionItems((prev) => {
           const existingIdx = prev.findIndex(
             (it) => it.id === prod._id || (it.product?.barcode && it.product.barcode === prod.barcode)
           );
 
           if (existingIdx !== -1) {
-            // Product was scanned previously in this session
+            // Product was scanned previously in this session: increment quantity
             const existing = prev[existingIdx];
             const updated = [...prev];
             const newQty = existing.quantity + 1;
@@ -339,25 +349,21 @@ export default function ScanProductScreen() {
             updated[existingIdx] = {
               ...existing,
               quantity: clampedQty,
+              addedToCart: true,
               scannedAt: Date.now(),
             };
-
-            // If already in cart, update cart quantity too
-            if (existing.addedToCart) {
-              addToCart(prod, 1);
-            }
 
             // Move to top of the list so it is highlighted
             const [item] = updated.splice(existingIdx, 1);
             return [item, ...updated];
           }
 
-          // Brand new scanned product: Add to session list (DO NOT auto-add to cart)
+          // Brand new scanned product: Added directly to cart
           const newItem: ScannedSessionItem = {
             id: prod._id,
             product: prod,
             quantity: 1,
-            addedToCart: false,
+            addedToCart: true,
             scannedAt: Date.now(),
           };
 
@@ -365,8 +371,8 @@ export default function ScanProductScreen() {
         });
 
         // Flash immediate confirmation toast
-        const storeNameDisplay = currentStore?.name ? ` from ${currentStore.name}` : "";
-        setToastMsg(`✓ Scanned: ${prod.name}${storeNameDisplay}`);
+        const storeNameDisplay = currentStore?.name ? ` • ${currentStore.name}` : "";
+        setToastMsg(`✓ Added to Cart: ${prod.name}${storeNameDisplay}`);
         setTimeout(() => setToastMsg(""), 2800);
       } else {
         const storePrefix = selectedSupermarket?.name ? `in ${selectedSupermarket.name}: ` : "";
@@ -396,7 +402,7 @@ export default function ScanProductScreen() {
     }
   };
 
-  // Explicitly Add Scanned Product to Cart (User Confirmation Required)
+  // Explicitly Add Scanned Product to Cart (Fallback if item was removed from cart)
   const handleAddToCart = (sessionItem: ScannedSessionItem) => {
     const success = addToCart(sessionItem.product, sessionItem.quantity);
     if (success) {
@@ -408,14 +414,14 @@ export default function ScanProductScreen() {
     }
   };
 
-  // Adjust item quantity in session (and cart if already added)
+  // Adjust item quantity in session and cart
   const handleQuantityChange = (sessionItem: ScannedSessionItem, delta: number) => {
     const currentQ = sessionItem.quantity;
     const stockLimit = Number(sessionItem.product.stock || 999);
     const newQ = currentQ + delta;
 
     if (newQ <= 0) {
-      // Remove from session
+      // Remove from session and cart
       handleRemoveItem(sessionItem);
       return;
     }
@@ -429,21 +435,34 @@ export default function ScanProductScreen() {
       prev.map((it) => (it.id === sessionItem.id ? { ...it, quantity: newQ } : it))
     );
 
-    // If item is already added to cart, sync quantity with cart
-    if (sessionItem.addedToCart) {
-      updateQuantity(sessionItem.id, delta);
-    }
+    // Sync quantity with cart
+    updateQuantity(sessionItem.id, delta);
   };
 
-  // Remove item from current scanning session
+  // Remove item from current scanning session and cart
   const handleRemoveItem = (sessionItem: ScannedSessionItem) => {
     setScannedSessionItems((prev) => prev.filter((it) => it.id !== sessionItem.id));
-    if (sessionItem.addedToCart) {
-      updateQuantity(sessionItem.id, -sessionItem.quantity);
-    }
+    updateQuantity(sessionItem.id, -sessionItem.quantity);
+    setToastMsg(`Removed "${sessionItem.product.name}" from cart`);
+    setTimeout(() => setToastMsg(""), 2200);
   };
 
-  // Reset entire scanning session & clear cart
+  // Step 4: Proceed to In-Store Payment
+  // Strict requirement: When customer clicks PAY NOW, do not directly open payment.
+  // First display mandatory Offline Customer Details form to collect current walk-in customer's details.
+  const handleProceedToPayment = () => {
+    if (cart.length === 0) {
+      Alert.alert("Empty Cart", "Please scan product barcodes to add items before proceeding.");
+      return;
+    }
+
+    router.push({
+      pathname: "/customer-details",
+      params: { method: "UPI" },
+    });
+  };
+
+  // Reset entire scanning session, clear cart & ensure completely fresh privacy state
   const handleStartFreshSession = () => {
     Alert.alert(
       "Start Fresh Shopping Session?",
@@ -455,7 +474,7 @@ export default function ScanProductScreen() {
           style: "destructive",
           onPress: () => {
             setScannedSessionItems([]);
-            clearCart();
+            startFreshOfflineSession();
             setToastMsg("Started fresh offline shopping session.");
             setTimeout(() => setToastMsg(""), 2500);
           },
@@ -509,8 +528,8 @@ export default function ScanProductScreen() {
             <Text style={styles.headerTitle}>Scan Products</Text>
             <View style={styles.offlineHeaderBadge}>
               <Text style={styles.offlineHeaderBadgeText}>
-                {scannedSessionItems.length > 0 && selectedSupermarket?.name
-                  ? `${selectedSupermarket.name} • OFFLINE`
+                {selectedSupermarket?.name
+                  ? `${selectedSupermarket.name} • OFFLINE SCANNER`
                   : "OFFLINE SCANNER"}
               </Text>
             </View>
@@ -698,6 +717,16 @@ export default function ScanProductScreen() {
 
                     {/* Details Column */}
                     <View style={styles.detailsCol}>
+                      {/* Step 2: Supermarket Name clearly displayed above product details */}
+                      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 3 }}>
+                        <Text style={{ fontSize: 10, fontWeight: "800", color: "#6D28D9", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                          🏬 Supermarket:{" "}
+                        </Text>
+                        <Text style={{ fontSize: 11, fontWeight: "800", color: "#4338CA", flex: 1 }} numberOfLines={1}>
+                          {selectedSupermarket?.name || prod.supermarketName || "Family Foods Supermarket"}
+                        </Text>
+                      </View>
+
                       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
                         <Text style={styles.productName} numberOfLines={2}>
                           {prod.name}
@@ -715,14 +744,16 @@ export default function ScanProductScreen() {
                         {prod.brand || "Supermarket"} • {prod.category || "General"}
                       </Text>
 
-                      {/* Barcode and Supermarket Verification Badges */}
+                      {/* Barcode and Unit Badges */}
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap", marginVertical: 3 }}>
                         <View style={styles.barcodeBadge}>
-                          <Text style={styles.barcodeBadgeText}>#{prod.barcode || "BARCODE"}</Text>
+                          <Text style={styles.barcodeBadgeText}>Barcode: #{prod.barcode || "BARCODE"}</Text>
                         </View>
-                        <View style={styles.storeVerifiedBadge}>
-                          <Text style={styles.storeVerifiedText}>✓ {selectedSupermarket?.name || "Verified Store"}</Text>
-                        </View>
+                        {prod.unit ? (
+                          <View style={[styles.barcodeBadge, { backgroundColor: "#F1F5F9", borderColor: "#CBD5E1" }]}>
+                            <Text style={[styles.barcodeBadgeText, { color: "#475569" }]}>Unit: {prod.unit}</Text>
+                          </View>
+                        ) : null}
                       </View>
 
                       {/* Stock availability indicator */}
@@ -739,7 +770,7 @@ export default function ScanProductScreen() {
                             { color: inStock ? "#16A34A" : "#DC2626" },
                           ]}
                         >
-                          {inStock ? `In Stock (${stockCount} units)` : "Out of Stock"}
+                          {inStock ? `Stock: ${stockCount} available` : "Out of Stock"}
                         </Text>
                       </View>
 
@@ -818,22 +849,33 @@ export default function ScanProductScreen() {
           </ScrollView>
         )}
 
-        {/* View Cart Sticky Bottom Bar */}
+        {/* Direct In-Store Checkout / Payment Sticky Bar */}
         {cart.length > 0 && (
           <View style={styles.bottomBar}>
-            <TouchableOpacity
-              style={styles.viewCartBtn}
-              onPress={() => router.push("/cart")}
-              activeOpacity={0.88}
-            >
-              <View style={styles.cartCountPill}>
-                <Text style={styles.cartCountText}>{totalCount}</Text>
+            <View style={styles.checkoutBarContainer}>
+              <View style={styles.checkoutBarInfo}>
+                <View style={styles.cartCountBadge}>
+                  <Text style={styles.cartCountBadgeText}>
+                    🛒 {totalCount} {totalCount === 1 ? "Item" : "Items"} Scanned
+                  </Text>
+                </View>
+                <Text style={styles.checkoutBarTotalLabel}>Total Amount</Text>
+                <Text style={styles.checkoutBarTotalValue}>
+                  ₹{Number(totalAmount || 0).toFixed(2)}
+                </Text>
               </View>
-              <Text style={styles.viewCartBtnText}>
-                View Cart • ₹{Number(totalAmount || 0).toFixed(2)}
-              </Text>
-              <Text style={styles.viewCartArrow}>➔</Text>
-            </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.payNowBtn}
+                onPress={handleProceedToPayment}
+                activeOpacity={0.88}
+              >
+                <Text style={styles.payNowBtnText}>
+                  Proceed to Payment (₹{Number(totalAmount || 0).toFixed(2)})
+                </Text>
+                <Text style={styles.payNowBtnArrow}>➔</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
       </View>
@@ -847,9 +889,6 @@ export default function ScanProductScreen() {
         onSelect={handleSelectStoreFromModal}
         onClose={() => setStoreModalVisible(false)}
       />
-
-      {/* Customer Bottom Navigation Bar */}
-      <CustomerBottomNav activeTab="scan" />
     </View>
   );
 }
@@ -1293,7 +1332,7 @@ const styles = StyleSheet.create({
   },
   scannedScrollContent: {
     padding: 14,
-    paddingBottom: 85,
+    paddingBottom: 130,
     gap: 12,
   },
 
@@ -1480,29 +1519,106 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
 
-  /* Bottom View Cart Sticky Bar */
+  /* Bottom Direct In-Store Checkout Sticky Bar */
   bottomBar: {
     position: "absolute",
     bottom: 12,
-    left: 16,
-    right: 16,
+    left: 14,
+    right: 14,
+    backgroundColor: "#2E0854", // Deep signature purple
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    shadowColor: "#2E0854",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.45,
+    shadowRadius: 12,
+    elevation: 8,
+    borderWidth: 1.5,
+    borderColor: "#581C87",
+  },
+  checkoutBarContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  checkoutBarInfo: {
+    flex: 1,
+    marginRight: 10,
+  },
+  cartCountBadge: {
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    alignSelf: "flex-start",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginBottom: 2,
+  },
+  cartCountBadgeText: {
+    color: "#FDE047",
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  checkoutBarTotalLabel: {
+    color: "#D8B4FE",
+    fontSize: 9.5,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  checkoutBarTotalValue: {
+    color: "#FFFFFF",
+    fontSize: 19,
+    fontWeight: "900",
+  },
+  payNowBtn: {
+    backgroundColor: "#16A34A", // Emerald green for high-contrast checkout action
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    shadowColor: "#16A34A",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  payNowBtnText: {
+    color: "#FFFFFF",
+    fontSize: 13.5,
+    fontWeight: "900",
+  },
+  payNowBtnArrow: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  viewCartLink: {
+    alignItems: "center",
+    marginTop: 6,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255, 255, 255, 0.12)",
+  },
+  viewCartLinkText: {
+    color: "#C4B5FD",
+    fontSize: 11.5,
+    fontWeight: "700",
   },
   viewCartBtn: {
-    backgroundColor: "#2E0854", // Deep signature purple
+    backgroundColor: "#2E0854",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingVertical: 14,
     paddingHorizontal: 18,
     borderRadius: 24,
-    shadowColor: "#2E0854",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 6,
   },
   cartCountPill: {
-    backgroundColor: "#F59E0B", // Gold amber badge
+    backgroundColor: "#F59E0B",
     width: 26,
     height: 26,
     borderRadius: 13,

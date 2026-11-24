@@ -234,6 +234,27 @@ exports.addToCart = async (req, res) => {
       });
     } catch (_) {}
 
+    // Record Permanent Real-Time Platform Notification for Super Admin
+    try {
+      const io = req.app?.get("io");
+      const { recordCartItemAddedNotification } = require("../utils/activityNotificationHelper");
+      await recordCartItemAddedNotification({
+        customerName: req.user?.name || "Customer",
+        customerPhone: req.user?.phone || "",
+        customerId: req.user?._id || req.user?.id || customerId,
+        productName: product.name,
+        quantity: cleanQty,
+        price: effective,
+        supermarketId: storeId,
+        supermarketCode: req.user?.supermarketCode || "",
+        supermarketName: req.user?.supermarketName || "",
+        fulfillmentType: req.body?.fulfillmentType || "ONLINE_DELIVERY",
+        io,
+      });
+    } catch (notifErr) {
+      console.warn("Notice recording cart platform notification:", notifErr.message);
+    }
+
     return res.status(200).json({
       success: true,
       message: `Added "${product.name}" to cart.`,

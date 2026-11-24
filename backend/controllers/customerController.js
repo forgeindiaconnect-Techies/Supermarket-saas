@@ -113,18 +113,53 @@ exports.getStoreOfflineCustomers = async (req, res) => {
       .select("-password")
       .sort({ createdAt: -1 });
 
+    const existingPhones = new Set(
+      customers.map((c) => (c.phone || "").replace(/\D/g, "").slice(-10))
+    );
+
+    // Also guarantee display for any walk-in customers who completed offline orders directly at this store
+    const storeOfflineOrders = await Order.find({
+      $or: [{ supermarket: storeObjectId }, { supermarket: String(supermarketId) }],
+      purchaseMode: "OFFLINE",
+    }).sort({ createdAt: -1 });
+
+    const synthesizedCustMap = new Map();
+    for (const ord of storeOfflineOrders) {
+      const p = (ord.customer?.phone || "").replace(/\D/g, "").slice(-10);
+      if (p.length === 10 && !existingPhones.has(p) && !synthesizedCustMap.has(p)) {
+        synthesizedCustMap.set(p, {
+          _id: ord.customer?.customerId || ord._id,
+          name: ord.customer?.name || "Walk-In Customer",
+          phone: p,
+          email: ord.customer?.email || "",
+          address: ord.customer?.address || "",
+          registrationType: "OFFLINE",
+          registeredLocation: "",
+          status: "Active",
+          createdAt: ord.createdAt,
+          updatedAt: ord.updatedAt,
+        });
+      }
+    }
+
+    const allCustomerRecords = [...customers, ...Array.from(synthesizedCustMap.values())];
+
     // 3. Aggregate offline visit and order statistics for each offline customer
     const enhancedCustomers = await Promise.all(
-      customers.map(async (cust) => {
+      allCustomerRecords.map(async (cust) => {
         const cleanPhone = (cust.phone || "").replace(/\D/g, "").slice(-10);
 
         // Fetch genuine offline orders for this customer in this supermarket
+        const customerMatch = [{ "customer.customerId": cust._id }];
+        if (cleanPhone) {
+          customerMatch.push({ "customer.phone": { $regex: cleanPhone } });
+          customerMatch.push({ deliveryPhone: { $regex: cleanPhone } });
+        }
         const offlineOrders = await Order.find({
-          supermarket: supermarketId,
-          purchaseMode: "OFFLINE",
-          $or: [
-            { "customer.customerId": cust._id },
-            { "customer.phone": { $regex: cleanPhone } },
+          $and: [
+            { $or: [{ supermarket: storeObjectId }, { supermarket: String(supermarketId) }] },
+            { purchaseMode: "OFFLINE" },
+            { $or: customerMatch },
           ],
         }).sort({ createdAt: -1 });
 
@@ -156,7 +191,7 @@ exports.getStoreOfflineCustomers = async (req, res) => {
           updatedAt: cust.updatedAt,
           totalOrders,
           totalSpent,
-          latestOrderDate: offlineOrders[0]?.createdAt || cust.createdAt,
+          latestOrderDate: offlineOrders[0]?.createdAt || cust.updatedAt || cust.createdAt,
           orders: offlineOrders.map((ord) => ({
             id: ord.orderNumber,
             orderId: ord._id,
@@ -177,6 +212,13 @@ exports.getStoreOfflineCustomers = async (req, res) => {
         };
       })
     );
+
+    // Sort customers so that the most recent in-store shoppers / orders appear first
+    enhancedCustomers.sort((a, b) => {
+      const timeA = new Date(a.latestOrderDate || a.registrationDate || a.createdAt || 0).getTime();
+      const timeB = new Date(b.latestOrderDate || b.registrationDate || b.createdAt || 0).getTime();
+      return timeB - timeA;
+    });
 
     return res.status(200).json({
       success: true,

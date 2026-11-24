@@ -134,9 +134,7 @@ export default function OrdersManagement() {
   const fetchOrders = async (showLoading = false) => {
     try {
       if (showLoading) setLoading(true);
-      const res = await API.get("/orders", {
-        params: { source: "ONLINE", registrationType: "ONLINE" },
-      });
+      const res = await API.get("/orders");
       if (res.data?.success && Array.isArray(res.data.orders)) {
         let orderList = res.data.orders;
         if (!isSuperAdmin) {
@@ -145,10 +143,7 @@ export default function OrdersManagement() {
           orderList = orderList.filter((o) => {
             const oId = o.supermarket ? (typeof o.supermarket === "object" ? String(o.supermarket._id || o.supermarket) : String(o.supermarket)) : null;
             const oCode = o.supermarketCode ? String(o.supermarketCode).toUpperCase() : null;
-            const matchesTenant = (tenantId && oId && tenantId === oId) || (tenantCode && oCode && tenantCode === oCode);
-            // Strict Online filter: never display offline walk-in purchases in Order tab
-            const isOnline = o.purchaseMode === "ONLINE" || o.orderType === "DELIVERY" || o.orderType === "SELF_PICKUP";
-            return matchesTenant && isOnline;
+            return (tenantId && oId && tenantId === oId) || (tenantCode && oCode && tenantCode === oCode);
           });
         }
         setOrders(orderList);

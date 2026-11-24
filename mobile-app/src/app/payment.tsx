@@ -105,27 +105,21 @@ export default function SecurePaymentScreen() {
 
   const isOffline = purchaseMode === "offline";
 
-  // Resolved Customer Details (checking route params, authenticated customerUser, and customerInfo)
+  // Resolved Customer Details: in offline mode, strictly use the current walk-in customer's details from route params
   const effectiveName = (
     customerName ||
-    customerUser?.name ||
-    customerInfo?.name ||
-    ""
+    (isOffline ? "" : (customerUser?.name || customerInfo?.name || ""))
   ).trim();
   const rawPhoneDigits = (
     customerPhone ||
-    customerUser?.phone ||
-    customerInfo?.phone ||
-    ""
+    (isOffline ? "" : (customerUser?.phone || customerInfo?.phone || ""))
   ).replace(/\D/g, "");
   const effectivePhone = rawPhoneDigits.length >= 10 ? rawPhoneDigits.slice(-10) : rawPhoneDigits;
   const effectiveAddress = (
     customerAddress ||
-    customerUser?.address ||
-    customerInfo?.address ||
-    ""
+    (isOffline ? "" : (customerUser?.address || customerInfo?.address || ""))
   ).trim();
-  const effectiveCustomerId = customerId || customerUser?._id;
+  const effectiveCustomerId = customerId || (isOffline ? undefined : customerUser?._id);
 
   const [paymentMethod, setPaymentMethod] = useState<"UPI" | "Card" | "Cash">(
     method === "Card" ? "Card" : method === "Cash" ? "Cash" : "UPI"

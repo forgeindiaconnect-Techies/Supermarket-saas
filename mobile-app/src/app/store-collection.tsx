@@ -182,13 +182,16 @@ export default function StoreCollectionScreen() {
       let isSuccess = false;
       let reviewResult: any = null;
 
+      const reqHeaders: Record<string, string> = { "Content-Type": "application/json" };
+      if (customerUser?.token) reqHeaders["Authorization"] = `Bearer ${customerUser.token}`;
+
       // 1. Primary Attempt: Dedicated /review endpoint
       try {
         const res = await safeFetch(
           `${API_URL}/orders/${targetId}/review`,
           {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: reqHeaders,
             body: JSON.stringify(reviewData),
           },
           5000
@@ -615,11 +618,13 @@ export default function StoreCollectionScreen() {
           <View style={styles.reviewHeaderRow}>
             <Text style={{ fontSize: 22 }}>⭐</Text>
             <View style={{ flex: 1, marginLeft: 8 }}>
-              <Text style={styles.sectionTitle}>Rate & Review Store Pickup</Text>
+              <Text style={styles.sectionTitle}>
+                {isCompleted ? "Rate Your Store Pickup (Required)" : "Rate & Review Store Pickup"}
+              </Text>
               <Text style={styles.sectionSubtitle}>
                 {isCompleted
-                  ? "Share your feedback about the packing quality and counter service"
-                  : "Review will be enabled once your products are collected"}
+                  ? "Order collected! Please provide your star rating and feedback below."
+                  : "Review will be enabled once your products are collected at the store counter"}
               </Text>
             </View>
           </View>

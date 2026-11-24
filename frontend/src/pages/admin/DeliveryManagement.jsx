@@ -49,6 +49,7 @@ export default function DeliveryManagement() {
   const [orders, setOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
   const [orderStatusFilter, setOrderStatusFilter] = useState("all");
+  const [historyPeriod, setHistoryPeriod] = useState("all");
   const [orderSearch, setOrderSearch] = useState("");
   const [copiedOrderId, setCopiedOrderId] = useState(null);
   const [selectedOrderForView, setSelectedOrderForView] = useState(null);
@@ -400,15 +401,59 @@ export default function DeliveryManagement() {
     }
   };
 
-  // Filter Orders using normalized canonical status
+  // Counts for Badges with canonical status mapping
+  const countNewOrders = orders.filter((o) => getNormStatus(o.deliveryStatus) === "Order Confirmed").length;
+  const countPreparingOrders = orders.filter((o) => getNormStatus(o.deliveryStatus) === "Preparing").length;
+  const countAssignedOrders = orders.filter((o) => ["Assigned", "Products Collected"].includes(getNormStatus(o.deliveryStatus))).length;
+  const countOutOrders = orders.filter((o) => getNormStatus(o.deliveryStatus) === "Out for Delivery").length;
+
+  // Delivered Today check (Active shift completed deliveries in local date)
+  const isDeliveredToday = (o) => {
+    const norm = getNormStatus(o.deliveryStatus);
+    if (norm !== "Delivered") return false;
+    const raw = o.deliveryCompletedAt || o.completedAt || o.updatedAt || o.createdAt;
+    if (!raw) return false;
+    const d = new Date(raw);
+    const now = new Date();
+    return d.toDateString() === now.toDateString();
+  };
+
+  const countDeliveredTodayOrders = orders.filter(isDeliveredToday).length;
+  const countDeliveredOrders = orders.filter((o) => getNormStatus(o.deliveryStatus) === "Delivered").length;
+  const countAllDeliveredOrders = countDeliveredOrders;
+  const countActiveOrders = countNewOrders + countPreparingOrders + countAssignedOrders + countOutOrders;
+
+  // History list of completed/closed orders (all past completed deliveries, failed, and cancelled)
+  const historyOrdersList = orders.filter((o) => {
+    const norm = getNormStatus(o.deliveryStatus);
+    return norm === "Delivered" || norm === "Failed Delivery" || norm === "Cancelled";
+  });
+
+  const countHistoryToday = historyOrdersList.filter((o) => {
+    const raw = o.deliveryCompletedAt || o.completedAt || o.createdAt;
+    return new Date(raw).toDateString() === new Date().toDateString();
+  }).length;
+
+  const countHistoryWeek = historyOrdersList.filter((o) => {
+    const raw = o.deliveryCompletedAt || o.completedAt || o.createdAt;
+    return new Date(raw) >= new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  }).length;
+
+  const countHistoryMonth = historyOrdersList.filter((o) => {
+    const raw = o.deliveryCompletedAt || o.completedAt || o.createdAt;
+    return new Date(raw) >= new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  }).length;
+
+  // Filter Active Orders using normalized canonical status
   const filteredOrders = orders.filter((o) => {
     const norm = getNormStatus(o.deliveryStatus);
+    if (orderStatusFilter === "all_active" && (norm === "Delivered" || norm === "Failed Delivery")) return false;
     if (orderStatusFilter === "new" && norm !== "Order Confirmed") return false;
     if (orderStatusFilter === "preparing" && norm !== "Preparing") return false;
     if (orderStatusFilter === "assigned" && norm !== "Assigned" && norm !== "Products Collected") return false;
     if (orderStatusFilter === "out_for_delivery" && norm !== "Out for Delivery") return false;
-    if (orderStatusFilter === "delivered" && norm !== "Delivered") return false;
-    if (orderStatusFilter === "history" && norm !== "Delivered" && norm !== "Failed Delivery") return false;
+    if (orderStatusFilter === "delivered" && !isDeliveredToday(o)) return false;
+    if (orderStatusFilter === "history") return false; // Handled separately by filteredHistoryOrders
 
     if (orderSearch.trim()) {
       const q = orderSearch.toLowerCase();
@@ -417,6 +462,30 @@ export default function DeliveryManagement() {
       const matchPhone = o.customer?.phone?.includes(q) || o.customerPhone?.includes(q);
       const matchAddr = o.deliveryAddress?.toLowerCase().includes(q) || o.customer?.address?.toLowerCase().includes(q);
       if (!matchNum && !matchCust && !matchPhone && !matchAddr) return false;
+    }
+    return true;
+  });
+
+  // Filter History Orders
+  const filteredHistoryOrders = historyOrdersList.filter((o) => {
+    // Period filter
+    if (historyPeriod !== "all") {
+      const raw = o.deliveryCompletedAt || o.completedAt || o.createdAt;
+      const orderDate = new Date(raw);
+      const now = new Date();
+      if (historyPeriod === "today" && orderDate.toDateString() !== now.toDateString()) return false;
+      if (historyPeriod === "week" && orderDate < new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)) return false;
+      if (historyPeriod === "month" && orderDate < new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)) return false;
+    }
+
+    if (orderSearch.trim()) {
+      const q = orderSearch.toLowerCase();
+      const matchNum = o.orderNumber?.toLowerCase().includes(q);
+      const matchCust = o.customer?.name?.toLowerCase().includes(q) || o.customerName?.toLowerCase().includes(q);
+      const matchPhone = o.customer?.phone?.includes(q) || o.customerPhone?.includes(q);
+      const matchAddr = o.deliveryAddress?.toLowerCase().includes(q) || o.customer?.address?.toLowerCase().includes(q);
+      const matchStaff = o.assignedStaffName?.toLowerCase().includes(q) || o.assignedStaff?.name?.toLowerCase().includes(q);
+      if (!matchNum && !matchCust && !matchPhone && !matchAddr && !matchStaff) return false;
     }
     return true;
   });
@@ -434,13 +503,6 @@ export default function DeliveryManagement() {
     }
     return true;
   });
-
-  // Counts for Badges with canonical status mapping
-  const countNewOrders = orders.filter((o) => getNormStatus(o.deliveryStatus) === "Order Confirmed").length;
-  const countPreparingOrders = orders.filter((o) => getNormStatus(o.deliveryStatus) === "Preparing").length;
-  const countAssignedOrders = orders.filter((o) => ["Assigned", "Products Collected"].includes(getNormStatus(o.deliveryStatus))).length;
-  const countOutOrders = orders.filter((o) => getNormStatus(o.deliveryStatus) === "Out for Delivery").length;
-  const countDeliveredOrders = orders.filter((o) => getNormStatus(o.deliveryStatus) === "Delivered").length;
 
   return (
     <div className="grocer-page-container">
@@ -526,7 +588,12 @@ export default function DeliveryManagement() {
           <button
             type="button"
             className={`del-switch-pill ${activeView === "orders" ? "active" : ""}`}
-            onClick={() => setActiveView("orders")}
+            onClick={() => {
+              setActiveView("orders");
+              if (orderStatusFilter === "history") {
+                setOrderStatusFilter("all");
+              }
+            }}
           >
             <Truck size={16} />
             <span>Delivery Orders</span>
@@ -568,7 +635,7 @@ export default function DeliveryManagement() {
       </div>
 
       {/* ========================================================================= */}
-      {/* VIEW 1: DELIVERY ORDERS MANAGEMENT                                        */}
+      {/* VIEW 1: ACTIVE DELIVERY ORDERS MANAGEMENT                                 */}
       {/* ========================================================================= */}
       {activeView === "orders" && (
         <div className="del-view-wrap">
@@ -580,8 +647,8 @@ export default function DeliveryManagement() {
               { id: "preparing", label: "Preparing", count: countPreparingOrders },
               { id: "assigned", label: "Assigned Orders", count: countAssignedOrders },
               { id: "out_for_delivery", label: "Out for Delivery", count: countOutOrders },
-              { id: "delivered", label: "Delivered", count: countDeliveredOrders },
-              { id: "history", label: "Order History", count: countDeliveredOrders },
+              { id: "delivered", label: "Delivered", count: countDeliveredTodayOrders },
+              { id: "history", label: "Order History", count: historyOrdersList.length },
             ].map((f) => (
               <button
                 key={f.id}
@@ -595,7 +662,265 @@ export default function DeliveryManagement() {
             ))}
           </div>
 
-          {/* Full-Width Standard Search Box */}
+          {orderStatusFilter === "history" ? (
+            /* Historical Orders Section */
+            <div className="del-history-view-block">
+              {/* History Time Period Filter Strip */}
+              <div className="del-status-strip" style={{ marginTop: "0.25rem", marginBottom: "0.75rem" }}>
+                {[
+                  { id: "all", label: "All Completed Deliveries", count: historyOrdersList.length },
+                  { id: "today", label: "Delivered Today", count: countHistoryToday },
+                  { id: "week", label: "Delivered This Week", count: countHistoryWeek },
+                  { id: "month", label: "Delivered This Month", count: countHistoryMonth },
+                ].map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className={`del-status-chip ${historyPeriod === p.id ? "active" : ""}`}
+                    onClick={() => setHistoryPeriod(p.id)}
+                  >
+                    <span>{p.label}</span>
+                    <span className="del-status-badge">{p.count}</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* History Search Box */}
+              <div className="del-search-card">
+                <div className="del-search-box">
+                  <Search size={18} color="#2563EB" />
+                  <input
+                    type="text"
+                    placeholder="Search history by Order #, Customer Name, Mobile, Address, or Driver..."
+                    value={orderSearch}
+                    onChange={(e) => setOrderSearch(e.target.value)}
+                    autoComplete="off"
+                    spellCheck="false"
+                  />
+                  {orderSearch && (
+                    <button type="button" onClick={() => setOrderSearch("")} className="del-clear-btn" title="Clear Search">
+                      ✕
+                    </button>
+                  )}
+                  <span className="del-search-count-pill">
+                    Showing {filteredHistoryOrders.length} of {historyOrdersList.length} fulfilled orders
+                  </span>
+                </div>
+              </div>
+
+              {/* Historical Orders Table */}
+              {loadingOrders ? (
+                <div className="del-loading-box">
+                  <RefreshCw size={26} className="del-spin" />
+                  <p>Fetching historical orders...</p>
+                </div>
+              ) : filteredHistoryOrders.length === 0 ? (
+                <div className="del-empty-card">
+                  <div className="del-empty-icon-wrap">
+                    <Clock size={34} color="#2563EB" />
+                  </div>
+                  <h4>No Historical Deliveries Found</h4>
+                  <p>
+                    {orderSearch
+                      ? `No fulfilled orders matched "${orderSearch}". Try searching with a different term.`
+                      : "No completed delivery records found in this selected time range."}
+                  </p>
+                  {orderSearch && (
+                    <button
+                      type="button"
+                      className="del-secondary-btn"
+                      style={{ marginTop: 14 }}
+                      onClick={() => setOrderSearch("")}
+                    >
+                      Clear Search Filter
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="orders-table-card pm-catalog-card">
+                  <div className="pm-catalog-header">
+                    <div className="pm-catalog-title-group">
+                      <div
+                        className="pm-catalog-icon-box"
+                        style={{ background: "linear-gradient(135deg, #059669, #10B981)" }}
+                      >
+                        <CheckCircle2 size={18} color="#FFFFFF" />
+                      </div>
+                      <div>
+                        <h3 className="pm-catalog-heading">
+                          Delivery Order History &amp; Fulfilled Archive ({filteredHistoryOrders.length}{" "}
+                          {filteredHistoryOrders.length === 1 ? "Order" : "Orders"})
+                        </h3>
+                        <span style={{ fontSize: "11.5px", color: "#64748B", fontWeight: "600" }}>
+                          Historical audit records of completed doorstep deliveries with delivery timestamps &amp; fleet drivers
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="cm-header-controls" style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                      <button
+                        type="button"
+                        className="pm-action-btn primary"
+                        onClick={fetchOrders}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "5px",
+                          padding: "6px 14px",
+                          borderRadius: "8px",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          background: "#059669",
+                          color: "#FFFFFF",
+                          border: "none",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <RefreshCw size={13} className={loadingOrders ? "del-spin" : ""} />
+                        <span>Refresh Archive</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="orders-table-responsive pm-table-wrapper">
+                    <table className="orders-table pm-products-table">
+                      <thead>
+                        <tr>
+                          <th className="th-idx">#</th>
+                          <th className="th-orderid">ORDER ID</th>
+                          <th className="th-datetime">ORDER PLACED</th>
+                          <th style={{ minWidth: 140 }}>DELIVERED AT</th>
+                          <th className="th-customer">CUSTOMER</th>
+                          <th className="th-address">DELIVERY ADDRESS</th>
+                          <th className="th-partner">DELIVERED BY</th>
+                          <th className="th-items">ITEMS</th>
+                          <th className="th-amount">TOTAL AMOUNT</th>
+                          <th className="th-status">STATUS</th>
+                          <th className="th-action">ACTIONS</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredHistoryOrders.map((ord, index) => {
+                          const staffAssigned = ord.assignedStaff || ord.deliveryStaff;
+                          const custName = ord.customer?.name || ord.customerName || "Customer";
+                          const custPhone = ord.customer?.phone || ord.customerPhone || "—";
+                          const deliveryAddress =
+                            ord.deliveryAddress || ord.customer?.address || "Address not provided";
+                          const itemCount = ord.items?.length || ord.totalItems || 1;
+                          const firstItemName =
+                            ord.items?.[0]?.name ||
+                            ord.items?.[0]?.product?.name ||
+                            (ord.items?.length ? "Package Items" : "Groceries");
+                          const formattedDate = ord.createdAt
+                            ? new Date(ord.createdAt).toLocaleString("en-IN", {
+                                day: "numeric",
+                                month: "short",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                hour12: true,
+                              })
+                            : "—";
+
+                          const deliveredTimestamp =
+                            ord.deliveryCompletedAt ||
+                            ord.completedAt ||
+                            (ord.trackingTimeline &&
+                              [...ord.trackingTimeline].reverse().find((t) =>
+                                String(t.status || t.stage || "").toLowerCase().includes("deliver")
+                              )?.timestamp);
+
+                          const formattedDeliveredAt = deliveredTimestamp
+                            ? new Date(deliveredTimestamp).toLocaleString("en-IN", {
+                                day: "numeric",
+                                month: "short",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                hour12: true,
+                              })
+                            : formattedDate;
+
+                          return (
+                            <tr key={ord._id} className="row-completed-highlight">
+                              <td className="td-idx">{index + 1}</td>
+                              <td className="td-orderid">
+                                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                  <span style={{ fontWeight: 800, color: "#0F172A" }}>{ord.orderNumber}</span>
+                                  <button
+                                    type="button"
+                                    className="order-id-copy-btn"
+                                    onClick={(e) => handleCopyOrderId(ord.orderNumber, e)}
+                                    title="Copy Order ID"
+                                  >
+                                    {copiedOrderId === ord.orderNumber ? (
+                                      <Check size={12} color="#16A34A" />
+                                    ) : (
+                                      <Copy size={12} />
+                                    )}
+                                  </button>
+                                </div>
+                              </td>
+                              <td className="td-datetime">{formattedDate}</td>
+                              <td style={{ fontSize: "12px", color: "#059669", fontWeight: 700 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                                  <Clock size={12} />
+                                  <span>{formattedDeliveredAt}</span>
+                                </div>
+                              </td>
+                              <td className="td-customer">
+                                <span style={{ fontWeight: 700, color: "#0F172A" }}>{custName}</span>
+                                <div style={{ fontSize: "11px", color: "#64748B" }}>{custPhone}</div>
+                              </td>
+                              <td className="td-address">
+                                <span title={deliveryAddress}>{deliveryAddress}</span>
+                              </td>
+                              <td className="td-partner">
+                                <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                                  <Truck size={13} color="#059669" />
+                                  <span style={{ fontWeight: 700, color: "#0F172A" }}>
+                                    {staffAssigned?.name || ord.assignedStaffName || "Fleet Partner"}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="td-items">
+                                <span style={{ fontWeight: 700 }}>
+                                  {itemCount} {itemCount === 1 ? "item" : "items"}
+                                </span>
+                                <div style={{ fontSize: "11px", color: "#64748B" }}>({firstItemName})</div>
+                              </td>
+                              <td className="td-amount" style={{ fontWeight: 800, color: "#059669" }}>
+                                ₹{Number(ord.totalAmount || 0).toFixed(2)}
+                              </td>
+                              <td className="td-status">
+                                <span className="order-status-pill status-completed">
+                                  <CheckCircle2 size={13} color="#15803D" strokeWidth={2.4} />
+                                  <span>Delivered</span>
+                                </span>
+                              </td>
+                              <td className="td-action">
+                                <button
+                                  type="button"
+                                  className="order-action-view-btn"
+                                  onClick={() => {
+                                    setSelectedOrderForView(ord);
+                                    setViewOrderModalOpen(true);
+                                  }}
+                                >
+                                  <Eye size={13} />
+                                  <span>View Details</span>
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              {/* Full-Width Standard Search Box */}
           <div className="del-search-card">
             <div className="del-search-box">
               <Search size={18} color="#2563EB" />
@@ -625,36 +950,77 @@ export default function DeliveryManagement() {
               <p>Fetching real-time delivery orders...</p>
             </div>
           ) : filteredOrders.length === 0 ? (
-            <div className="del-empty-card">
-              <div className="del-empty-icon-wrap">
-                <Truck size={34} color="#2563EB" />
+            <div className="del-empty-card" style={{ padding: "44px 20px", textAlign: "center" }}>
+              <div
+                className="del-empty-icon-wrap"
+                style={{
+                  width: 58,
+                  height: 58,
+                  borderRadius: "50%",
+                  background: "#F0FDF4",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  margin: "0 auto 14px",
+                }}
+              >
+                <CheckCircle2 size={30} color="#16A34A" />
               </div>
-              <h4>No Delivery Orders Found</h4>
-              <p>
+              <h4 style={{ fontSize: 17, fontWeight: 850, color: "#0F172A", margin: "0 0 6px" }}>
+                {orderStatusFilter === "all_active"
+                  ? "All Current Deliveries Fulfilled!"
+                  : "No Delivery Orders in this Category"}
+              </h4>
+              <p style={{ maxWidth: 460, margin: "0 auto 18px", color: "#64748B", fontSize: 13, lineHeight: 1.5 }}>
                 {orderSearch
                   ? `No delivery orders matched "${orderSearch}". Try searching with a different term.`
-                  : "There are currently no delivery orders in this status category. Live doorstep customer orders will appear here automatically."}
+                  : orderStatusFilter === "all_active"
+                  ? "There are currently 0 active orders in transit. All customer doorstep deliveries have been completed and stored in Order History."
+                  : "There are currently no active delivery orders in this status category. Live customer orders will appear here automatically."}
               </p>
-              {orderSearch ? (
+              <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
                 <button
                   type="button"
-                  className="del-secondary-btn"
-                  style={{ marginTop: 14 }}
-                  onClick={() => setOrderSearch("")}
+                  className="del-primary-btn"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "8px 16px",
+                    borderRadius: 8,
+                    fontSize: 12.5,
+                    fontWeight: 700,
+                    background: "#2563EB",
+                    color: "#FFFFFF",
+                    border: "none",
+                    cursor: "pointer",
+                  }}
+                  onClick={() => setActiveView("history")}
                 >
-                  Clear Search Filter
+                  <Clock size={13} />
+                  <span>View Order History ({historyOrdersList.length})</span>
                 </button>
-              ) : (
-                <button
-                  type="button"
-                  className="del-secondary-btn"
-                  style={{ marginTop: 14 }}
-                  onClick={fetchOrders}
-                >
-                  <RefreshCw size={13} />
-                  <span>Check for New Orders</span>
-                </button>
-              )}
+                {orderSearch ? (
+                  <button
+                    type="button"
+                    className="del-secondary-btn"
+                    style={{ padding: "8px 14px", fontSize: 12.5 }}
+                    onClick={() => setOrderSearch("")}
+                  >
+                    Clear Search Filter
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="del-secondary-btn"
+                    style={{ padding: "8px 14px", fontSize: 12.5 }}
+                    onClick={fetchOrders}
+                  >
+                    <RefreshCw size={13} className={loadingOrders ? "del-spin" : ""} />
+                    <span>Check for New Orders</span>
+                  </button>
+                )}
+              </div>
             </div>
           ) : (
             <div className="orders-table-card pm-catalog-card">
@@ -889,17 +1255,72 @@ export default function DeliveryManagement() {
                             })()}
                           </td>
                           <td className="td-action">
-                            <button
-                              type="button"
-                              className="order-action-view-btn"
-                              onClick={() => {
-                                setSelectedOrderForView(ord);
-                                viewOrderModalOpen ? null : setViewOrderModalOpen(true);
-                              }}
-                            >
-                              <Eye size={13} />
-                              <span>View Details</span>
-                            </button>
+                            <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                              <button
+                                type="button"
+                                className="order-action-view-btn"
+                                onClick={() => {
+                                  setSelectedOrderForView(ord);
+                                  setViewOrderModalOpen(true);
+                                }}
+                              >
+                                <Eye size={13} />
+                                <span>View Details</span>
+                              </button>
+
+                              {(() => {
+                                const norm = getNormStatus(ord.deliveryStatus);
+                                if (norm === "Order Confirmed") {
+                                  return (
+                                    <button
+                                      type="button"
+                                      className="del-quick-action-btn prepare"
+                                      onClick={() => handleUpdateOrderStatus(ord._id, "Preparing")}
+                                      title="Start Preparing Order"
+                                    >
+                                      Prepare
+                                    </button>
+                                  );
+                                }
+                                if (norm === "Preparing") {
+                                  return (
+                                    <button
+                                      type="button"
+                                      className="del-quick-action-btn assign"
+                                      onClick={() => handleOpenAssignModal(ord)}
+                                      title="Assign Active Delivery Driver"
+                                    >
+                                      Assign Driver
+                                    </button>
+                                  );
+                                }
+                                if (norm === "Assigned" || norm === "Products Collected") {
+                                  return (
+                                    <button
+                                      type="button"
+                                      className="del-quick-action-btn dispatch"
+                                      onClick={() => handleUpdateOrderStatus(ord._id, "Out for Delivery")}
+                                      title="Dispatch for Delivery"
+                                    >
+                                      Dispatch
+                                    </button>
+                                  );
+                                }
+                                if (norm === "Out for Delivery") {
+                                  return (
+                                    <button
+                                      type="button"
+                                      className="del-quick-action-btn deliver"
+                                      onClick={() => handleUpdateOrderStatus(ord._id, "Delivered")}
+                                      title="Mark Order as Delivered"
+                                    >
+                                      Deliver
+                                    </button>
+                                  );
+                                }
+                                return null;
+                              })()}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -909,11 +1330,13 @@ export default function DeliveryManagement() {
               </div>
             </div>
           )}
-        </div>
+        </>
       )}
+    </div>
+  )}
 
       {/* ========================================================================= */}
-      {/* VIEW 2: DELIVERY STAFF FLEET MANAGEMENT                                  */}
+      {/* VIEW 3: DELIVERY STAFF FLEET MANAGEMENT                                  */}
       {/* ========================================================================= */}
       {activeView === "staff" && (
         <div className="del-view-wrap">
@@ -1212,7 +1635,10 @@ export default function DeliveryManagement() {
               </div>
 
               {/* Modal Body */}
-              <div className="del-modal-view-body">
+              <div
+                className="del-modal-view-body"
+                style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto" }}
+              >
                 {/* 1. Interactive 6-Stage Progress Stepper */}
                 <div className="del-stepper-container">
                   <div className="del-stepper-title-row">
@@ -1582,24 +2008,50 @@ export default function DeliveryManagement() {
               </div>
 
               {/* Modal Actions Footer */}
-              <div className="del-modal-view-footer">
+              <div
+                className="del-modal-view-footer"
+                style={{
+                  flexShrink: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  padding: "16px 24px",
+                  background: "#ffffff",
+                  borderTop: "1px solid #F1F5F9",
+                }}
+              >
                 <button
                   type="button"
                   className="del-secondary-btn"
-                  style={{ padding: "8px 14px", fontSize: "12.5px" }}
+                  style={{
+                    padding: "9px 16px",
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    borderRadius: "10px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
                   onClick={() => {
                     setViewOrderModalOpen(false);
                     handleOpenTimelineModal(selectedOrderForView);
                   }}
                 >
-                  <Clock size={13} />
+                  <Clock size={14} />
                   <span>Open Full Screen Timeline</span>
                 </button>
 
-                <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                   <button
                     type="button"
                     className="del-btn-secondary"
+                    style={{
+                      padding: "9px 18px",
+                      borderRadius: "10px",
+                      fontSize: "13px",
+                      fontWeight: 700,
+                    }}
                     onClick={() => setViewOrderModalOpen(false)}
                   >
                     Close
@@ -1609,47 +2061,103 @@ export default function DeliveryManagement() {
                     <button
                       type="button"
                       className="del-advance-btn"
-                      style={{ background: "#7C3AED", color: "#fff" }}
+                      style={{
+                        background: "#7C3AED",
+                        color: "#fff",
+                        padding: "9px 18px",
+                        borderRadius: "10px",
+                        fontSize: "13px",
+                        fontWeight: 700,
+                      }}
                       onClick={() => handleUpdateOrderStatus(selectedOrderForView._id, "Preparing")}
                     >
                       Start Preparing
                     </button>
                   ) : normStatus === "Preparing" ? (
+                    assignedStaffObj ? (
+                      <button
+                        type="button"
+                        className="del-advance-btn"
+                        style={{
+                          background: "#0284C7",
+                          color: "#fff",
+                          padding: "9px 18px",
+                          borderRadius: "10px",
+                          fontSize: "13px",
+                          fontWeight: 700,
+                        }}
+                        onClick={() => handleUpdateOrderStatus(selectedOrderForView._id, "Out for Delivery")}
+                      >
+                        Dispatch (Out for Delivery)
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="del-advance-btn"
+                        style={{
+                          background: "#D97706",
+                          color: "#fff",
+                          padding: "9px 18px",
+                          borderRadius: "10px",
+                          fontSize: "13px",
+                          fontWeight: 700,
+                        }}
+                        onClick={() => {
+                          setViewOrderModalOpen(false);
+                          handleOpenAssignModal(selectedOrderForView);
+                        }}
+                      >
+                        Assign Delivery Driver
+                      </button>
+                    )
+                  ) : (normStatus === "Assigned" || normStatus === "Products Collected") ? (
                     <button
                       type="button"
                       className="del-advance-btn"
-                      style={{ background: "#2563EB", color: "#fff" }}
-                      onClick={() => handleUpdateOrderStatus(selectedOrderForView._id, "Products Collected")}
-                    >
-                      Mark Products Collected
-                    </button>
-                  ) : normStatus === "Assigned" ? (
-                    <button
-                      type="button"
-                      className="del-advance-btn"
-                      style={{ background: "#2563EB", color: "#fff" }}
-                      onClick={() => handleUpdateOrderStatus(selectedOrderForView._id, "Products Collected")}
-                    >
-                      Mark Products Collected
-                    </button>
-                  ) : normStatus === "Products Collected" ? (
-                    <button
-                      type="button"
-                      className="del-advance-btn"
-                      style={{ background: "#0284C7", color: "#fff" }}
+                      style={{
+                        background: "#0284C7",
+                        color: "#fff",
+                        padding: "9px 18px",
+                        borderRadius: "10px",
+                        fontSize: "13px",
+                        fontWeight: 700,
+                      }}
                       onClick={() => handleUpdateOrderStatus(selectedOrderForView._id, "Out for Delivery")}
                     >
-                      Mark Out for Delivery
+                      Dispatch (Out for Delivery)
                     </button>
                   ) : normStatus === "Out for Delivery" ? (
                     <button
                       type="button"
                       className="del-delivered-btn"
+                      style={{
+                        padding: "9px 18px",
+                        borderRadius: "10px",
+                        fontSize: "13px",
+                        fontWeight: 700,
+                      }}
                       onClick={() => handleUpdateOrderStatus(selectedOrderForView._id, "Delivered")}
                     >
                       Mark Delivered
                     </button>
-                  ) : null}
+                  ) : (
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        color: "#16A34A",
+                        fontSize: 13,
+                        fontWeight: 700,
+                        padding: "7px 14px",
+                        background: "#DCFCE7",
+                        borderRadius: 10,
+                      }}
+                    >
+                      <CheckCircle2 size={16} />
+                      <span>Order Delivered</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

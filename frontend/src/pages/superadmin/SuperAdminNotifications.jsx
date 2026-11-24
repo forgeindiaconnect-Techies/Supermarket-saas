@@ -20,6 +20,12 @@ import {
   Shield,
   Eye,
   Store,
+  ShoppingCart,
+  CreditCard,
+  Truck,
+  Package,
+  Phone,
+  Tag,
 } from "lucide-react";
 import API, { SOCKET_URL } from "../../services/api";
 import { io } from "socket.io-client";
@@ -150,7 +156,15 @@ export default function SuperAdminNotifications() {
   // Filtered and searched notifications
   const filteredNotifications = notifications.filter((n) => {
     // Tab filter
-    if (activeFilter === "password") {
+    if (activeFilter === "cart") {
+      if (n.type !== "CART_ITEM_ADDED") return false;
+    } else if (activeFilter === "payment") {
+      if (n.type !== "PAYMENT_SUCCESSFUL") return false;
+    } else if (activeFilter === "delivery") {
+      if (n.activityType !== "ONLINE_DELIVERY") return false;
+    } else if (activeFilter === "pickup") {
+      if (n.activityType !== "STORE_PICKUP") return false;
+    } else if (activeFilter === "password") {
       const isPass =
         n.type === "PASSWORD_CHANGED" ||
         n.type === "ADMIN_PASSWORD_UPDATED" ||
@@ -168,6 +182,10 @@ export default function SuperAdminNotifications() {
     const title = (n.title || "").toLowerCase();
     const storeName = (n.supermarketName || "").toLowerCase();
     const storeCode = (n.supermarketCode || "").toLowerCase();
+    const custName = (n.customerName || "").toLowerCase();
+    const custPhone = (n.customerPhone || "").toLowerCase();
+    const prodName = (n.productName || "").toLowerCase();
+    const orderNum = (n.orderNumber || n.orderId || "").toLowerCase();
     const adminName = (n.metadata?.adminName || "").toLowerCase();
     const adminUser = (n.metadata?.adminUsername || "").toLowerCase();
     const email = (n.metadata?.email || "").toLowerCase();
@@ -177,6 +195,10 @@ export default function SuperAdminNotifications() {
       title.includes(q) ||
       storeName.includes(q) ||
       storeCode.includes(q) ||
+      custName.includes(q) ||
+      custPhone.includes(q) ||
+      prodName.includes(q) ||
+      orderNum.includes(q) ||
       adminName.includes(q) ||
       adminUser.includes(q) ||
       email.includes(q) ||
@@ -184,6 +206,10 @@ export default function SuperAdminNotifications() {
     );
   });
 
+  const cartUpdatesCount = notifications.filter((n) => n.type === "CART_ITEM_ADDED").length;
+  const paymentUpdatesCount = notifications.filter((n) => n.type === "PAYMENT_SUCCESSFUL").length;
+  const deliveryUpdatesCount = notifications.filter((n) => n.activityType === "ONLINE_DELIVERY").length;
+  const pickupUpdatesCount = notifications.filter((n) => n.activityType === "STORE_PICKUP").length;
   const passwordUpdatesCount = notifications.filter(
     (n) =>
       n.type === "PASSWORD_CHANGED" ||
@@ -565,7 +591,7 @@ export default function SuperAdminNotifications() {
               background: activeFilter === "all" ? "#047857" : "#f1f5f9",
               color: activeFilter === "all" ? "#ffffff" : "#475569",
               border: "none",
-              padding: "8px 16px",
+              padding: "8px 14px",
               borderRadius: "10px",
               fontSize: "0.82rem",
               fontWeight: 750,
@@ -587,6 +613,130 @@ export default function SuperAdminNotifications() {
 
           <button
             type="button"
+            onClick={() => setActiveFilter("cart")}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              background: activeFilter === "cart" ? "#7c3aed" : "#f5f3ff",
+              color: activeFilter === "cart" ? "#ffffff" : "#6d28d9",
+              border: "1px solid #ddd6fe",
+              padding: "8px 14px",
+              borderRadius: "10px",
+              fontSize: "0.82rem",
+              fontWeight: 750,
+              cursor: "pointer",
+            }}
+          >
+            <ShoppingCart size={13} />
+            <span>🛒 Cart Activity</span>
+            <span
+              style={{
+                background: activeFilter === "cart" ? "rgba(255,255,255,0.25)" : "#ddd6fe",
+                padding: "1px 6px",
+                borderRadius: "10px",
+                fontSize: "0.74rem",
+              }}
+            >
+              {cartUpdatesCount}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveFilter("payment")}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              background: activeFilter === "payment" ? "#059669" : "#ecfdf5",
+              color: activeFilter === "payment" ? "#ffffff" : "#047857",
+              border: "1px solid #a7f3d0",
+              padding: "8px 14px",
+              borderRadius: "10px",
+              fontSize: "0.82rem",
+              fontWeight: 750,
+              cursor: "pointer",
+            }}
+          >
+            <CreditCard size={13} />
+            <span>💳 Payments</span>
+            <span
+              style={{
+                background: activeFilter === "payment" ? "rgba(255,255,255,0.25)" : "#a7f3d0",
+                padding: "1px 6px",
+                borderRadius: "10px",
+                fontSize: "0.74rem",
+              }}
+            >
+              {paymentUpdatesCount}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveFilter("delivery")}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              background: activeFilter === "delivery" ? "#2563eb" : "#eff6ff",
+              color: activeFilter === "delivery" ? "#ffffff" : "#1d4ed8",
+              border: "1px solid #bfdbfe",
+              padding: "8px 14px",
+              borderRadius: "10px",
+              fontSize: "0.82rem",
+              fontWeight: 750,
+              cursor: "pointer",
+            }}
+          >
+            <Truck size={13} />
+            <span>🚚 Online Delivery</span>
+            <span
+              style={{
+                background: activeFilter === "delivery" ? "rgba(255,255,255,0.25)" : "#bfdbfe",
+                padding: "1px 6px",
+                borderRadius: "10px",
+                fontSize: "0.74rem",
+              }}
+            >
+              {deliveryUpdatesCount}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveFilter("pickup")}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              background: activeFilter === "pickup" ? "#9333ea" : "#faf5ff",
+              color: activeFilter === "pickup" ? "#ffffff" : "#7e22ce",
+              border: "1px solid #e9d5ff",
+              padding: "8px 14px",
+              borderRadius: "10px",
+              fontSize: "0.82rem",
+              fontWeight: 750,
+              cursor: "pointer",
+            }}
+          >
+            <Package size={13} />
+            <span>🏬 Store Pickup</span>
+            <span
+              style={{
+                background: activeFilter === "pickup" ? "rgba(255,255,255,0.25)" : "#e9d5ff",
+                padding: "1px 6px",
+                borderRadius: "10px",
+                fontSize: "0.74rem",
+              }}
+            >
+              {pickupUpdatesCount}
+            </span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActiveFilter("password")}
             style={{
               display: "inline-flex",
@@ -595,7 +745,7 @@ export default function SuperAdminNotifications() {
               background: activeFilter === "password" ? "#1e40af" : "#eff6ff",
               color: activeFilter === "password" ? "#ffffff" : "#1e40af",
               border: "1px solid #bfdbfe",
-              padding: "8px 16px",
+              padding: "8px 14px",
               borderRadius: "10px",
               fontSize: "0.82rem",
               fontWeight: 750,
@@ -603,7 +753,7 @@ export default function SuperAdminNotifications() {
             }}
           >
             <Lock size={13} />
-            <span>Password Updates</span>
+            <span>Security</span>
             <span
               style={{
                 background: activeFilter === "password" ? "rgba(255,255,255,0.25)" : "#bfdbfe",
@@ -626,7 +776,7 @@ export default function SuperAdminNotifications() {
               background: activeFilter === "unread" ? "#dc2626" : "#fee2e2",
               color: activeFilter === "unread" ? "#ffffff" : "#b91c1c",
               border: "1px solid #fecaca",
-              padding: "8px 16px",
+              padding: "8px 14px",
               borderRadius: "10px",
               fontSize: "0.82rem",
               fontWeight: 750,
@@ -687,10 +837,17 @@ export default function SuperAdminNotifications() {
           </div>
         ) : (
           filteredNotifications.map((notif) => {
+            const isCart = notif.type === "CART_ITEM_ADDED";
+            const isPayment = notif.type === "PAYMENT_SUCCESSFUL";
             const isPassword =
               notif.type === "PASSWORD_CHANGED" ||
               notif.type === "ADMIN_PASSWORD_UPDATED" ||
               (notif.title && notif.title.toLowerCase().includes("password"));
+
+            const isStorePickup =
+              notif.activityType === "STORE_PICKUP" ||
+              (notif.metadata?.fulfillmentType && String(notif.metadata.fulfillmentType).includes("PICKUP"));
+            const shoppingTypeLabel = isStorePickup ? "Store Pickup" : "Online Delivery";
 
             const storeCode =
               notif.supermarketCode ||
@@ -702,28 +859,50 @@ export default function SuperAdminNotifications() {
               notif.metadata?.supermarketName ||
               notif.supermarket?.name ||
               "Supermarket";
+
+            const customerName = notif.customerName || notif.metadata?.customerName || "Customer";
+            const customerPhone = notif.customerPhone || notif.metadata?.customerPhone || "";
             const adminName = notif.metadata?.adminName || "Store Admin";
             const adminUser = notif.metadata?.adminUsername || "";
             const email = notif.metadata?.email || "N/A";
-            const activity =
-              notif.metadata?.activity ||
-              notif.message ||
-              "Admin successfully changed their account password.";
+
             const dateStr =
               notif.metadata?.date ||
               new Date(notif.createdAt).toLocaleDateString("en-IN", {
-                weekday: "short",
-                year: "numeric",
-                month: "short",
                 day: "numeric",
+                month: "short",
+                year: "numeric",
               });
             const timeStr =
               notif.metadata?.time ||
               new Date(notif.createdAt).toLocaleTimeString("en-IN", {
                 hour: "2-digit",
                 minute: "2-digit",
-                second: "2-digit",
+                hour12: true,
               });
+
+            // Card accent border & theme
+            let cardBorder = notif.isRead ? "1.5px solid #e2e8f0" : "2px solid #10b981";
+            let iconBg = "#dcfce7";
+            let iconColor = "#16a34a";
+            let iconBorder = "1.5px solid #86efac";
+
+            if (isCart) {
+              cardBorder = notif.isRead ? "1.5px solid #e2e8f0" : isStorePickup ? "2px solid #a855f7" : "2px solid #10b981";
+              iconBg = isStorePickup ? "#faf5ff" : "#f0fdf4";
+              iconColor = isStorePickup ? "#9333ea" : "#16a34a";
+              iconBorder = isStorePickup ? "1.5px solid #e9d5ff" : "1.5px solid #bbf7d0";
+            } else if (isPayment) {
+              cardBorder = notif.isRead ? "1.5px solid #e2e8f0" : "2px solid #059669";
+              iconBg = "#ecfdf5";
+              iconColor = "#059669";
+              iconBorder = "1.5px solid #a7f3d0";
+            } else if (isPassword) {
+              cardBorder = notif.isRead ? "1.5px solid #e2e8f0" : "2px solid #3b82f6";
+              iconBg = "#eff6ff";
+              iconColor = "#2563eb";
+              iconBorder = "1.5px solid #bfdbfe";
+            }
 
             return (
               <div
@@ -731,14 +910,14 @@ export default function SuperAdminNotifications() {
                 style={{
                   background: "#ffffff",
                   borderRadius: "16px",
-                  border: !notif.isRead
-                    ? isPassword
-                      ? "2px solid #3b82f6"
-                      : "2px solid #10b981"
-                    : "1.5px solid #e2e8f0",
+                  border: cardBorder,
                   padding: "1.25rem 1.5rem",
                   boxShadow: !notif.isRead
-                    ? "0 6px 20px rgba(59, 130, 246, 0.12)"
+                    ? isCart && isStorePickup
+                      ? "0 6px 20px rgba(168, 85, 247, 0.12)"
+                      : isPayment
+                      ? "0 6px 20px rgba(5, 150, 105, 0.12)"
+                      : "0 6px 20px rgba(59, 130, 246, 0.12)"
                     : "0 2px 8px rgba(0,0,0,0.03)",
                   position: "relative",
                   transition: "all 0.2s ease",
@@ -761,38 +940,75 @@ export default function SuperAdminNotifications() {
                         width: "42px",
                         height: "42px",
                         borderRadius: "12px",
-                        background: isPassword ? "#eff6ff" : "#dcfce7",
-                        color: isPassword ? "#2563eb" : "#16a34a",
-                        border: isPassword ? "1.5px solid #bfdbfe" : "1.5px solid #86efac",
+                        background: iconBg,
+                        color: iconColor,
+                        border: iconBorder,
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
                         flexShrink: 0,
                       }}
                     >
-                      {isPassword ? (
+                      {isCart ? (
+                        <ShoppingCart size={20} strokeWidth={2.4} />
+                      ) : isPayment ? (
+                        <CreditCard size={20} strokeWidth={2.4} />
+                      ) : isPassword ? (
                         <Lock size={20} strokeWidth={2.4} />
                       ) : (
                         <Building2 size={20} strokeWidth={2.4} />
                       )}
                     </div>
                     <div>
-                      <h3
-                        style={{
-                          margin: 0,
-                          fontSize: "1.05rem",
-                          fontWeight: 800,
-                          color: "#0f172a",
-                        }}
-                      >
-                        {notif.title || `${storeName} – Admin Password Updated`}
-                      </h3>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                        <h3
+                          style={{
+                            margin: 0,
+                            fontSize: "1.05rem",
+                            fontWeight: 800,
+                            color: "#0f172a",
+                          }}
+                        >
+                          {notif.title || (isCart ? "Cart Item Added" : isPayment ? "Payment Successful" : `${storeName} – Admin Alert`)}
+                        </h3>
+
+                        {/* Exact Badge Matching Specification */}
+                        {notif.badge && (
+                          <span
+                            style={{
+                              background: isPayment
+                                ? "#dcfce7"
+                                : isCart && isStorePickup
+                                ? "#f3e8ff"
+                                : "#eff6ff",
+                              color: isPayment
+                                ? "#15803d"
+                                : isCart && isStorePickup
+                                ? "#7e22ce"
+                                : "#1e40af",
+                              border: isPayment
+                                ? "1px solid #86efac"
+                                : isCart && isStorePickup
+                                ? "1px solid #d8b4fe"
+                                : "1px solid #bfdbfe",
+                              padding: "2px 8px",
+                              borderRadius: "6px",
+                              fontSize: "0.72rem",
+                              fontWeight: 850,
+                              letterSpacing: "0.04em",
+                            }}
+                          >
+                            {notif.badge}
+                          </span>
+                        )}
+                      </div>
+
                       <div
                         style={{
                           display: "flex",
                           alignItems: "center",
                           gap: "8px",
-                          marginTop: "3px",
+                          marginTop: "4px",
                           flexWrap: "wrap",
                         }}
                       >
@@ -830,11 +1046,31 @@ export default function SuperAdminNotifications() {
                           <Store size={12} />
                           <span>{storeName}</span>
                         </span>
+
+                        {(isCart || isPayment) && (
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                              background: isStorePickup ? "#faf5ff" : "#f0fdf4",
+                              color: isStorePickup ? "#7e22ce" : "#15803d",
+                              border: isStorePickup ? "1px solid #e9d5ff" : "1px solid #bbf7d0",
+                              padding: "2px 8px",
+                              borderRadius: "6px",
+                              fontSize: "0.74rem",
+                              fontWeight: 750,
+                            }}
+                          >
+                            {isStorePickup ? <Package size={12} /> : <Truck size={12} />}
+                            <span>{shoppingTypeLabel}</span>
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
 
-                  {/* Status Badges & Time */}
+                  {/* Status Badges & Timestamp */}
                   <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                     {!notif.isRead ? (
                       <span
@@ -892,9 +1128,37 @@ export default function SuperAdminNotifications() {
                       }}
                     >
                       <Clock size={13} color="#94a3b8" />
-                      <span>{dateStr} • {timeStr}</span>
+                      <span>{dateStr}, {timeStr}</span>
                     </div>
                   </div>
+                </div>
+
+                {/* Primary Activity Message Display */}
+                <div
+                  style={{
+                    background: isCart
+                      ? isStorePickup ? "#faf5ff" : "#f0fdf4"
+                      : isPayment
+                      ? "#ecfdf5"
+                      : "#f8fafc",
+                    border: isCart
+                      ? isStorePickup ? "1px solid #e9d5ff" : "1px solid #bbf7d0"
+                      : isPayment
+                      ? "1px solid #a7f3d0"
+                      : "1px solid #e2e8f0",
+                    borderRadius: "10px",
+                    padding: "10px 14px",
+                    marginBottom: "1rem",
+                    fontSize: "0.92rem",
+                    fontWeight: 750,
+                    color: isCart
+                      ? isStorePickup ? "#6b21a8" : "#166534"
+                      : isPayment
+                      ? "#065f46"
+                      : "#1e293b",
+                  }}
+                >
+                  {notif.message}
                 </div>
 
                 {/* Information Grid: 100% dynamic details */}
@@ -910,45 +1174,125 @@ export default function SuperAdminNotifications() {
                     marginBottom: "1rem",
                   }}
                 >
-                  <div>
-                    <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
-                      Admin Name
-                    </span>
-                    <div style={{ fontSize: "0.88rem", fontWeight: 750, color: "#0f172a", marginTop: "2px" }}>
-                      {adminName} {adminUser && <span style={{ color: "#64748b", fontWeight: 600 }}>({`@${adminUser}`})</span>}
-                    </div>
-                  </div>
+                  {isCart ? (
+                    <>
+                      <div>
+                        <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
+                          Customer Name
+                        </span>
+                        <div style={{ fontSize: "0.88rem", fontWeight: 750, color: "#0f172a", marginTop: "2px" }}>
+                          {customerName}
+                        </div>
+                      </div>
 
-                  <div>
-                    <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
-                      Supermarket ID
-                    </span>
-                    <div style={{ fontSize: "0.88rem", fontWeight: 750, color: "#1e40af", marginTop: "2px" }}>
-                      {storeCode}
-                    </div>
-                  </div>
+                      <div>
+                        <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
+                          Mobile Number
+                        </span>
+                        <div style={{ fontSize: "0.88rem", fontWeight: 750, color: "#0f172a", marginTop: "2px" }}>
+                          {customerPhone || "N/A"}
+                        </div>
+                      </div>
 
-                  <div>
-                    <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
-                      Registered Email
-                    </span>
-                    <div style={{ fontSize: "0.88rem", fontWeight: 700, color: "#0f172a", marginTop: "2px", wordBreak: "break-all" }}>
-                      {email}
-                    </div>
-                  </div>
+                      <div>
+                        <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
+                          Product Added
+                        </span>
+                        <div style={{ fontSize: "0.88rem", fontWeight: 750, color: "#7c3aed", marginTop: "2px" }}>
+                          {notif.productName || notif.metadata?.productName || "Product"} (Qty: {notif.productQuantity || notif.metadata?.quantity || 1})
+                        </div>
+                      </div>
 
-                  <div>
-                    <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
-                      Security Status
-                    </span>
-                    <div style={{ fontSize: "0.88rem", fontWeight: 750, color: "#15803d", marginTop: "2px", display: "flex", alignItems: "center", gap: "4px" }}>
-                      <ShieldCheck size={14} color="#16a34a" />
-                      <span>Hashed &amp; Verified</span>
-                    </div>
-                  </div>
+                      <div>
+                        <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
+                          Shopping Type
+                        </span>
+                        <div style={{ fontSize: "0.88rem", fontWeight: 750, color: isStorePickup ? "#9333ea" : "#16a34a", marginTop: "2px" }}>
+                          {shoppingTypeLabel}
+                        </div>
+                      </div>
+                    </>
+                  ) : isPayment ? (
+                    <>
+                      <div>
+                        <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
+                          Customer Name
+                        </span>
+                        <div style={{ fontSize: "0.88rem", fontWeight: 750, color: "#0f172a", marginTop: "2px" }}>
+                          {customerName}
+                        </div>
+                      </div>
+
+                      <div>
+                        <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
+                          Mobile Number
+                        </span>
+                        <div style={{ fontSize: "0.88rem", fontWeight: 750, color: "#0f172a", marginTop: "2px" }}>
+                          {customerPhone || "N/A"}
+                        </div>
+                      </div>
+
+                      <div>
+                        <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
+                          Payment Amount
+                        </span>
+                        <div style={{ fontSize: "0.95rem", fontWeight: 850, color: "#15803d", marginTop: "2px" }}>
+                          ₹{Number(notif.amount || notif.metadata?.totalAmount || 0).toFixed(2)}
+                        </div>
+                      </div>
+
+                      <div>
+                        <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
+                          Order ID
+                        </span>
+                        <div style={{ fontSize: "0.88rem", fontWeight: 750, color: "#1e40af", marginTop: "2px" }}>
+                          {notif.orderNumber || notif.metadata?.orderNumber || notif.orderId || "N/A"}
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
+                          Admin Name
+                        </span>
+                        <div style={{ fontSize: "0.88rem", fontWeight: 750, color: "#0f172a", marginTop: "2px" }}>
+                          {adminName} {adminUser && <span style={{ color: "#64748b", fontWeight: 600 }}>({`@${adminUser}`})</span>}
+                        </div>
+                      </div>
+
+                      <div>
+                        <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
+                          Supermarket ID
+                        </span>
+                        <div style={{ fontSize: "0.88rem", fontWeight: 750, color: "#1e40af", marginTop: "2px" }}>
+                          {storeCode}
+                        </div>
+                      </div>
+
+                      <div>
+                        <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
+                          Registered Email
+                        </span>
+                        <div style={{ fontSize: "0.88rem", fontWeight: 700, color: "#0f172a", marginTop: "2px", wordBreak: "break-all" }}>
+                          {email}
+                        </div>
+                      </div>
+
+                      <div>
+                        <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
+                          Security Status
+                        </span>
+                        <div style={{ fontSize: "0.88rem", fontWeight: 750, color: "#15803d", marginTop: "2px", display: "flex", alignItems: "center", gap: "4px" }}>
+                          <ShieldCheck size={14} color="#16a34a" />
+                          <span>Hashed &amp; Verified</span>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
 
-                {/* Activity Summary Bar */}
+                {/* Card Actions Footer */}
                 <div
                   style={{
                     display: "flex",
@@ -958,12 +1302,9 @@ export default function SuperAdminNotifications() {
                     gap: "10px",
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "#334155" }}>
-                      Activity:
-                    </span>
-                    <span style={{ fontSize: "0.84rem", color: "#475569" }}>
-                      {activity}
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span style={{ fontSize: "0.8rem", color: "#64748b", fontWeight: 600 }}>
+                      Supermarket: <strong>{storeName}</strong> ({storeCode})
                     </span>
                   </div>
 

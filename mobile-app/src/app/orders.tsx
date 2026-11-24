@@ -424,6 +424,34 @@ export default function MyOrdersScreen() {
                       </View>
                     )}
 
+                    {/* Compulsory Review Prompt or Rating Badge for Completed Orders */}
+                    {isOrderFullyCompleted(ord) && (
+                      (ord as any).review?.rating ? (
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 8, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: "#FEF3C7", borderRadius: 8, alignSelf: "flex-start", borderWidth: 1, borderColor: "#FDE68A" }}>
+                          <Text style={{ fontSize: 13, color: "#D97706" }}>★</Text>
+                          <Text style={{ fontSize: 12, fontWeight: "700", color: "#92400E" }}>
+                            Rated {(ord as any).review.rating}.0 / 5
+                          </Text>
+                        </View>
+                      ) : (
+                        <TouchableOpacity
+                          style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 8, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: "#FFFBEB", borderRadius: 8, alignSelf: "flex-start", borderWidth: 1, borderColor: "#FCD34D" }}
+                          onPress={() => {
+                            router.push({
+                              pathname: "/order-tracking",
+                              params: { orderId: ord._id || ord.orderNumber },
+                            });
+                          }}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={{ fontSize: 13, color: "#D97706" }}>⭐</Text>
+                          <Text style={{ fontSize: 12, fontWeight: "800", color: "#B45309" }}>
+                            Rate Pickup Experience (Required) →
+                          </Text>
+                        </TouchableOpacity>
+                      )
+                    )}
+
                     {(ord as any).fulfillmentChoice === "DOORSTEP_DELIVERY" && (
                       <View style={styles.doorstepBanner}>
                         <Text style={styles.doorstepBannerText}>
