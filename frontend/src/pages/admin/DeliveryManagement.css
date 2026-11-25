@@ -2043,6 +2043,28 @@
   background: #bbf7d0;
 }
 
+.del-quick-action-btn.review {
+  background: #fefce8 !important;
+  color: #a16207 !important;
+  border: 1px solid #fef08a !important;
+  font-weight: 750 !important;
+  box-shadow: 0 1px 3px rgba(245, 158, 11, 0.12) !important;
+}
+.del-quick-action-btn.review:hover {
+  background: #fef08a !important;
+  color: #713f12 !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 2px 6px rgba(245, 158, 11, 0.22) !important;
+}
+
+.th-review {
+  min-width: 170px !important;
+}
+
+.td-review {
+  vertical-align: middle !important;
+}
+
 /* Modal View Footer */
 .del-modal-view-footer {
   flex-shrink: 0;

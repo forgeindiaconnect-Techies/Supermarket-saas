@@ -53,6 +53,7 @@ export default function DeliveryManagement() {
   const [orderSearch, setOrderSearch] = useState("");
   const [copiedOrderId, setCopiedOrderId] = useState(null);
   const [selectedOrderForView, setSelectedOrderForView] = useState(null);
+  const [selectedReviewOrder, setSelectedReviewOrder] = useState(null);
   const [viewOrderModalOpen, setViewOrderModalOpen] = useState(false);
   const [inlineStaffId, setInlineStaffId] = useState("");
   const [showModalTimeline, setShowModalTimeline] = useState(false);
@@ -161,6 +162,11 @@ export default function DeliveryManagement() {
       });
 
       socket.on("order:updated", () => {
+        fetchOrders();
+      });
+
+      socket.on("order:reviewed", (data) => {
+        showToast(`⭐ New Customer Review received for Order #${data?.orderNumber || ""}!`);
         fetchOrders();
       });
 
@@ -421,6 +427,7 @@ export default function DeliveryManagement() {
   const countDeliveredTodayOrders = orders.filter(isDeliveredToday).length;
   const countDeliveredOrders = orders.filter((o) => getNormStatus(o.deliveryStatus) === "Delivered").length;
   const countAllDeliveredOrders = countDeliveredOrders;
+  const countReviewedOrders = orders.filter((o) => Boolean(o.review && o.review.rating && o.review.rating > 0)).length;
   const countActiveOrders = countNewOrders + countPreparingOrders + countAssignedOrders + countOutOrders;
 
   // History list of completed/closed orders (all past completed deliveries, failed, and cancelled)
@@ -453,6 +460,7 @@ export default function DeliveryManagement() {
     if (orderStatusFilter === "assigned" && norm !== "Assigned" && norm !== "Products Collected") return false;
     if (orderStatusFilter === "out_for_delivery" && norm !== "Out for Delivery") return false;
     if (orderStatusFilter === "delivered" && !isDeliveredToday(o)) return false;
+    if (orderStatusFilter === "reviewed" && (!o.review || !o.review.rating)) return false;
     if (orderStatusFilter === "history") return false; // Handled separately by filteredHistoryOrders
 
     if (orderSearch.trim()) {
@@ -648,6 +656,7 @@ export default function DeliveryManagement() {
               { id: "assigned", label: "Assigned Orders", count: countAssignedOrders },
               { id: "out_for_delivery", label: "Out for Delivery", count: countOutOrders },
               { id: "delivered", label: "Delivered", count: countDeliveredTodayOrders },
+              { id: "reviewed", label: "⭐ Customer Reviews", count: countReviewedOrders },
               { id: "history", label: "Order History", count: historyOrdersList.length },
             ].map((f) => (
               <button
@@ -897,17 +906,29 @@ export default function DeliveryManagement() {
                                 </span>
                               </td>
                               <td className="td-action">
-                                <button
-                                  type="button"
-                                  className="order-action-view-btn"
-                                  onClick={() => {
-                                    setSelectedOrderForView(ord);
-                                    setViewOrderModalOpen(true);
-                                  }}
-                                >
-                                  <Eye size={13} />
-                                  <span>View Details</span>
-                                </button>
+                                <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                                  <button
+                                    type="button"
+                                    className="order-action-view-btn"
+                                    onClick={() => {
+                                      setSelectedOrderForView(ord);
+                                      setViewOrderModalOpen(true);
+                                    }}
+                                  >
+                                    <Eye size={13} />
+                                    <span>View Details</span>
+                                  </button>
+                                  {ord.review?.rating ? (
+                                    <button
+                                      type="button"
+                                      className="del-quick-action-btn review"
+                                      onClick={() => setSelectedReviewOrder(ord)}
+                                      title="View Customer Review & Rating"
+                                    >
+                                      ⭐ Review
+                                    </button>
+                                  ) : null}
+                                </div>
                               </td>
                             </tr>
                           );
@@ -967,13 +988,17 @@ export default function DeliveryManagement() {
                 <CheckCircle2 size={30} color="#16A34A" />
               </div>
               <h4 style={{ fontSize: 17, fontWeight: 850, color: "#0F172A", margin: "0 0 6px" }}>
-                {orderStatusFilter === "all_active"
+                {orderStatusFilter === "reviewed"
+                  ? "No Customer Reviews Submitted Yet"
+                  : orderStatusFilter === "all_active"
                   ? "All Current Deliveries Fulfilled!"
                   : "No Delivery Orders in this Category"}
               </h4>
               <p style={{ maxWidth: 460, margin: "0 auto 18px", color: "#64748B", fontSize: 13, lineHeight: 1.5 }}>
                 {orderSearch
                   ? `No delivery orders matched "${orderSearch}". Try searching with a different term.`
+                  : orderStatusFilter === "reviewed"
+                  ? "No customer reviews have been submitted for delivery orders yet. When customers receive their doorstep deliveries and submit ratings and feedback, verified customer reviews will appear here."
                   : orderStatusFilter === "all_active"
                   ? "There are currently 0 active orders in transit. All customer doorstep deliveries have been completed and stored in Order History."
                   : "There are currently no active delivery orders in this status category. Live customer orders will appear here automatically."}
@@ -1095,6 +1120,9 @@ export default function DeliveryManagement() {
                       <th className="th-partner">DELIVERY PARTNER</th>
                       <th className="th-items">ITEMS</th>
                       <th className="th-amount">TOTAL AMOUNT</th>
+                      {orderStatusFilter === "reviewed" ? (
+                        <th className="th-review">CUSTOMER REVIEW</th>
+                      ) : null}
                       <th className="th-status">STATUS</th>
                       <th className="th-action">ACTIONS</th>
                     </tr>
@@ -1203,6 +1231,45 @@ export default function DeliveryManagement() {
                               })}
                             </span>
                           </td>
+                          {orderStatusFilter === "reviewed" ? (
+                            <td className="td-review">
+                              {ord.review?.rating ? (
+                                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                                    <span style={{ color: "#F59E0B", fontSize: 13 }}>
+                                      {"★".repeat(ord.review.rating)}{"☆".repeat(5 - ord.review.rating)}
+                                    </span>
+                                    <strong style={{ fontSize: 12, color: "#0F172A" }}>
+                                      {ord.review.rating}.0
+                                    </strong>
+                                    <span style={{ fontSize: 10.5, background: "#FEF3C7", color: "#92400E", padding: "1px 6px", borderRadius: 4, fontWeight: 700 }}>
+                                      {ord.review.rating === 5 ? "5-Star" : `${ord.review.rating} Stars`}
+                                    </span>
+                                  </div>
+                                  {ord.review.comment ? (
+                                    <span style={{ fontSize: 11.5, color: "#334155", fontStyle: "italic", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={ord.review.comment}>
+                                      "{ord.review.comment}"
+                                    </span>
+                                  ) : (
+                                    <span style={{ fontSize: 11, color: "#94A3B8", fontStyle: "italic" }}>Rating submitted</span>
+                                  )}
+                                  <span style={{ fontSize: 10.5, color: "#64748B" }}>
+                                    Reviewed: {ord.review.submittedAt
+                                      ? new Date(ord.review.submittedAt).toLocaleDateString("en-IN", {
+                                          day: "numeric",
+                                          month: "short",
+                                          hour: "2-digit",
+                                          minute: "2-digit",
+                                          hour12: true,
+                                        })
+                                      : formattedDate}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span style={{ fontSize: 11, color: "#94A3B8" }}>No review</span>
+                              )}
+                            </td>
+                          ) : null}
                           <td className="td-status">
                             {(() => {
                               const norm = getNormStatus(ord.deliveryStatus);
@@ -1267,6 +1334,17 @@ export default function DeliveryManagement() {
                                 <Eye size={13} />
                                 <span>View Details</span>
                               </button>
+
+                              {ord.review?.rating ? (
+                                <button
+                                  type="button"
+                                  className="del-quick-action-btn review"
+                                  onClick={() => setSelectedReviewOrder(ord)}
+                                  title="View Customer Review & Rating"
+                                >
+                                  ⭐ Review
+                                </button>
+                              ) : null}
 
                               {(() => {
                                 const norm = getNormStatus(ord.deliveryStatus);
@@ -1955,6 +2033,102 @@ export default function DeliveryManagement() {
                     </table>
                   </div>
                 </div>
+
+                {/* Customer Review Card if submitted */}
+                {selectedOrderForView.review?.rating ? (
+                  <div
+                    style={{
+                      background: "#FFFBEB",
+                      borderRadius: "14px",
+                      padding: "16px 20px",
+                      border: "1.5px solid #FDE68A",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "8px",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <span style={{ fontSize: "16px" }}>⭐</span>
+                        <strong style={{ fontSize: "14px", color: "#92400E" }}>
+                          Verified Customer Review &amp; Rating
+                        </strong>
+                      </div>
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          color: "#92400E",
+                          background: "#FEF3C7",
+                          padding: "2px 8px",
+                          borderRadius: "6px",
+                          fontWeight: 850,
+                        }}
+                      >
+                        {selectedOrderForView.review.rating}.0 / 5.0
+                      </span>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      {[...Array(5)].map((_, i) => (
+                        <span
+                          key={i}
+                          style={{
+                            fontSize: "18px",
+                            color: i < selectedOrderForView.review.rating ? "#F59E0B" : "#CBD5E1",
+                          }}
+                        >
+                          ★
+                        </span>
+                      ))}
+                      <span style={{ fontSize: "12px", color: "#78350F", fontWeight: 700, marginLeft: "4px" }}>
+                        {selectedOrderForView.review.rating === 5
+                          ? "Outstanding Experience!"
+                          : selectedOrderForView.review.rating >= 4
+                          ? "Very Good"
+                          : "Customer Feedback"}
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        fontSize: "13.5px",
+                        color: "#78350F",
+                        fontStyle: "italic",
+                        fontWeight: 600,
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      "{selectedOrderForView.review.comment || "Customer submitted star rating."}"
+                    </div>
+
+                    <div
+                      style={{
+                        fontSize: "11.5px",
+                        color: "#92400E",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        borderTop: "1px solid #FEF08A",
+                        paddingTop: "6px",
+                        marginTop: "2px",
+                      }}
+                    >
+                      <span>
+                        Reviewed by: <strong>{selectedOrderForView.review.customerName || selectedOrderForView.customer?.name || "Verified Customer"}</strong>
+                      </span>
+                      <span>
+                        {selectedOrderForView.review.submittedAt
+                          ? new Date(selectedOrderForView.review.submittedAt).toLocaleString("en-IN", {
+                              day: "numeric",
+                              month: "short",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              hour12: true,
+                            })
+                          : "Recent"}
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
 
                 {/* 6. Collapsible Full Timeline & Audit History */}
                 <div>
@@ -2796,6 +2970,278 @@ export default function DeliveryManagement() {
                 onClick={() => setTimelineModalOpen(false)}
               >
                 Close Progress View
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Customer Review Details Modal */}
+      {selectedReviewOrder && (
+        <div
+          className="pm-modal-backdrop"
+          onClick={() => setSelectedReviewOrder(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.6)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+            padding: "20px",
+          }}
+        >
+          <div
+            className="pm-modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#FFFFFF",
+              borderRadius: "16px",
+              padding: "24px",
+              width: "100%",
+              maxWidth: "520px",
+              boxShadow: "0 20px 40px -15px rgba(0,0,0,0.25)",
+              border: "1px solid #E2E8F0",
+            }}
+          >
+            {/* Modal Header */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: "18px",
+                borderBottom: "1px solid #F1F5F9",
+                paddingBottom: "12px",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <div
+                  style={{
+                    width: "36px",
+                    height: "36px",
+                    borderRadius: "10px",
+                    background: "#FEF3C7",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "18px",
+                  }}
+                >
+                  ⭐
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 800, color: "#0F172A" }}>
+                    Customer Delivery Review
+                  </h3>
+                  <span style={{ fontSize: "12px", color: "#64748B" }}>
+                    Order #{selectedReviewOrder.orderNumber}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedReviewOrder(null)}
+                style={{
+                  background: "#F1F5F9",
+                  border: "none",
+                  borderRadius: "8px",
+                  width: "30px",
+                  height: "30px",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#64748B",
+                  fontWeight: 800,
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Customer Details Box */}
+            <div
+              style={{
+                background: "#F8FAFC",
+                borderRadius: "12px",
+                padding: "12px 16px",
+                marginBottom: "16px",
+                border: "1px solid #E2E8F0",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <div>
+                  <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748B", textTransform: "uppercase" }}>
+                    Reviewed By
+                  </span>
+                  <div style={{ fontSize: "15px", fontWeight: 800, color: "#0F172A", marginTop: "2px" }}>
+                    {selectedReviewOrder.review?.customerName ||
+                      selectedReviewOrder.customer?.name ||
+                      selectedReviewOrder.customerName ||
+                      "Verified Customer"}
+                  </div>
+                  {(selectedReviewOrder.customer?.phone || selectedReviewOrder.customerPhone) && (
+                    <div style={{ fontSize: "12px", color: "#64748B", marginTop: "2px" }}>
+                      📞 {selectedReviewOrder.customer?.phone || selectedReviewOrder.customerPhone}
+                    </div>
+                  )}
+                  <div style={{ fontSize: "12px", color: "#334155", marginTop: "4px" }}>
+                    📍 {selectedReviewOrder.deliveryAddress || selectedReviewOrder.customer?.address || "Address"}
+                  </div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <span
+                    style={{
+                      display: "inline-block",
+                      background: "#DCFCE7",
+                      color: "#166534",
+                      fontSize: "11px",
+                      fontWeight: 800,
+                      padding: "3px 8px",
+                      borderRadius: "6px",
+                      border: "1px solid #BBF7D0",
+                    }}
+                  >
+                    ✓ Verified Delivery Buyer
+                  </span>
+                  <div style={{ fontSize: "11px", color: "#94A3B8", marginTop: "4px" }}>
+                    {selectedReviewOrder.review?.submittedAt
+                      ? new Date(selectedReviewOrder.review.submittedAt).toLocaleDateString("en-IN", {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        })
+                      : "Recent"}
+                  </div>
+                  {(selectedReviewOrder.assignedStaff?.name ||
+                    selectedReviewOrder.assignedStaffName ||
+                    selectedReviewOrder.deliveryStaff?.name) && (
+                    <div style={{ fontSize: "11.5px", color: "#059669", fontWeight: 700, marginTop: "4px" }}>
+                      🚚 Delivered by{" "}
+                      {selectedReviewOrder.assignedStaff?.name ||
+                        selectedReviewOrder.assignedStaffName ||
+                        selectedReviewOrder.deliveryStaff?.name}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Star Rating & Comment Display */}
+            <div
+              style={{
+                background: "#FFFBEB",
+                borderRadius: "12px",
+                padding: "16px",
+                marginBottom: "18px",
+                border: "1.5px solid #FDE68A",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
+                {[...Array(5)].map((_, i) => (
+                  <span
+                    key={i}
+                    style={{
+                      fontSize: "20px",
+                      color: i < (selectedReviewOrder.review?.rating || 5) ? "#F59E0B" : "#CBD5E1",
+                    }}
+                  >
+                    ★
+                  </span>
+                ))}
+                <span style={{ fontSize: "15px", fontWeight: 800, color: "#92400E", marginLeft: "6px" }}>
+                  {selectedReviewOrder.review?.rating || 5}.0 / 5
+                </span>
+                <span
+                  style={{
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    color: "#B45309",
+                    marginLeft: "auto",
+                    background: "#FEF3C7",
+                    padding: "2px 8px",
+                    borderRadius: "6px",
+                  }}
+                >
+                  {selectedReviewOrder.review?.rating === 5
+                    ? "Outstanding!"
+                    : selectedReviewOrder.review?.rating >= 4
+                    ? "Very Good"
+                    : "Feedback"}
+                </span>
+              </div>
+              <div
+                style={{
+                  fontSize: "14px",
+                  color: "#78350F",
+                  fontStyle: "italic",
+                  fontWeight: 600,
+                  lineHeight: 1.5,
+                }}
+              >
+                "{selectedReviewOrder.review?.comment || "Customer submitted star rating."}"
+              </div>
+            </div>
+
+            {/* Delivered Items Purchased */}
+            <div style={{ marginBottom: "18px" }}>
+              <span style={{ fontSize: "12px", fontWeight: 700, color: "#475569", textTransform: "uppercase" }}>
+                Delivered Items ({selectedReviewOrder.items?.length || selectedReviewOrder.totalItems || 1} items)
+              </span>
+              <div
+                style={{
+                  marginTop: "6px",
+                  maxHeight: "110px",
+                  overflowY: "auto",
+                  border: "1px solid #F1F5F9",
+                  borderRadius: "8px",
+                  padding: "8px 12px",
+                  background: "#FAFAFA",
+                }}
+              >
+                {(selectedReviewOrder.items || []).map((it, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      fontSize: "12px",
+                      padding: "3px 0",
+                      color: "#334155",
+                    }}
+                  >
+                    <span>
+                      • {it.name} (x{it.quantity})
+                    </span>
+                    <strong style={{ color: "#0F172A" }}>₹{Number(it.price * it.quantity).toFixed(2)}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: "12px", fontWeight: 700, color: "#059669" }}>
+                Total Paid: ₹{Number(selectedReviewOrder.totalAmount || 0).toFixed(2)}
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedReviewOrder(null)}
+                style={{
+                  padding: "8px 18px",
+                  borderRadius: "8px",
+                  background: "#0F172A",
+                  color: "#FFFFFF",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                Close
               </button>
             </div>
           </div>
