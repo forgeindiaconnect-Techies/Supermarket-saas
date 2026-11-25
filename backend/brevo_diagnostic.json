@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-11-25T07:28:47.091Z",
+  "timestamp": "2026-11-25T10:06:15.662Z",
   "sendersStatus": 401,
   "sendersError": "We have detected you are using an unrecognised IP address 2401:4900:1cc9:dba:bc58:9658:b6a5:e417. If you performed this action make sure to add the new IP address in this link: https://app.brevo.com/security/authorised_ips",
   "accountStatus": 401,
