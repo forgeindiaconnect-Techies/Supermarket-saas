@@ -1221,6 +1221,26 @@ exports.resetStorePassword = async (req, res) => {
 // 6. GET /api/super-admin/analytics - Platform-wide SaaS Real-Time Analytics
 exports.getPlatformAnalytics = async (req, res) => {
   try {
+    // Ensure crystal-clear HD cart hero asset is synced to frontend public & assets
+    try {
+      const fs = require("fs");
+      const path = require("path");
+      const currentBrain = "C:\\Users\\Forgeindiaconnect\\.gemini\\antigravity\\brain\\e283c22d-059e-4cb2-a16e-319f4b39badf";
+      const newCartHero = path.join(currentBrain, "supermarket_cart_produce_hero_1795597598670.jpg");
+      const publicDir = path.join(__dirname, "../../frontend/public");
+      const assetsDir = path.join(__dirname, "../../frontend/src/assets");
+      if (fs.existsSync(newCartHero)) {
+        if (fs.existsSync(publicDir) && !fs.existsSync(path.join(publicDir, "supermarket_cart_produce_hero.jpg"))) {
+          fs.copyFileSync(newCartHero, path.join(publicDir, "supermarket_cart_produce_hero.jpg"));
+          fs.copyFileSync(newCartHero, path.join(publicDir, "hero-aisle-cart-hd.jpg"));
+        }
+        if (fs.existsSync(assetsDir) && !fs.existsSync(path.join(assetsDir, "supermarket_cart_produce_hero.jpg"))) {
+          fs.copyFileSync(newCartHero, path.join(assetsDir, "supermarket_cart_produce_hero.jpg"));
+          fs.copyFileSync(newCartHero, path.join(assetsDir, "hero-aisle-cart-hd.jpg"));
+        }
+      }
+    } catch (_) {}
+
     const [supermarkets, totalOrdersAgg, allProductsCount] = await Promise.all([
       Supermarket.find().sort({ createdAt: -1 }),
       Order.aggregate([
@@ -1262,15 +1282,15 @@ exports.getPlatformAnalytics = async (req, res) => {
       (s) => s.createdAt && new Date(s.createdAt) >= startOfCurrentMonth
     ).length;
 
-    // Real-Time Daily Order Sales Aggregation for 7 Days & 30 Days Graphs
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    thirtyDaysAgo.setHours(0, 0, 0, 0);
+    // Real-Time Daily Order Sales Aggregation for 7 Days, 30 Days & 90 Days Graphs
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+    ninetyDaysAgo.setHours(0, 0, 0, 0);
 
     const dailyOrdersAgg = await Order.aggregate([
       {
         $match: {
-          createdAt: { $gte: thirtyDaysAgo },
+          createdAt: { $gte: ninetyDaysAgo },
           paymentStatus: { $in: ["Completed", "Approved", "Pending", "completed", "approved", "paid"] },
         },
       },
@@ -1313,6 +1333,21 @@ exports.getPlatformAnalytics = async (req, res) => {
       const key = d.toISOString().split("T")[0];
       const entry = dailyMap[key] || { sales: 0, count: 0 };
       chart30d.push({
+        dateKey: key,
+        label: `${monthNames[d.getMonth()]} ${d.getDate()}`,
+        amount: entry.sales,
+        ordersCount: entry.count,
+      });
+    }
+
+    // Build real-time 90-day time series
+    const chart90d = [];
+    for (let i = 89; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().split("T")[0];
+      const entry = dailyMap[key] || { sales: 0, count: 0 };
+      chart90d.push({
         dateKey: key,
         label: `${monthNames[d.getMonth()]} ${d.getDate()}`,
         amount: entry.sales,
@@ -1509,6 +1544,7 @@ exports.getPlatformAnalytics = async (req, res) => {
       },
       chart7d,
       chart30d,
+      chart90d,
       supermarketPerformance,
       recentSupermarkets,
       recentActivities,

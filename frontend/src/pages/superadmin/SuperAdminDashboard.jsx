@@ -66,6 +66,21 @@ function buildSplinePath(pts) {
   return path;
 }
 
+// Helper to intelligently thin out X-axis date labels and prevent overlap
+function shouldShowDateLabel(idx, total) {
+  if (total <= 8) return true; // 7-day view: show all dates
+  if (total <= 35) {
+    // 30-day view: show roughly every 5th date, always including the final point
+    if (idx === total - 1) return true;
+    if (idx % 5 === 0 && (total - 1 - idx) >= 3) return true;
+    return false;
+  }
+  // 90-day view: show roughly every 15th date, always including the final point
+  if (idx === total - 1) return true;
+  if (idx % 15 === 0 && (total - 1 - idx) >= 7) return true;
+  return false;
+}
+
 export default function SuperAdminDashboard() {
   const navigate = useNavigate();
   const { supermarkets, loadSupermarkets } = useAuth();
@@ -75,7 +90,7 @@ export default function SuperAdminDashboard() {
   const [salesRange, setSalesRange] = useState("7d"); // "7d", "30d", or "90d"
 
   // Real-Time High-Definition Visuals strictly matching Reference Mockups
-  const AISLE_IMG = "/@fs/C:/Users/Forgeindiaconnect/.gemini/antigravity/brain/e283c22d-059e-4cb2-a16e-319f4b39badf/.user_uploaded/media_1795240106104_c6aacd4f.jpg";
+  const AISLE_IMG = "/@fs/C:/Users/Forgeindiaconnect/.gemini/antigravity/brain/e283c22d-059e-4cb2-a16e-319f4b39badf/supermarket_cart_produce_hero_1795597598670.jpg";
   const PROMO_CART_IMG = "/@fs/C:/Users/Forgeindiaconnect/.gemini/antigravity/brain/e283c22d-059e-4cb2-a16e-319f4b39badf/supermarket_shopping_cart_groceries_1795260439245.jpg";
 
   const [aisleImgUrl, setAisleImgUrl] = useState(AISLE_IMG);
@@ -156,13 +171,40 @@ export default function SuperAdminDashboard() {
 
   // Real-Time Dynamic Sales Chart Computation from Actual Order History
   const chartPlot = useMemo(() => {
-    const rawSeries = salesRange === "7d" ? (analytics?.chart7d || []) : (analytics?.chart30d || []);
+    let rawSeries = [];
+    if (salesRange === "7d") {
+      rawSeries = analytics?.chart7d || [];
+    } else if (salesRange === "30d") {
+      rawSeries = analytics?.chart30d || [];
+    } else if (salesRange === "90d") {
+      rawSeries = analytics?.chart90d || [];
+      if (!rawSeries.length && analytics?.chart30d?.length) {
+        // Fallback for 90d if chart90d is not yet cached
+        const mNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const series90 = [];
+        const dateMap = {};
+        (analytics.chart30d || []).forEach((item) => {
+          if (item.dateKey) dateMap[item.dateKey] = item.amount;
+        });
+        for (let i = 89; i >= 0; i--) {
+          const d = new Date();
+          d.setDate(d.getDate() - i);
+          const key = d.toISOString().split("T")[0];
+          series90.push({
+            dateKey: key,
+            label: `${mNames[d.getMonth()]} ${d.getDate()}`,
+            amount: dateMap[key] || 0,
+          });
+        }
+        rawSeries = series90;
+      }
+    }
 
     let series = rawSeries;
     if (!series || series.length === 0) {
       series = [];
       const mNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-      const count = salesRange === "7d" ? 7 : 30;
+      const count = salesRange === "7d" ? 7 : salesRange === "90d" ? 90 : 30;
       for (let i = count - 1; i >= 0; i--) {
         const d = new Date();
         d.setDate(d.getDate() - i);
@@ -553,11 +595,11 @@ export default function SuperAdminDashboard() {
               </defs>
 
               {/* Dynamic Real-Time Y-Axis Labels */}
-              <text x="56" y="32" className="sa-svg-axis-label">{formatAxisLabel(chartPlot.maxVal)}</text>
-              <text x="56" y="70" className="sa-svg-axis-label">{formatAxisLabel(chartPlot.maxVal * 0.75)}</text>
-              <text x="56" y="110" className="sa-svg-axis-label">{formatAxisLabel(chartPlot.maxVal * 0.5)}</text>
-              <text x="56" y="150" className="sa-svg-axis-label">{formatAxisLabel(chartPlot.maxVal * 0.25)}</text>
-              <text x="56" y="188" className="sa-svg-axis-label">&#8377;0</text>
+              <text x="52" y="32" textAnchor="end" className="sa-svg-axis-label">{formatAxisLabel(chartPlot.maxVal)}</text>
+              <text x="52" y="70" textAnchor="end" className="sa-svg-axis-label">{formatAxisLabel(chartPlot.maxVal * 0.75)}</text>
+              <text x="52" y="110" textAnchor="end" className="sa-svg-axis-label">{formatAxisLabel(chartPlot.maxVal * 0.5)}</text>
+              <text x="52" y="150" textAnchor="end" className="sa-svg-axis-label">{formatAxisLabel(chartPlot.maxVal * 0.25)}</text>
+              <text x="52" y="188" textAnchor="end" className="sa-svg-axis-label">&#8377;0</text>
 
               {/* Horizontal Reference Lines */}
               <line x1="56" y1="185" x2="570" y2="185" stroke="#cbd5e1" strokeWidth="1" />
@@ -576,25 +618,38 @@ export default function SuperAdminDashboard() {
                 />
               )}
 
-              {/* Glowing Circular Data Points on Curve */}
-              {chartPlot.points.map((pt, idx) => (
-                <circle
-                  key={idx}
-                  cx={pt.x}
-                  cy={pt.y}
-                  r={pt.isPeak ? 5.5 : 4}
-                  fill="#059669"
-                  stroke="#ffffff"
-                  strokeWidth={2}
-                />
-              ))}
+              {/* Glowing Circular Data Points on Curve (Cleanly Spaced) */}
+              {chartPlot.points.map((pt, idx) => {
+                const isVisibleDot =
+                  salesRange === "7d" ||
+                  pt.isPeak ||
+                  pt.amount > 0 ||
+                  shouldShowDateLabel(idx, chartPlot.points.length);
+                if (!isVisibleDot) return null;
+                return (
+                  <circle
+                    key={idx}
+                    cx={pt.x}
+                    cy={pt.y}
+                    r={pt.isPeak ? 5.5 : 3.5}
+                    fill={pt.isPeak ? "#059669" : "#10b981"}
+                    stroke="#ffffff"
+                    strokeWidth={pt.isPeak ? 2.5 : 1.8}
+                  />
+                );
+              })}
 
-              {/* Dynamic Real-Time X-Axis Date Labels */}
-              {chartPlot.points.map((pt, idx) => (
-                <text key={idx} x={pt.x} y="204" textAnchor="middle" className="sa-svg-date-label">
-                  {pt.label}
-                </text>
-              ))}
+              {/* Dynamic Real-Time X-Axis Date Labels with Intelligent Spacing */}
+              {chartPlot.points.map((pt, idx) => {
+                if (!shouldShowDateLabel(idx, chartPlot.points.length)) {
+                  return null;
+                }
+                return (
+                  <text key={idx} x={pt.x} y="204" textAnchor="middle" className="sa-svg-date-label">
+                    {pt.label}
+                  </text>
+                );
+              })}
             </svg>
 
             {/* Pinned Tooltip Card on Peak Sales Point */}

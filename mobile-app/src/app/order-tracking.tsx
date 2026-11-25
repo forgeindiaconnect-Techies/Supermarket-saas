@@ -529,8 +529,10 @@ export default function OrderTrackingScreen() {
           setOrder(fetchedOrder);
           updateRecentOrder(fetchedOrder); // Live sync to app CartContext!
 
-          if (fetchedOrder?.review?.rating) {
+          if (fetchedOrder?.review?.rating && Number(fetchedOrder.review.rating) > 0) {
             setExistingReview(fetchedOrder.review);
+          } else {
+            setExistingReview(null);
           }
 
           if (Array.isArray(data.stages) && data.stages.length >= 4) {
@@ -1367,7 +1369,7 @@ export default function OrderTrackingScreen() {
                   </View>
                 </View>
 
-                {existingReview || (order as any).review?.rating ? (
+                {(existingReview && Number(existingReview.rating) > 0) || ((order as any)?.review?.rating && Number((order as any).review.rating) > 0) ? (
                   <View style={styles.reviewSubmittedBox}>
                     <View style={styles.reviewStarsRow}>
                       {[1, 2, 3, 4, 5].map((star) => (

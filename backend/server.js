@@ -46,6 +46,17 @@ function syncInitialAssets() {
       fs.copyFileSync(cartCandidate, path.join(publicDir, "check-cart.png"));
     }
 
+    // Sync crystal-clear supermarket cart hero image
+    const cartHeroBrainDir = "C:\\Users\\Forgeindiaconnect\\.gemini\\antigravity\\brain\\e283c22d-059e-4cb2-a16e-319f4b39badf";
+    const newCartHero = path.join(cartHeroBrainDir, "supermarket_cart_produce_hero_1795597598670.jpg");
+    if (fs.existsSync(newCartHero)) {
+      fs.copyFileSync(newCartHero, path.join(publicDir, "supermarket_cart_produce_hero.jpg"));
+      fs.copyFileSync(newCartHero, path.join(assetsDir, "supermarket_cart_produce_hero.jpg"));
+      fs.copyFileSync(newCartHero, path.join(publicDir, "hero-aisle-cart-hd.jpg"));
+      fs.copyFileSync(newCartHero, path.join(assetsDir, "hero-aisle-cart-hd.jpg"));
+      console.log("✓ Synced crystal-clear supermarket cart hero image -> supermarket_cart_produce_hero.jpg");
+    }
+
     // Sync exact user-provided Landing Page Master Image (media_1794910523383_df6dc5b8.jpg)
     const landingRefImg = path.join(userUploadedDir, "media_1794910523383_df6dc5b8.jpg");
     if (fs.existsSync(landingRefImg)) {
@@ -117,9 +128,9 @@ function syncInitialAssets() {
 
     // Sync celebration illustration
     const celebrationDollImg = "C:\\Users\\Forgeindiaconnect\\.gemini\\antigravity\\brain\\66da6e68-95f4-42d0-a640-30ba83b6ef48\\payment_success_celebration_1794473637341.jpg";
-    const currentBrainDir = "C:\\Users\\Forgeindiaconnect\\.gemini\\antigravity\\brain\\6fa4a95c-77f9-4a4d-950b-d57336a67a4c";
+    const paymentBrainDir = "C:\\Users\\Forgeindiaconnect\\.gemini\\antigravity\\brain\\6fa4a95c-77f9-4a4d-950b-d57336a67a4c";
     const paymentImages = [
-      { src: path.join(currentBrainDir, "payment_pending_1794467892344.jpg"), destName: "payment-pending.jpg" },
+      { src: path.join(paymentBrainDir, "payment_pending_1794467892344.jpg"), destName: "payment-pending.jpg" },
       { src: celebrationDollImg, destName: "payment-approved.jpg" },
       { src: celebrationDollImg, destName: "payment-celebration.jpg" },
     ];

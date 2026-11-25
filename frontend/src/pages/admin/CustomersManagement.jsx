@@ -773,18 +773,18 @@ export default function CustomersManagement() {
               </span>
             </div>
           ) : (
-            <table className="pm-products-table">
+            <table className="pm-products-table cm-customers-table">
               <thead>
                 <tr>
-                  <th>CUSTOMER INFO</th>
-                  <th>SOURCE</th>
-                  <th>MOBILE & EMAIL</th>
-                  <th>REGISTRATION DATE</th>
-                  <th>IN-STORE ORDERS</th>
-                  <th>TOTAL VERIFIED SPEND</th>
-                  <th>LATEST VISIT</th>
-                  <th>STATUS</th>
-                  <th style={{ textAlign: "center" }}>ACTIONS</th>
+                  <th className="cm-th-cust">CUSTOMER INFO</th>
+                  <th className="cm-th-source">SOURCE</th>
+                  <th className="cm-th-contact">MOBILE &amp; EMAIL</th>
+                  <th className="cm-th-regdate">REGISTRATION DATE</th>
+                  <th className="cm-th-orders">IN-STORE ORDERS</th>
+                  <th className="cm-th-spend">TOTAL VERIFIED SPEND</th>
+                  <th className="cm-th-visit">LATEST VISIT</th>
+                  <th className="cm-th-status">STATUS</th>
+                  <th className="cm-th-actions">ACTIONS</th>
                 </tr>
               </thead>
               <tbody>
@@ -803,7 +803,7 @@ export default function CustomersManagement() {
                   return (
                     <tr key={c.key}>
                       {/* Customer Info (Avatar & ID) */}
-                      <td>
+                      <td className="cm-td-cust">
                         <div className="pm-cell-details">
                           <div className="cm-avatar-initials" style={{ background: "linear-gradient(135deg, #059669, #10B981)" }}>
                             {getInitials(c.name)}
@@ -825,9 +825,10 @@ export default function CustomersManagement() {
                       </td>
 
                       {/* Registration Source Badge */}
-                      <td>
+                      <td className="cm-td-source">
                         <span
                           style={{
+                            display: "inline-block",
                             fontSize: "10.5px",
                             fontWeight: 800,
                             padding: "3px 8px",
@@ -843,7 +844,7 @@ export default function CustomersManagement() {
                       </td>
 
                       {/* Contact Info */}
-                      <td>
+                      <td className="cm-td-contact">
                         <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
                           <span
                             style={{
@@ -882,16 +883,17 @@ export default function CustomersManagement() {
                       </td>
 
                       {/* Registration Date */}
-                      <td>
-                        <span style={{ fontSize: "12.5px", color: "#334155", fontWeight: 600 }}>
+                      <td className="cm-td-regdate">
+                        <span style={{ fontSize: "12.5px", color: "#334155", fontWeight: 600, display: "inline-block" }}>
                           {regFormatted}
                         </span>
                       </td>
 
                       {/* Total In-Store Orders */}
-                      <td>
+                      <td className="cm-td-orders">
                         <span
                           style={{
+                            display: "inline-block",
                             fontSize: "12.5px",
                             fontWeight: 800,
                             background: "#F1F5F9",
@@ -905,29 +907,29 @@ export default function CustomersManagement() {
                       </td>
 
                       {/* Total Verified Spend */}
-                      <td>
-                        <span className="pm-price-bold" style={{ color: "#059669" }}>
+                      <td className="cm-td-spend">
+                        <span className="pm-price-bold" style={{ color: "#059669", display: "inline-block" }}>
                           ₹{c.totalSpent.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                         </span>
                       </td>
 
                       {/* Latest Order Date */}
-                      <td>
-                        <span style={{ fontSize: "12px", color: "#475569" }}>
+                      <td className="cm-td-visit">
+                        <span style={{ fontSize: "12px", color: "#475569", display: "inline-block" }}>
                           {c.totalOrders > 0 ? latestFormatted : "Walk-in Only"}
                         </span>
                       </td>
 
                       {/* Customer Account Status */}
-                      <td>
+                      <td className="cm-td-status">
                         <span className={`cm-status-pill ${c.status === "Active" ? "active" : "suspended"}`}>
                           {c.status === "Active" ? "✓ Active" : "✕ Suspended"}
                         </span>
                       </td>
 
                       {/* Action Buttons */}
-                      <td style={{ textAlign: "center" }}>
-                        <div style={{ display: "inline-flex", gap: "6px" }}>
+                      <td className="cm-td-actions">
+                        <div className="cm-table-actions">
                           <button
                             type="button"
                             className="action-pill-btn refresh"
@@ -949,6 +951,9 @@ export default function CustomersManagement() {
                               background: "#FEF2F2",
                               color: "#DC2626",
                               cursor: "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
                             }}
                             title="Delete Customer Record"
                           >

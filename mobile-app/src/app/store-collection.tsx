@@ -37,6 +37,7 @@ export default function StoreCollectionScreen() {
   const [reviewComment, setReviewComment] = useState("");
   const [submittingReview, setSubmittingReview] = useState(false);
   const [existingReview, setExistingReview] = useState<any | null>(null);
+  const [isEditingReview, setIsEditingReview] = useState(false);
   const [reviewSuccessMsg, setReviewSuccessMsg] = useState("");
 
   // Pulse animation for active preparation stage
@@ -77,14 +78,16 @@ export default function StoreCollectionScreen() {
         setOrder(data.order);
         updateRecentOrder(data.order);
 
-        if (data.order.review) {
+        if (data.order.review && data.order.review.rating && Number(data.order.review.rating) > 0) {
           setExistingReview(data.order.review);
           if (data.order.review.rating) {
-            setRating(data.order.review.rating);
+            setRating(Number(data.order.review.rating));
           }
           if (data.order.review.comment) {
             setReviewComment(data.order.review.comment);
           }
+        } else {
+          setExistingReview(null);
         }
       }
     } catch (_) {
@@ -141,7 +144,7 @@ export default function StoreCollectionScreen() {
 
   // Submit Customer Review
   const handleSubmitReview = async () => {
-    const targetId = order?._id || orderId;
+    const targetId = order?._id || (order as any)?.orderNumber || orderId;
     if (!targetId) {
       Alert.alert("Order Not Found", "Could not locate order ID to submit review.");
       return;
@@ -153,27 +156,27 @@ export default function StoreCollectionScreen() {
     }
 
     setSubmittingReview(true);
+    const cleanTargetId = encodeURIComponent(String(targetId).replace(/^#/, "").trim());
+    const custName =
+      customerUser?.name ||
+      (order as any)?.customer?.name ||
+      (order as any)?.customerName ||
+      "Verified Customer";
+    const custPhone =
+      customerUser?.phone ||
+      (order as any)?.customer?.phone ||
+      (order as any)?.deliveryPhone ||
+      "";
+
     const reviewData = {
       rating,
       comment: reviewComment.trim(),
-      customerName:
-        customerUser?.name ||
-        (order as any)?.customer?.name ||
-        (order as any)?.customerName ||
-        "Verified Customer",
-      customerPhone:
-        customerUser?.phone ||
-        (order as any)?.customer?.phone ||
-        (order as any)?.deliveryPhone ||
-        "",
+      customerName: custName,
+      customerPhone: custPhone,
       review: {
         rating,
         comment: reviewComment.trim(),
-        customerName:
-          customerUser?.name ||
-          (order as any)?.customer?.name ||
-          (order as any)?.customerName ||
-          "Verified Customer",
+        customerName: custName,
         submittedAt: new Date().toISOString(),
       },
     };
@@ -188,13 +191,13 @@ export default function StoreCollectionScreen() {
       // 1. Primary Attempt: Dedicated /review endpoint
       try {
         const res = await safeFetch(
-          `${API_URL}/orders/${targetId}/review`,
+          `${API_URL}/orders/${cleanTargetId}/review`,
           {
             method: "POST",
             headers: reqHeaders,
             body: JSON.stringify(reviewData),
           },
-          5000
+          6000
         );
 
         const contentType = res.headers?.get("content-type") || "";
@@ -207,43 +210,40 @@ export default function StoreCollectionScreen() {
         }
       } catch (_) {}
 
-      // 2. Resilient Fallback: Complete-pickup endpoint (also handles review storage)
+      // 2. Fallback: pickup-review endpoint
       if (!isSuccess) {
         try {
           const resFallback = await safeFetch(
-            `${API_URL}/orders/${targetId}/customer-complete-pickup`,
+            `${API_URL}/orders/${cleanTargetId}/pickup-review`,
             {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
+              method: "POST",
+              headers: reqHeaders,
               body: JSON.stringify(reviewData),
             },
-            5000
+            6000
           );
           const contentType = resFallback.headers?.get("content-type") || "";
           if (contentType.includes("application/json")) {
             const data = await resFallback.json();
             if (data?.success) {
               isSuccess = true;
-              reviewResult = data.order?.review || reviewData.review;
+              reviewResult = data.review || data.order?.review;
             }
           }
         } catch (_) {}
       }
 
-      // 3. Secondary Fallback: pickup-status endpoint
+      // 3. Resilient Fallback: Complete-pickup endpoint (also handles review storage)
       if (!isSuccess) {
         try {
           const resFallback2 = await safeFetch(
-            `${API_URL}/orders/${targetId}/pickup-status`,
+            `${API_URL}/orders/${cleanTargetId}/customer-complete-pickup`,
             {
               method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                pickupStatus: "Completed",
-                ...reviewData,
-              }),
+              headers: reqHeaders,
+              body: JSON.stringify(reviewData),
             },
-            5000
+            6000
           );
           const contentType = resFallback2.headers?.get("content-type") || "";
           if (contentType.includes("application/json")) {
@@ -256,10 +256,37 @@ export default function StoreCollectionScreen() {
         } catch (_) {}
       }
 
+      // 4. Secondary Fallback: pickup-status endpoint
+      if (!isSuccess) {
+        try {
+          const resFallback3 = await safeFetch(
+            `${API_URL}/orders/${cleanTargetId}/pickup-status`,
+            {
+              method: "PUT",
+              headers: reqHeaders,
+              body: JSON.stringify({
+                pickupStatus: "Completed",
+                ...reviewData,
+              }),
+            },
+            6000
+          );
+          const contentType = resFallback3.headers?.get("content-type") || "";
+          if (contentType.includes("application/json")) {
+            const data = await resFallback3.json();
+            if (data?.success) {
+              isSuccess = true;
+              reviewResult = data.order?.review || reviewData.review;
+            }
+          }
+        } catch (_) {}
+      }
+
       const finalReview = reviewResult || reviewData.review;
       setExistingReview(finalReview);
-      setReviewSuccessMsg("✓ Thank you! Your review has been saved.");
-      Alert.alert("Review Submitted", "Thank you for your valuable feedback!");
+      setIsEditingReview(false);
+      setReviewSuccessMsg("✓ Thank you! Your review has been saved to the supermarket profile.");
+      Alert.alert("Review Submitted", "Thank you for rating your store pickup experience!");
 
       // Update local cart state and refresh order
       if (order) {
@@ -281,11 +308,25 @@ export default function StoreCollectionScreen() {
   };
 
   // Stage Progression Calculations
-  const rawPickupStatus = (order?.pickupStatus || "Pending").trim();
-  const sLower = rawPickupStatus.toLowerCase();
+  const rawPickupStatus = String(order?.pickupStatus || "Pending").trim().toLowerCase();
+  const sLower = rawPickupStatus;
+  const rawDeliveryStatus = String((order as any)?.deliveryStatus || "").trim().toLowerCase();
+  const rawStatus = String((order as any)?.status || "").trim().toLowerCase();
 
   const isCompleted =
-    sLower === "completed" || Boolean((order as any)?.customerPickupConfirmed);
+    rawPickupStatus === "completed" ||
+    Boolean((order as any)?.customerPickupConfirmed) ||
+    Boolean((order as any)?.actualCollectionTime) ||
+    Boolean((order as any)?.customerPickupCompletedAt) ||
+    Boolean((order as any)?.collectedAt) ||
+    rawDeliveryStatus === "delivered" ||
+    rawDeliveryStatus === "completed" ||
+    rawStatus === "completed";
+
+  const hasValidReview = Boolean(
+    (existingReview && existingReview.rating && Number(existingReview.rating) > 0) ||
+    ((order as any)?.review && (order as any).review.rating && Number((order as any).review.rating) > 0)
+  );
 
   const isReady =
     sLower === "readyforpickup" ||
@@ -616,20 +657,20 @@ export default function StoreCollectionScreen() {
         {/* Review & Rating Section */}
         <View style={styles.sectionCard}>
           <View style={styles.reviewHeaderRow}>
-            <Text style={{ fontSize: 22 }}>⭐</Text>
-            <View style={{ flex: 1, marginLeft: 8 }}>
-              <Text style={styles.sectionTitle}>
-                {isCompleted ? "Rate Your Store Pickup (Required)" : "Rate & Review Store Pickup"}
-              </Text>
+            <Text style={{ fontSize: 24 }}>⭐</Text>
+            <View style={{ flex: 1, marginLeft: 10 }}>
+              <Text style={styles.sectionTitle}>Rate Your Store Pickup Experience</Text>
               <Text style={styles.sectionSubtitle}>
-                {isCompleted
-                  ? "Order collected! Please provide your star rating and feedback below."
+                {hasValidReview
+                  ? "Your verified feedback is saved to the store profile"
+                  : isCompleted
+                  ? "Share verified feedback about your packaged groceries and service"
                   : "Review will be enabled once your products are collected at the store counter"}
               </Text>
             </View>
           </View>
 
-          {existingReview ? (
+          {hasValidReview && !isEditingReview ? (
             <View style={styles.submittedReviewCard}>
               <View style={styles.submittedStarRow}>
                 {[1, 2, 3, 4, 5].map((star) => (
@@ -637,20 +678,25 @@ export default function StoreCollectionScreen() {
                     key={star}
                     style={[
                       styles.starIconSubmitted,
-                      { color: star <= existingReview.rating ? "#F59E0B" : "#D1D5DB" },
+                      {
+                        color:
+                          star <= (existingReview?.rating || (order as any)?.review?.rating || 5)
+                            ? "#F59E0B"
+                            : "#D1D5DB",
+                      },
                     ]}
                   >
                     ★
                   </Text>
                 ))}
                 <Text style={styles.submittedRatingText}>
-                  {existingReview.rating} of 5 Stars
+                  {existingReview?.rating || (order as any)?.review?.rating || 5} of 5 Stars
                 </Text>
               </View>
 
-              {existingReview.comment ? (
+              {(existingReview?.comment || (order as any)?.review?.comment) ? (
                 <Text style={styles.submittedCommentText}>
-                  "{existingReview.comment}"
+                  "{existingReview?.comment || (order as any)?.review?.comment}"
                 </Text>
               ) : null}
 
@@ -658,10 +704,30 @@ export default function StoreCollectionScreen() {
                 <Text style={styles.reviewDoneBadgeText}>
                   ✓ Review Submitted • Saved to Supermarket Profile
                 </Text>
+                <TouchableOpacity
+                  onPress={() => setIsEditingReview(true)}
+                  style={{
+                    marginTop: 8,
+                    alignSelf: "flex-start",
+                    paddingVertical: 4,
+                    paddingHorizontal: 10,
+                    backgroundColor: "#FEF08A",
+                    borderRadius: 6,
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: "700", color: "#854D0E" }}>
+                    ✏️ Edit Feedback
+                  </Text>
+                </TouchableOpacity>
               </View>
             </View>
           ) : isCompleted ? (
             <View style={styles.reviewFormWrap}>
+              <Text style={{ fontSize: 13, fontWeight: "700", color: "#334155", marginBottom: 6 }}>
+                Your Overall Rating:
+              </Text>
+
               {/* Star Rating Selector */}
               <View style={styles.starsSelectorRow}>
                 {[1, 2, 3, 4, 5].map((star) => (
@@ -697,13 +763,18 @@ export default function StoreCollectionScreen() {
               {/* Written Review Input */}
               <TextInput
                 style={styles.reviewInput}
-                placeholder="Write your review here (optional)..."
+                placeholder="Write a brief review (e.g. quick packaging, fresh items, courteous service)..."
+                placeholderTextColor="#94A3B8"
                 value={reviewComment}
                 onChangeText={setReviewComment}
                 multiline
                 numberOfLines={3}
                 maxLength={500}
               />
+
+              {reviewSuccessMsg ? (
+                <Text style={styles.reviewSuccessMsg}>{reviewSuccessMsg}</Text>
+              ) : null}
 
               {/* Submit Button */}
               <TouchableOpacity
@@ -713,12 +784,25 @@ export default function StoreCollectionScreen() {
                 ]}
                 onPress={handleSubmitReview}
                 disabled={submittingReview}
-                activeOpacity={0.88}
+                activeOpacity={0.85}
               >
-                <Text style={styles.submitReviewBtnText}>
-                  {submittingReview ? "Submitting Review..." : "Submit Review"}
-                </Text>
+                {submittingReview ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <Text style={styles.submitReviewBtnText}>
+                    {isEditingReview ? "Update Customer Review ⭐" : "Submit Customer Review ⭐"}
+                  </Text>
+                )}
               </TouchableOpacity>
+
+              {isEditingReview && (
+                <TouchableOpacity
+                  onPress={() => setIsEditingReview(false)}
+                  style={{ marginTop: 8, alignItems: "center", paddingVertical: 8 }}
+                >
+                  <Text style={{ fontSize: 13, color: "#64748B", fontWeight: "600" }}>Cancel</Text>
+                </TouchableOpacity>
+              )}
             </View>
           ) : (
             <View style={styles.reviewDisabledNotice}>
@@ -727,7 +811,6 @@ export default function StoreCollectionScreen() {
               </Text>
             </View>
           )}
-
           {reviewSuccessMsg ? (
             <Text style={styles.reviewSuccessMsg}>{reviewSuccessMsg}</Text>
           ) : null}
@@ -1137,15 +1220,21 @@ const styles = StyleSheet.create({
     textAlignVertical: "top",
   },
   submitReviewBtn: {
-    backgroundColor: "#3B0764",
-    paddingVertical: 13,
+    backgroundColor: "#16A34A",
+    paddingVertical: 14,
     borderRadius: 12,
     alignItems: "center",
+    justifyContent: "center",
     marginTop: 12,
+    shadowColor: "#16A34A",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
   submitReviewBtnText: {
     color: "#FFFFFF",
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "800",
   },
   reviewDisabledNotice: {

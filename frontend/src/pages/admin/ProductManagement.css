@@ -3478,6 +3478,156 @@
   gap: 6px !important;
 }
 
+/* ==========================================================================
+   Offline Customer Directory Table Alignment & Proportions
+   ========================================================================== */
+.cm-customers-table {
+  width: 100% !important;
+  min-width: 980px !important;
+  border-collapse: collapse !important;
+}
+
+.cm-customers-table th,
+.cm-customers-table td {
+  vertical-align: middle !important;
+  box-sizing: border-box !important;
+}
+
+.cm-customers-table thead th {
+  background: #1455d9 !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  font-size: 11.5px !important;
+  letter-spacing: 0.4px !important;
+  text-transform: uppercase !important;
+  height: 44px !important;
+  white-space: nowrap !important;
+}
+
+/* Col 1: Customer Info */
+.cm-customers-table th.cm-th-cust,
+.cm-customers-table td.cm-td-cust,
+.cm-customers-table th:nth-child(1),
+.cm-customers-table td:nth-child(1) {
+  text-align: left !important;
+  padding-left: 20px !important;
+  padding-right: 12px !important;
+  width: 17% !important;
+  min-width: 160px !important;
+}
+
+/* Col 2: Source */
+.cm-customers-table th.cm-th-source,
+.cm-customers-table td.cm-td-source,
+.cm-customers-table th:nth-child(2),
+.cm-customers-table td:nth-child(2) {
+  text-align: center !important;
+  padding: 12px 10px !important;
+  width: 8% !important;
+  min-width: 80px !important;
+}
+
+/* Col 3: Mobile & Email */
+.cm-customers-table th.cm-th-contact,
+.cm-customers-table td.cm-td-contact,
+.cm-customers-table th:nth-child(3),
+.cm-customers-table td:nth-child(3) {
+  text-align: left !important;
+  padding-left: 12px !important;
+  padding-right: 12px !important;
+  width: 18% !important;
+  min-width: 175px !important;
+}
+
+/* Col 4: Registration Date */
+.cm-customers-table th.cm-th-regdate,
+.cm-customers-table td.cm-td-regdate,
+.cm-customers-table th:nth-child(4),
+.cm-customers-table td:nth-child(4) {
+  text-align: center !important;
+  padding: 12px 10px !important;
+  width: 11% !important;
+  min-width: 110px !important;
+}
+
+/* Col 5: In-Store Orders */
+.cm-customers-table th.cm-th-orders,
+.cm-customers-table td.cm-td-orders,
+.cm-customers-table th:nth-child(5),
+.cm-customers-table td:nth-child(5) {
+  text-align: center !important;
+  padding: 12px 10px !important;
+  width: 10% !important;
+  min-width: 100px !important;
+}
+
+/* Col 6: Total Verified Spend */
+.cm-customers-table th.cm-th-spend,
+.cm-customers-table td.cm-td-spend,
+.cm-customers-table th:nth-child(6),
+.cm-customers-table td:nth-child(6) {
+  text-align: center !important;
+  padding: 12px 10px !important;
+  width: 12% !important;
+  min-width: 115px !important;
+}
+
+/* Col 7: Latest Visit */
+.cm-customers-table th.cm-th-visit,
+.cm-customers-table td.cm-td-visit,
+.cm-customers-table th:nth-child(7),
+.cm-customers-table td:nth-child(7) {
+  text-align: center !important;
+  padding: 12px 10px !important;
+  width: 10% !important;
+  min-width: 100px !important;
+}
+
+/* Col 8: Status */
+.cm-customers-table th.cm-th-status,
+.cm-customers-table td.cm-td-status,
+.cm-customers-table th:nth-child(8),
+.cm-customers-table td:nth-child(8) {
+  text-align: center !important;
+  padding: 12px 10px !important;
+  width: 8% !important;
+  min-width: 85px !important;
+}
+
+.cm-customers-table .cm-status-pill {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin: 0 auto !important;
+}
+
+/* Col 9: Actions */
+.cm-customers-table th.cm-th-actions,
+.cm-customers-table td.cm-td-actions,
+.cm-customers-table th:nth-child(9),
+.cm-customers-table td:nth-child(9),
+.cm-customers-table th:last-child,
+.cm-customers-table td:last-child {
+  text-align: center !important;
+  padding: 12px 10px !important;
+  padding-right: 14px !important;
+  padding-left: 8px !important;
+  width: 13% !important;
+  min-width: 140px !important;
+}
+
+.cm-customers-table td.cm-td-actions > div,
+.cm-customers-table td:nth-child(9) > div,
+.cm-customers-table td:last-child > div,
+.cm-customers-table .cm-table-actions {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  width: auto !important;
+  margin: 0 auto !important;
+}
+
 .om-status-pill {
   min-width: 96px !important;
   justify-content: center !important;

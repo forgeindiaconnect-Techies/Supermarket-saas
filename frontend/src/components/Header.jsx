@@ -64,6 +64,36 @@ const formatNotifTime = (timestamp) => {
   return `${day} ${month} ${year}, ${hoursStr}:${minutes} ${ampm}`;
 };
 
+// Formats timestamp matching Image 2 & 3: "05:18 pm" or "24 Nov, 05:18 pm"
+const formatNotifTimeShort = (timestamp) => {
+  if (!timestamp) return "Just now";
+  const d = new Date(timestamp);
+  if (Number.isNaN(d.getTime())) return "Just now";
+
+  let hours = d.getHours();
+  const minutes = String(d.getMinutes()).padStart(2, "0");
+  const ampm = hours >= 12 ? "pm" : "am";
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+  const hoursStr = String(hours).padStart(2, "0");
+  const timePart = `${hoursStr}:${minutes} ${ampm}`;
+
+  const now = new Date();
+  const isToday =
+    d.getDate() === now.getDate() &&
+    d.getMonth() === now.getMonth() &&
+    d.getFullYear() === now.getFullYear();
+
+  if (isToday) {
+    return timePart;
+  }
+
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const day = d.getDate();
+  const month = months[d.getMonth()];
+  return `${day} ${month}, ${timePart}`;
+};
+
 // Sidebar navigation pages for global search matching
 const ADMIN_NAV_PAGES = [
   {
@@ -402,8 +432,9 @@ export default function Header({ onMenuClick }) {
 
   const isNotifPage = location.pathname.startsWith("/admin/notifications");
   const notifReadKey = `grocerease_notif_read_ids_${currentSupermarket?._id || currentSupermarket?.code || "default"}`;
+  const notifDismissedKey = `grocerease_notif_dismissed_ids_${currentSupermarket?._id || currentSupermarket?.code || "default"}`;
 
-  // Load ONLY real-time customer cart, pending payment, and approved payment notifications
+  // Load ONLY real-time customer cart, pending payment, approved payment, and review notifications
   const loadRealNotifications = async () => {
     try {
       const activeStoreId = currentSupermarket?._id ? String(currentSupermarket._id) : (user?.supermarket?._id ? String(user.supermarket._id) : null);
@@ -425,13 +456,15 @@ export default function Header({ onMenuClick }) {
       ]);
 
       let readSet = new Set();
+      let dismissedSet = new Set();
       try {
         readSet = new Set(JSON.parse(localStorage.getItem(notifReadKey) || "[]"));
+        dismissedSet = new Set(JSON.parse(localStorage.getItem(notifDismissedKey) || "[]"));
       } catch (_) {}
 
       const items = [];
 
-      // 1. Orders: ONLY "Payment Pending" and "Payment Approved" strictly filtered by tenant
+      // 1. Orders: categorized by fulfillment choice and payment status, strictly tenant isolated
       if (
         ordersRes.status === "fulfilled" &&
         ordersRes.value.data?.success &&
@@ -448,41 +481,126 @@ export default function Header({ onMenuClick }) {
         });
 
         orderList.forEach((o) => {
-          const custName = o.customer?.name || "Mobile Shopper";
-          const amount = Number(o.totalAmount || 0).toFixed(2);
-          const method = o.paymentMethod || "UPI";
+          const custName = (
+            o.customer?.name ||
+            o.deliveryCustomerName ||
+            o.customerName ||
+            "Customer"
+          ).trim();
+          const rawAmount = Number(o.totalAmount || 0);
+          const formattedAmount = rawAmount % 1 === 0 ? rawAmount.toFixed(0) : rawAmount.toFixed(2);
+          const storeName = o.supermarketName || currentSupermarket?.name || "Family Foods Supermarket";
+
+          const oType = String(o.orderType || "").toUpperCase();
+          const fChoice = String(o.fulfillmentChoice || "").toUpperCase();
+          const hasPickup = Boolean(o.pickupStatus && String(o.pickupStatus).trim() !== "");
+          const isStorePickup =
+            oType.includes("PICKUP") ||
+            fChoice === "STORE_COLLECTION" ||
+            hasPickup;
+
+          const isDelivery =
+            !isStorePickup && (
+              oType.includes("DELIVERY") ||
+              fChoice.includes("DELIVERY") ||
+              Boolean(o.deliveryAddress || o.deliveryPartner)
+            );
+
+          const isCompletedOrApproved =
+            o.paymentStatus === "Completed" ||
+            o.paymentStatus === "Approved" ||
+            o.status === "Completed" ||
+            o.status === "Delivered";
 
           if (o.paymentStatus === "Pending") {
             const notifId = `pending-${o._id || o.orderNumber}`;
-            items.push({
-              id: notifId,
-              type: "pending",
-              badge: "PRE-BOOKING",
-              title: "New Pre-Booking",
-              actor: custName,
-              message: `${custName} is waiting for approval.`,
-              timestamp: o.createdAt || new Date().toISOString(),
-              read: readSet.has(notifId),
-              order: o,
-            });
-          } else if (o.paymentStatus === "Approved" || o.paymentStatus === "Completed") {
-            const notifId = `approved-${o._id || o.orderNumber}`;
-            items.push({
-              id: notifId,
-              type: "approved",
-              badge: "APPROVED",
-              title: "Pre-Booking Approved",
-              actor: custName,
-              message: `${custName} was approved for store exit.`,
-              timestamp: o.approvedAt || o.completedAt || o.createdAt || new Date().toISOString(),
-              read: readSet.has(notifId),
-              order: o,
-            });
+            if (!dismissedSet.has(notifId)) {
+              items.push({
+                id: notifId,
+                type: "pending",
+                badgeClass: "pending",
+                badge: "PRE-BOOKING",
+                title: "New Pre-Booking",
+                actor: custName,
+                message: `${custName} is waiting for payment approval (₹${formattedAmount}).`,
+                timestamp: o.createdAt || new Date().toISOString(),
+                read: readSet.has(notifId),
+                order: o,
+                dotColor: "#D97706",
+                storeName,
+                isDelivery,
+                isStorePickup,
+              });
+            }
+          } else if (isCompletedOrApproved) {
+            const notifId = `payment-${o._id || o.orderNumber}`;
+            if (!dismissedSet.has(notifId)) {
+              let title = "In-Store Payment Successful";
+              let badge = "PAYMENT SUCCESSFUL";
+              let message = `${custName} successfully paid ₹${formattedAmount} for an In-Store purchase.`;
+              let dotColor = "#16A34A";
+
+              if (isDelivery) {
+                title = "Online Delivery Payment Successful";
+                badge = "PAYMENT SUCCESSFUL";
+                message = `${custName} successfully paid ₹${formattedAmount} for an Online Delivery order.`;
+                dotColor = "#16A34A";
+              } else if (isStorePickup) {
+                title = "Store Pickup Payment Successful";
+                badge = "PAYMENT SUCCESSFUL";
+                message = `${custName} successfully paid ₹${formattedAmount} for a Store Pickup order.`;
+                dotColor = "#16A34A";
+              }
+
+              items.push({
+                id: notifId,
+                type: "approved",
+                badgeClass: "payment",
+                badge,
+                title,
+                actor: custName,
+                message,
+                timestamp: o.approvedAt || o.completedAt || o.createdAt || new Date().toISOString(),
+                read: readSet.has(notifId),
+                order: o,
+                dotColor,
+                storeName,
+                isDelivery,
+                isStorePickup,
+              });
+            }
+          }
+
+          // Customer Review Received notification (Real-time from MongoDB order)
+          if (o.review && (o.review.rating || o.review.stars)) {
+            const notifId = `review-${o._id || o.orderNumber}`;
+            if (!dismissedSet.has(notifId)) {
+              const reviewRating = Number(o.review.rating || o.review.stars || 0);
+              const reviewComment = (o.review.comment || o.review.review || "").trim();
+              const reviewerName = o.review.customerName || custName;
+
+              items.push({
+                id: notifId,
+                type: "review",
+                badgeClass: "review",
+                badge: `⭐ ${reviewRating.toFixed(1)} REVIEW`,
+                title: isDelivery ? "Online Delivery Review Received" : isStorePickup ? "Store Pickup Review Received" : "Customer Review Received",
+                actor: reviewerName,
+                message: `${reviewerName} rated ${reviewRating.toFixed(1)} Stars${reviewComment ? `: "${reviewComment}"` : ""} for Order #${o.orderNumber || o._id}.`,
+                timestamp: o.review.createdAt || o.review.submittedAt || o.updatedAt || o.completedAt || o.createdAt || new Date().toISOString(),
+                read: readSet.has(notifId),
+                order: o,
+                dotColor: "#F59E0B",
+                storeName,
+                isDelivery,
+                isStorePickup,
+              });
+            }
           }
         });
       }
 
-      // 2. Customer Add to Cart: ONLY "Cart Item Added" strictly filtered by tenant
+      // 2. Customer Add to Cart: strictly filtered by tenant
       if (
         cartRes.status === "fulfilled" &&
         cartRes.value.data?.success &&
@@ -499,19 +617,32 @@ export default function Header({ onMenuClick }) {
         });
 
         actList.forEach((act) => {
-          const custName = act.customerName || "Mobile Shopper";
-          const prodName = act.productName || "Product";
           const notifId = `cart-${act._id || Math.random()}`;
+          if (dismissedSet.has(notifId)) return;
+
+          const custName = (act.customerName || "Mobile Shopper").trim();
+          const prodName = act.productName || "Product";
+          const isPickup =
+            String(act.fulfillmentType || act.orderType || "").toUpperCase().includes("PICKUP") ||
+            String(act.cartType || "").toUpperCase().includes("PICKUP");
+          const typeLabel = isPickup ? "Store Pickup" : "Online Delivery";
+          const dotColor = isPickup ? "#2563EB" : "#16A34A";
+          const storeName = act.supermarketName || currentSupermarket?.name || "Family Foods Supermarket";
 
           items.push({
             id: notifId,
             type: "cart",
+            badgeClass: "cart",
             badge: "ADDED TO CART",
             title: "Cart Item Added",
             actor: custName,
-            message: `${custName} added ${prodName} (Qty: ${act.quantity || 1}) to cart.`,
+            message: `${custName} added ${prodName} (Qty: ${act.quantity || 1}) to their ${typeLabel} cart.`,
             timestamp: act.createdAt || new Date().toISOString(),
             read: readSet.has(notifId),
+            dotColor,
+            storeName,
+            isStorePickup: isPickup,
+            isDelivery: !isPickup,
           });
         });
       }
@@ -589,28 +720,43 @@ export default function Header({ onMenuClick }) {
 
       setNotifications((prev) => {
         const filtered = prev.filter((n) => n.id !== data.id);
+        const isCart = data.type === "cart";
+        const isPickup =
+          String(data.fulfillmentType || data.orderType || "").toUpperCase().includes("PICKUP") ||
+          data.isStorePickup;
+        const isReview = data.type === "review" || Boolean(data.review);
+        const isPending = data.type === "pending";
+
+        const dotColor =
+          data.dotColor ||
+          (isCart
+            ? (isPickup ? "#2563EB" : "#16A34A")
+            : isReview
+            ? "#F59E0B"
+            : isPending
+            ? "#D97706"
+            : "#16A34A");
+
+        const storeName =
+          data.supermarketName ||
+          currentSupermarket?.name ||
+          "Family Foods Supermarket";
+
         const newNotif = {
           id: data.id || `notif-${Date.now()}`,
-          type: data.type || "pending",
-          badge:
-            data.badge ||
-            (data.type === "approved"
-              ? "APPROVED"
-              : data.type === "cart"
-              ? "ADDED TO CART"
-              : "PRE-BOOKING"),
-          title:
-            data.title ||
-            (data.type === "approved"
-              ? "Pre-Booking Approved"
-              : data.type === "cart"
-              ? "Cart Item Added"
-              : "New Pre-Booking"),
+          type: data.type || "approved",
+          badgeClass: data.badgeClass || (isCart ? "cart" : isReview ? "review" : isPending ? "pending" : "payment"),
+          badge: data.badge || (isCart ? "ADDED TO CART" : isReview ? "⭐ REVIEW" : isPending ? "PRE-BOOKING" : "PAYMENT SUCCESSFUL"),
+          title: data.title || (isCart ? "Cart Item Added" : isReview ? "Customer Review Received" : isPending ? "New Pre-Booking" : "Payment Successful"),
           actor: data.actor || data.customerName || "Shopper",
           message: data.message,
           timestamp: data.timestamp || new Date().toISOString(),
           read: false,
           order: data.order,
+          dotColor,
+          storeName,
+          isDelivery: data.isDelivery,
+          isStorePickup: isPickup,
         };
         return [newNotif, ...filtered];
       });
@@ -618,38 +764,17 @@ export default function Header({ onMenuClick }) {
 
     socket.on("new-order", (data) => {
       if (!data || !data.order) return;
-      const order = data.order;
+      loadRealNotifications();
+    });
 
-      // Strict tenant isolation guard
-      const orderIdStr = order.supermarket ? (typeof order.supermarket === "object" ? String(order.supermarket._id || order.supermarket) : String(order.supermarket)) : null;
-      const orderCodeStr = order.supermarketCode ? String(order.supermarketCode).toUpperCase() : null;
+    socket.on("order:reviewed", (data) => {
+      if (!data) return;
+      loadRealNotifications();
+    });
 
-      const matchesId = activeStoreId && orderIdStr && activeStoreId === orderIdStr;
-      const matchesCode = activeStoreCode && orderCodeStr && activeStoreCode === orderCodeStr;
-
-      if (!matchesId && !matchesCode) {
-        // Foreign store order - reject immediately
-        return;
-      }
-
-      const custName = order.customer?.name || "Shopper";
-
-      setNotifications((prev) => {
-        const notifId = `pending-${order._id || order.orderNumber}`;
-        const filtered = prev.filter((n) => n.id !== notifId);
-        const newNotif = {
-          id: notifId,
-          type: "pending",
-          badge: "PRE-BOOKING",
-          title: "New Pre-Booking",
-          actor: custName,
-          message: `${custName} is waiting for approval.`,
-          timestamp: order.createdAt || new Date().toISOString(),
-          read: false,
-          order,
-        };
-        return [newNotif, ...filtered];
-      });
+    socket.on("order:updated", (data) => {
+      if (!data) return;
+      loadRealNotifications();
     });
 
     const interval = setInterval(loadRealNotifications, 8000);
@@ -671,7 +796,18 @@ export default function Header({ onMenuClick }) {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
   };
 
-  // Click on a notification: mark as read and navigate
+  // Clear / dismiss all notifications from dropdown
+  const handleClearNotifications = () => {
+    try {
+      const allIds = notifications.map((n) => n.id);
+      const dismissedSet = new Set(JSON.parse(localStorage.getItem(notifDismissedKey) || "[]"));
+      allIds.forEach((id) => dismissedSet.add(id));
+      localStorage.setItem(notifDismissedKey, JSON.stringify(Array.from(dismissedSet)));
+    } catch (_) {}
+    setNotifications([]);
+  };
+
+  // Click on a notification: mark as read and navigate intelligently
   const handleNotificationClick = (item) => {
     try {
       const readSet = new Set(JSON.parse(localStorage.getItem(notifReadKey) || "[]"));
@@ -684,12 +820,16 @@ export default function Header({ onMenuClick }) {
     );
     setNotifDropdownOpen(false);
 
-    if (item.type === "pending") {
-      navigate("/admin/orders");
-    } else if (item.type === "approved") {
+    if (item.isDelivery || String(item.title || "").includes("Online Delivery")) {
+      navigate("/admin/delivery");
+    } else if (item.isStorePickup || String(item.title || "").includes("Store Pickup")) {
+      navigate("/admin/pickup");
+    } else if (item.type === "pending" || item.type === "approved") {
       navigate("/admin/orders");
     } else if (item.type === "cart") {
       navigate("/admin/notifications");
+    } else {
+      navigate("/admin/orders");
     }
   };
 
@@ -1138,59 +1278,6 @@ export default function Header({ onMenuClick }) {
 
       {/* Header Right Controls */}
       <div className="header-right">
-        {/* Active Supermarket Badge Pill */}
-        {currentSupermarket && (
-          <div
-            className="header-store-badge-pill"
-            title={`Active Store: ${currentSupermarket.name} (${currentSupermarket.code})`}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "7px",
-              background: "#ffffff",
-              border: "1px solid #dcfce7",
-              borderRadius: "9999px",
-              padding: "2px 10px 2px 3px",
-              boxShadow: "0 1px 3px rgba(16,163,74,0.08)",
-            }}
-          >
-            {currentSupermarket.logoUrl ? (
-              <img
-                src={currentSupermarket.logoUrl}
-                alt={currentSupermarket.name}
-                style={{ width: "22px", height: "22px", borderRadius: "50%", objectFit: "cover", border: "1px solid #86efac" }}
-                onError={(e) => {
-                  e.currentTarget.style.display = "none";
-                  if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = "flex";
-                }}
-              />
-            ) : null}
-            <div
-              style={{
-                display: currentSupermarket.logoUrl ? "none" : "flex",
-                width: "22px",
-                height: "22px",
-                borderRadius: "50%",
-                background: "#f0fdf4",
-                color: "#16a34a",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "10px",
-                fontWeight: 800,
-                border: "1px solid #bbf7d0",
-              }}
-            >
-              {currentSupermarket.name ? currentSupermarket.name[0].toUpperCase() : "S"}
-            </div>
-            <span className="header-store-name-text" style={{ fontSize: "12px", fontWeight: 700, color: "#166534", maxWidth: "120px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {currentSupermarket.name}
-            </span>
-            <span className="header-store-code-badge" style={{ fontSize: "10px", fontWeight: 800, color: "#15803d", background: "#dcfce7", padding: "1px 5px", borderRadius: "4px", fontFamily: "monospace" }}>
-              {currentSupermarket.code}
-            </span>
-          </div>
-        )}
-
         {/* Real-time Order & Cart Notifications Dropdown */}
         <div ref={notifDropdownRef} style={{ position: "relative" }}>
           <button
@@ -1216,23 +1303,45 @@ export default function Header({ onMenuClick }) {
           {notifDropdownOpen && (
             <div className="notif-modal-panel">
               <div className="notif-modal-header">
-                <h3 className="notif-modal-title">Notifications</h3>
-                <button
-                  type="button"
-                  className="notif-mark-read-btn"
-                  onClick={handleMarkAllRead}
-                  title="Mark all notifications as read"
-                >
-                  <Check size={14} />
-                  <span>Mark All Read</span>
-                </button>
+                <div className="notif-modal-header-left">
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <h3 className="notif-modal-title">Notifications</h3>
+                    {unreadCount > 0 && (
+                      <span className="notif-header-unread-badge">
+                        {unreadCount} New
+                      </span>
+                    )}
+                  </div>
+                  <span className="notif-modal-subtitle">
+                    Store Orders & Real-time Shopper Activity
+                  </span>
+                </div>
+                <div className="notif-modal-header-actions">
+                  <button
+                    type="button"
+                    className="notif-mark-read-btn"
+                    onClick={handleMarkAllRead}
+                    title="Mark all notifications as read"
+                  >
+                    <Check size={13} strokeWidth={2.4} />
+                    <span>Mark All Read</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="notif-clear-btn"
+                    onClick={handleClearNotifications}
+                    title="Clear all notifications"
+                  >
+                    Clear
+                  </button>
+                </div>
               </div>
 
               <div className="notif-modal-list">
                 {notifications.length === 0 ? (
                   <div className="notif-modal-empty">
                     <Bell size={28} color="#94A3B8" />
-                    <p>No new customer cart or payment notifications.</p>
+                    <p>No new customer activity or payment notifications.</p>
                   </div>
                 ) : (
                   notifications.map((item) => (
@@ -1241,31 +1350,34 @@ export default function Header({ onMenuClick }) {
                       className={`notif-card-row ${item.read ? "read" : "unread"}`}
                       onClick={() => handleNotificationClick(item)}
                     >
-                      {/* Left Circular Avatar Circle matching reference image */}
-                      <div className={`notif-avatar-circle ${item.type}`}>
-                        {item.type === "approved" ? (
-                          <CheckCircle2 size={19} color="#15803D" strokeWidth={2.4} />
-                        ) : item.type === "cart" ? (
-                          <ShoppingCart size={19} color="#1D4ED8" strokeWidth={2.4} />
-                        ) : (
-                          <User size={19} color="#D97706" strokeWidth={2.4} />
-                        )}
-                      </div>
+                      {/* Left Indicator Dot matching Image 2 & 3 */}
+                      <span
+                        className="notif-status-dot"
+                        style={{
+                          backgroundColor:
+                            item.dotColor ||
+                            (item.type === "cart" ? "#2563EB" : "#16A34A"),
+                        }}
+                      />
 
                       {/* Content block */}
                       <div className="notif-content-block">
                         <div className="notif-title-row">
                           <h4 className="notif-card-title">{item.title}</h4>
-                          <span className={`notif-card-badge ${item.type}`}>
+                          <span className={`notif-card-badge ${item.badgeClass || item.type || ""}`}>
                             {item.badge}
                           </span>
                         </div>
 
                         <p className="notif-card-desc">{item.message}</p>
 
-                        <div className="notif-time-row">
-                          <Clock size={12} color="#94A3B8" />
-                          <span>{formatNotifTime(item.timestamp)}</span>
+                        <div className="notif-meta-footer-row">
+                          <span className="notif-store-tag">
+                            🏪 {item.storeName || currentSupermarket?.name || "Family Foods Supermarket"}
+                          </span>
+                          <span className="notif-time-tag">
+                            {formatNotifTimeShort(item.timestamp)}
+                          </span>
                         </div>
                       </div>
                     </div>

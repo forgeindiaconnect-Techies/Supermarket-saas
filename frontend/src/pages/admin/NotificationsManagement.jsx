@@ -431,21 +431,44 @@ export default function NotificationsManagement() {
       const isApproved = o.paymentStatus === "Approved" || o.paymentStatus === "Completed";
       if (!isPending && !isApproved) return;
 
-      const custName = o.customer?.name || "Mobile Shopper";
+      
+      const custName = (
+        o.customer?.name ||
+        o.deliveryCustomerName ||
+        o.customerName ||
+        "Mobile Shopper"
+      ).trim();
       const totalVal = Number(o.totalAmount || 0);
-      const amount = totalVal.toFixed(2);
+      const amount = totalVal % 1 === 0 ? totalVal.toFixed(0) : totalVal.toFixed(2);
       const subtotalVal = Number(
         o.subtotalAmount ||
         o.items?.reduce((s, i) => s + (Number(i.originalPrice || i.price || 0) * (i.quantity || 1)), 0) ||
         totalVal
       );
       const discountVal = Math.max(0, Number(o.discountAmount || (subtotalVal - totalVal)));
+      const storeName = o.supermarketName || "Family Foods Supermarket";
+
+      const oType = String(o.orderType || "").toUpperCase();
+      const fChoice = String(o.fulfillmentChoice || "").toUpperCase();
+      const hasPickup = Boolean(o.pickupStatus && String(o.pickupStatus).trim() !== "");
+      const isStorePickup =
+        oType.includes("PICKUP") ||
+        fChoice === "STORE_COLLECTION" ||
+        hasPickup;
+
+      const isDelivery =
+        !isStorePickup && (
+          oType.includes("DELIVERY") ||
+          fChoice.includes("DELIVERY") ||
+          Boolean(o.deliveryAddress || o.deliveryPartner)
+        );
 
       if (isPending) {
         list.push({
           id: notifId,
           type: "pending",
           sourceType: "order",
+          badgeClass: "pending",
           badge: "PRE-BOOKING",
           title: "New Pre-Booking",
           actor: custName,
@@ -463,17 +486,35 @@ export default function NotificationsManagement() {
           customerPhone: o.customer?.phone || "Not provided",
           items: o.items || [],
           actionNeeded: true,
+          storeName,
+          isDelivery,
+          isStorePickup,
         });
       } else if (isApproved) {
+        let title = "In-Store Payment Successful";
+        let subTitle = `${custName} completed in-store payment.`;
+        let message = `${custName} successfully paid ₹${amount} for an In-Store purchase.`;
+
+        if (isDelivery) {
+          title = "Online Delivery Payment Successful";
+          subTitle = `${custName} paid ₹${amount} for Online Delivery.`;
+          message = `${custName} successfully paid ₹${amount} for an Online Delivery order.`;
+        } else if (isStorePickup) {
+          title = "Store Pickup Payment Successful";
+          subTitle = `${custName} paid ₹${amount} for Store Pickup.`;
+          message = `${custName} successfully paid ₹${amount} for a Store Pickup order.`;
+        }
+
         list.push({
           id: notifId,
           type: "approved",
           sourceType: "order",
-          badge: "APPROVED",
-          title: "Pre-Booking Approved",
+          badgeClass: "payment",
+          badge: "PAYMENT SUCCESSFUL",
+          title,
           actor: custName,
-          subTitle: `${custName} was approved by Super Admin.`,
-          message: `Payment of ₹${amount} for order #${o.orderNumber || o._id} was approved.`,
+          subTitle,
+          message,
           timestamp: o.approvedAt || o.completedAt || o.createdAt || new Date().toISOString(),
           order: o,
           read: readSet.has(notifId),
@@ -486,34 +527,74 @@ export default function NotificationsManagement() {
           customerPhone: o.customer?.phone || "Not provided",
           items: o.items || [],
           actionNeeded: false,
+          storeName,
+          isDelivery,
+          isStorePickup,
         });
+
+        // Review if present on order
+        if (o.review && (o.review.rating || o.review.stars)) {
+          const reviewRating = Number(o.review.rating || o.review.stars || 0);
+          const reviewComment = (o.review.comment || o.review.review || "").trim();
+          const reviewerName = o.review.customerName || custName;
+          const revNotifId = `review-mgr-${o._id || o.orderNumber}`;
+
+          list.push({
+            id: revNotifId,
+            type: "review",
+            sourceType: "review",
+            badgeClass: "review",
+            badge: `⭐ ${reviewRating.toFixed(1)} REVIEW`,
+            title: isDelivery ? "Online Delivery Review Received" : isStorePickup ? "Store Pickup Review Received" : "Customer Review Received",
+            actor: reviewerName,
+            subTitle: `${reviewerName} left a ${reviewRating.toFixed(1)}-star review.`,
+            message: `${reviewerName} rated ${reviewRating.toFixed(1)} Stars${reviewComment ? `: "${reviewComment}"` : ""} for Order #${o.orderNumber || o._id}.`,
+            timestamp: o.review.createdAt || o.review.submittedAt || o.updatedAt || o.completedAt || o.createdAt || new Date().toISOString(),
+            order: o,
+            read: readSet.has(revNotifId),
+            customerName: reviewerName,
+            actionNeeded: false,
+            storeName,
+            isDelivery,
+            isStorePickup,
+          });
+        }
       }
     });
 
-    // 2. Customer Add to Cart: ONLY "Cart Item Added"
+    // 2. Customer Add to Cart: strictly filtered by tenant
     cartActivities.forEach((act) => {
       const notifId = `cart-act-${act._id || Math.random()}`;
       if (dismissedSet.has(notifId)) return;
 
-      const custName = act.customerName || "Mobile Shopper";
+      const custName = (act.customerName || "Mobile Shopper").trim();
       const prodName = act.productName || "Product";
+      const isPickup =
+        String(act.fulfillmentType || act.orderType || "").toUpperCase().includes("PICKUP") ||
+        String(act.cartType || "").toUpperCase().includes("PICKUP");
+      const typeLabel = isPickup ? "Store Pickup" : "Online Delivery";
+      const cleanQty = act.quantity || 1;
 
       list.push({
         id: notifId,
         type: "cart",
         sourceType: "activity",
+        badgeClass: "cart",
         badge: "ADDED TO CART",
         title: "Cart Item Added",
         actor: custName,
-        subTitle: `${custName} added ${prodName} to cart.`,
-        message: `${custName} added "${prodName}" (Qty: ${act.quantity || 1}) to cart • Cart Value: ₹${Number(act.price || 0).toFixed(2)}`,
+        subTitle: `${custName} added ${prodName} to ${typeLabel} cart.`,
+        message: `${custName} added ${prodName} (Qty: ${cleanQty}) to their ${typeLabel} cart.`,
         timestamp: act.createdAt || new Date().toISOString(),
         read: readSet.has(notifId),
         actionNeeded: false,
         totalAmount: Number(act.price || 0),
         customerName: custName,
         productName: prodName,
-        quantity: act.quantity || 1,
+        quantity: cleanQty,
+        storeName: act.supermarketName || "Family Foods Supermarket",
+        isStorePickup: isPickup,
+        isDelivery: !isPickup,
       });
     });
 
@@ -899,16 +980,20 @@ export default function NotificationsManagement() {
                       <div className="notif-content-block">
                         <div className="notif-title-row">
                           <h4 className="notif-card-title">{item.title}</h4>
-                          <span className={`notif-card-badge ${item.type}`}>
+                          <span className={`notif-card-badge ${item.badgeClass || item.type}`}>
                             {item.badge}
                           </span>
                         </div>
 
                         <p className="notif-card-desc">{item.subTitle || item.message}</p>
 
-                        <div className="notif-time-row">
-                          <Clock size={12} color="#94A3B8" />
-                          <span>{formatNotifTime(item.timestamp)}</span>
+                        <div className="notif-meta-footer-row" style={{ marginTop: 4 }}>
+                          <span className="notif-store-tag">
+                            🏪 {item.storeName || "Family Foods Supermarket"}
+                          </span>
+                          <span className="notif-time-tag">
+                            {formatNotifTime(item.timestamp)}
+                          </span>
                         </div>
                       </div>
 

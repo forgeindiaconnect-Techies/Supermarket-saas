@@ -469,14 +469,15 @@ export default function SuperAdminLayout() {
               <Menu size={20} color="#0f172a" />
             </button>
             <div className="sa-welcome-greeting-wrap">
-              <div className="sa-welcome-title-row">
-                <span className="sa-waving-hand">👋</span>
-                <div className="sa-welcome-texts">
-                  <h1 className="sa-welcome-h1">Welcome Back,</h1>
-                  <span className="sa-welcome-name">Super Admin</span>
+              <div className="sa-welcome-main-row">
+                <span className="sa-waving-hand" role="img" aria-label="Waving hand">👋</span>
+                <div className="sa-welcome-text-col">
+                  <h1 className="sa-welcome-h1">
+                    Welcome Back, <span className="sa-welcome-name">{user?.name || "Super Admin"}</span>
+                  </h1>
+                  <p className="sa-welcome-tagline">Here's what's happening across your supermarkets today!</p>
                 </div>
               </div>
-              <p className="sa-welcome-tagline">Here's what's happening today!</p>
             </div>
           </div>
 
